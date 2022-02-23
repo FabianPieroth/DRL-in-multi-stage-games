@@ -63,7 +63,7 @@ def plot(parallel_env_vals, sps_vals):
     ax.set_xticklabels(["10", "100", "1k", "10k", "100k"])
     ax.set_yticks([1e4, 1e5, 1e6, 1e7, 2e7])
     ax.set_yticklabels(["10k", "100k", "1M", "10M", "20M"])
-    ax.set_title("Batch scaling (NVIDIA A100)")
+    ax.set_title("Batch scaling Rock-Paper-Scissors")
     fig.tight_layout()
     plt.savefig("./benchmark_rps.png")
     plt.show()
