@@ -8,6 +8,7 @@ class BaseEnvForVec(ABC):
     def __init__(self, config: Dict, device):
         self.device = device
         self.config = config
+        self.num_agents = None
 
     @abstractmethod
     def to(self, device) -> Any:

@@ -1,0 +1,5 @@
+valid_envs: ["rockpaperscissors"]
+log_path: './logs/'
+defaults:
+  - rl_envs: rockpaperscissors
+  - _self_
