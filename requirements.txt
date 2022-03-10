@@ -3,6 +3,7 @@ torch==1.10.1
 gym
 matplotlib
 seaborn
+stable-baselines3
 
 hydra-core
 opencv-python

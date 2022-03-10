@@ -1,15 +1,20 @@
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Any, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
+import gym
 import numpy as np
 import torch
+from stable_baselines3.common.vec_env import VecEnv
 
+VecEnvIndices = Union[None, int, Iterable[int]]
 TorchVecEnvStepReturn = Tuple[
     torch.Tensor, torch.Tensor, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]
 ]
 
 
-class TorchVecEnv:
-    def __init__(self, model, num_envs, device, render_n_envs=16):
+class TorchVecEnv(VecEnv):
+    metadata = {"render.modes": ["console"]}
+
+    def __init__(self, model, num_envs, device, render_num_envs=16):
         """
         VecEnv which takes care of parallelization itself natively on GPU
         instead of vectorizing a single non-batch environment.
@@ -31,10 +36,18 @@ class TorchVecEnv:
         }
         self.render_n_envs = render_n_envs
 
+        self.observation_space = model.observation_space
+        self.action_space = model.action_space
+
     def step_async(self, actions: np.ndarray) -> None:
         self.actions = actions
 
     def step_wait(self) -> TorchVecEnvStepReturn:
+        """
+        Wait for the step taken with step_async().
+
+        :return: observation, reward, done, information
+        """
         with torch.no_grad():
             current_states = self.current_states
 
@@ -48,7 +61,7 @@ class TorchVecEnv:
                 current_states, actions
             )
 
-        self.ep_stats["returns"] += rewards
+        self.ep_stats["returns"] += rewards.unsqueeze(1)  # single-agent
         self.ep_stats["lengths"] += torch.ones((self.num_envs,), device=self.device)
 
         self.current_states = next_states
@@ -56,9 +69,17 @@ class TorchVecEnv:
         n_dones = dones.sum()
         self.current_states[dones] = self.model.sample_new_states(n_dones)
 
-        episode_returns = self.ep_stats["returns"][dones]
-        episode_lengths = self.ep_stats["lengths"][dones]
-        infos = (episode_returns, episode_lengths)
+        # episode_returns = self.ep_stats["returns"][dones]
+        # episode_lengths = self.ep_stats["lengths"][dones]
+        # infos = (episode_returns, episode_lengths)
+
+        # TODO only support for constant length env.
+        # otherwise we are slow AF on CPU
+        infos = {}
+        if dones.all():
+            infos["terminal_observation"] = self.model.get_observations(
+                self.current_states[dones]
+            )  # TODO check
 
         self.ep_stats["returns"][dones] = 0
         self.ep_stats["lengths"][dones] = 0
@@ -67,7 +88,16 @@ class TorchVecEnv:
         # set "terminal_observation"
         obses[dones] = self.model.get_observations(self.current_states[dones])
 
-        return obses.clone(), rewards.clone(), dones.clone(), infos
+        # TODO `collect_rollouts` needs arrays!?
+        if isinstance(self.actions, np.ndarray):
+            return (
+                np.array(obses.cpu()),
+                np.array(rewards.cpu()),
+                np.array(dones.cpu()),
+                infos,
+            )
+        else:
+            return obses.clone(), rewards.clone(), dones.clone(), infos
 
     def step(self, actions: np.ndarray):
         """
@@ -89,62 +119,52 @@ class TorchVecEnv:
         raise NotImplementedError()
 
     def reset(self):
+        """
+        Reset all the environments and return an array of
+        observations, or a tuple of observation arrays.
+
+        If step_async is still doing work, that work will
+        be cancelled and step_wait() should not be called
+        until step_async() is invoked again.
+
+        :return: observation
+        """
         self.current_states = self.model.sample_new_states(self.num_envs)
         obses = self.model.get_observations(self.current_states)
         return obses
 
     def get_images(self) -> Sequence[np.ndarray]:
-        return [
-            self.model.render(state)
-            for state in self.current_states[: self.render_n_envs]
-        ]
+        pass
 
     def render(self, mode: str) -> Optional[np.ndarray]:
-        """
-        Vendored from stable-baselines3
-        """
-        imgs = self.get_images()
+        pass
 
-        # Create a big image by tiling images from subprocesses
-        bigimg = tile_images(imgs)
-        if mode == "human":
-            import cv2  # pytype:disable=import-error
+    def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
+        return self.model.seed(seed)
 
-            cv2.imshow("vecenv", bigimg[:, :, ::-1])
-            cv2.waitKey(1)
-        elif mode == "rgb_array":
-            return bigimg
-        else:
-            raise NotImplementedError(f"Render mode {mode} is not supported by VecEnvs")
+    def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> List[Any]:
+        return self.venv.get_attr(attr_name, indices)
 
+    def set_attr(
+        self, attr_name: str, value: Any, indices: VecEnvIndices = None
+    ) -> None:
+        return self.venv.set_attr(attr_name, value, indices)
 
-def tile_images(img_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no cover
-    """
-    Vendored from stable-baselines3
-    https://github.com/DLR-RM/stable-baselines3/blob/e9a8979022d7005560d43b7a9c1dc1ba85f7989a/stable_baselines3/common/vec_env/base_vec_env.py
+    def env_method(
+        self,
+        method_name: str,
+        *method_args,
+        indices: VecEnvIndices = None,
+        **method_kwargs
+    ) -> List[Any]:
+        return self.venv.env_method(
+            method_name, *method_args, indices=indices, **method_kwargs
+        )
 
-    Tile N images into one big PxQ image
-    (P,Q) are chosen to be as close as possible, and if N
-    is square, then P=Q.
+    def env_is_wrapped(
+        self, wrapper_class: Type[gym.Wrapper], indices: VecEnvIndices = None
+    ) -> List[bool]:
+        return self.venv.env_is_wrapped(wrapper_class, indices=indices)
 
-    :param img_nhwc: list or array of images, ndim=4 once turned into array. img nhwc
-        n = batch index, h = height, w = width, c = channel
-    :return: img_HWc, ndim=3
-    """
-    img_nhwc = np.asarray(img_nhwc)
-    n_images, height, width, n_channels = img_nhwc.shape
-    # new_height was named H before
-    new_height = int(np.ceil(np.sqrt(n_images)))
-    # new_width was named W before
-    new_width = int(np.ceil(float(n_images) / new_height))
-    img_nhwc = np.array(
-        list(img_nhwc)
-        + [img_nhwc[0] * 0 for _ in range(n_images, new_height * new_width)]
-    )
-    # img_HWhwc
-    out_image = img_nhwc.reshape((new_height, new_width, height, width, n_channels))
-    # img_HhWwc
-    out_image = out_image.transpose(0, 2, 1, 3, 4)
-    # img_Hh_Ww_c
-    out_image = out_image.reshape((new_height * height, new_width * width, n_channels))
-    return out_image
+    def close(self) -> None:
+        return self.venv.close()

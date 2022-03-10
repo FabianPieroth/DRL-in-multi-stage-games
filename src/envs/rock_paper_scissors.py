@@ -15,7 +15,10 @@ class RockPaperScissors(BaseEnvForVec):
         super().__init__(config, device)
         self.rl_env_config = config["rl_envs"]
         self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
-        self.num_agents = self.rl_env_config["num_agents"]
+
+        # single-agent learning
+        self.num_agents = 1  # self.rl_env_config["num_agents"]
+
         self.observation_space = spaces.Box(
             0, self.num_rounds_to_play + 1, shape=(2, self.num_agents)
         )
@@ -44,7 +47,7 @@ class RockPaperScissors(BaseEnvForVec):
             updated_states:"""
         unraveled_actions = sp_ut.unravel_index(
             actions, self.action_space_sizes
-        ).squeeze()
+        )  # .squeeze()  # not required for single-agent
 
         new_states = cur_states.detach().clone()
         new_states[:, 0] += 1
@@ -74,7 +77,14 @@ class RockPaperScissors(BaseEnvForVec):
             draw: 0
             If all three options occur, there is always a draw.
         """
-        rewards = torch.zeros(unraveled_actions.shape, device=self.device)
+
+        # single-agent vs. rock
+        num_envs = unraveled_actions.shape[0]
+        unraveled_actions = unraveled_actions.repeat(1, 2)
+        # unraveled_actions[:, 1] = torch.randint(0, 3, (num_envs,))  # BNE
+        unraveled_actions[:, 1] = 0  # rock
+
+        rewards = torch.zeros(unraveled_actions.shape, device=unraveled_actions.device)
         rock_played = torch.any(unraveled_actions == 0, dim=1)
         paper_played = torch.any(unraveled_actions == 1, dim=1)
         scissors_played = torch.any(unraveled_actions == 2, dim=1)
@@ -101,6 +111,9 @@ class RockPaperScissors(BaseEnvForVec):
         )
         rewards[torch.logical_and(rock_wins.unsqueeze(1), unraveled_actions == 0)] = 1.0
 
+        # single-agent
+        rewards = rewards[:, 0]
+
         return rewards
 
     @staticmethod
@@ -115,9 +128,13 @@ class RockPaperScissors(BaseEnvForVec):
             states (_type_): shape=(num_samples, state_dim)
 
         Returns:
-            Any: observations.shape=(num_samples, num_agents, state_dim)
+            Any: observations.shape=(num_samples, state_dim, num_agents)
         """
-        return states.unsqueeze(1).repeat(1, self.num_agents, 1)
+        return states.unsqueeze(2).repeat(1, 1, self.num_agents)
 
     def render(self, state):
         return state
+
+    def seed(self, seed: int):
+        torch.manual_seed(seed)
+        np.random.seed(seed)
