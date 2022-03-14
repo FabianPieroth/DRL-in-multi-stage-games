@@ -28,7 +28,6 @@ class RockPaperScissors(BaseEnvForVec):
 
     def to(self, device) -> Any:
         self.device = device
-        self.action_space_nvec = self.action_space_nvec.to(device)
         return self
 
     def sample_new_states(self, num_envs: int) -> Any:

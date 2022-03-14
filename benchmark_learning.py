@@ -15,7 +15,7 @@ import torch
 from stable_baselines3.common.env_checker import check_env
 
 from src.envs.rock_paper_scissors import RockPaperScissors
-from src.learners import VecPPO
+from src.learners.ppo import VecPPO
 from src.torch_vec_env import TorchVecEnv
 
 
@@ -27,8 +27,9 @@ def get_config():
 
 def benchmark_learning():
     config = get_config()
-    device = "cuda:2"
-    num_envs_list = [2 ** i for i in range(0, 12, 3)]
+    device = "cuda:1"
+    num_envs_list = [2 ** i for i in range(0, 18, 3)]
+    n_steps = 128  # default: 2048
 
     base_env = RockPaperScissors(config, device=device)
 
@@ -41,14 +42,15 @@ def benchmark_learning():
             policy="MlpPolicy",
             env=env,
             device=device,
-            batch_size=2048 * num_envs,
+            n_steps=n_steps,
+            batch_size=n_steps * num_envs,
             tensorboard_log="logs",
-            verbose=0,
+            verbose=2,
         )
 
         # train the agent
         learning_tic = time.time()
-        model.learn(1)
+        model.learn(1_000_000)
         learn_times[i] = time.time() - learning_tic
 
         # evaluate the trained agent
@@ -57,11 +59,11 @@ def benchmark_learning():
         while True:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
+            # print('obs', obs[0, ...])
+            # print('action', action[0, ...])
+            # print('reward', reward[0, ...])
             if done.all():
                 break
-            # print('obs', obs)
-            # print('action', action)
-            # print('reward', reward)
         eval_times[i] = time.time() - eval_tic
 
     return plot(num_envs_list, learn_times, eval_times)
@@ -72,13 +74,13 @@ def plot(parallel_env_vals, learn_times, eval_times):
     fig, ax1 = plt.subplots(figsize=(6, 4), dpi=120)
 
     color = "tab:red"
-    ax1.plot(parallel_env_vals, learn_times, color=color)
+    ax1.plot(parallel_env_vals, learn_times, "-o", color=color)
     ax1.tick_params(axis="y", labelcolor=color)
     ax1.set_ylabel("learning times", color=color)
 
     ax2 = ax1.twinx()
     color = "tab:blue"
-    ax2.plot(parallel_env_vals, eval_times, color=color)
+    ax2.plot(parallel_env_vals, eval_times, "-o", color=color)
     ax2.tick_params(axis="y", labelcolor=color)
     ax2.set_ylabel("evaluation times", color=color)
 
