@@ -34,7 +34,7 @@ class TorchVecEnv(VecEnv):
             "returns": torch.zeros((num_envs, self.model.num_agents), device=device),
             "lengths": torch.zeros((num_envs,), device=device),
         }
-        self.render_n_envs = render_n_envs
+        # self.render_n_envs = render_num_envs
 
         self.observation_space = model.observation_space
         self.action_space = model.action_space
@@ -89,15 +89,15 @@ class TorchVecEnv(VecEnv):
         obses[dones] = self.model.get_observations(self.current_states[dones])
 
         # TODO `collect_rollouts` needs arrays!?
-        if isinstance(self.actions, np.ndarray):
-            return (
-                np.array(obses.cpu()),
-                np.array(rewards.cpu()),
-                np.array(dones.cpu()),
-                infos,
-            )
-        else:
-            return obses.clone(), rewards.clone(), dones.clone(), infos
+        # if isinstance(self.actions, np.ndarray):
+        #     return (
+        #         np.array(obses.cpu()),
+        #         np.array(rewards.cpu()),
+        #         np.array(dones.cpu()),
+        #         infos,
+        #     )
+        # else:
+        return obses.clone(), rewards.clone(), dones.clone(), infos
 
     def step(self, actions: np.ndarray):
         """

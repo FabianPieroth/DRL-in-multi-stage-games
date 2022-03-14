@@ -31,11 +31,11 @@ class RockPaperScissors(BaseEnvForVec):
         self.action_space_nvec = self.action_space_nvec.to(device)
         return self
 
-    def sample_new_states(self, n: int) -> Any:
+    def sample_new_states(self, num_envs: int) -> Any:
         """Creates states in shape=(num_envs, 2)
         The 2 stands for current_round and num_rounds_to_play
         """
-        states = torch.zeros((n, 2))
+        states = torch.zeros((num_envs, 2), device=self.device)
         states[:, -1] = self.num_rounds_to_play
         return states
 
@@ -130,7 +130,7 @@ class RockPaperScissors(BaseEnvForVec):
         Returns:
             Any: observations.shape=(num_samples, state_dim, num_agents)
         """
-        return states.unsqueeze(2).repeat(1, 1, self.num_agents)
+        return states.view(-1, 2, self.num_agents)
 
     def render(self, state):
         return state
