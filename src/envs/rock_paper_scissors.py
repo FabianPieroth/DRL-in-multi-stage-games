@@ -5,11 +5,16 @@ import torch
 from gym import spaces
 
 import src.utils_folder.spaces_utils as sp_ut
-from src.envs.base_env_for_vec_env import BaseEnvForVec
+from src.envs.torch_vec_env import BaseEnvForVec
 
 
 class RockPaperScissors(BaseEnvForVec):
-    """Iterated RockPaperScissors Game as simple env example."""
+    """Iterated RockPaperScissors Game as simple env example.
+
+    Also see
+    https://github.com/Farama-Foundation/PettingZoo/blob/master/pettingzoo/classic/rps/rps.py
+    for a peeting zoo (multi-agent) implementation.
+    """
 
     def __init__(self, config: Dict, device):
         super().__init__(config, device)
@@ -119,6 +124,7 @@ class RockPaperScissors(BaseEnvForVec):
     def first_and_second_not_third(
         first: torch.Tensor, second: torch.Tensor, third: torch.Tensor
     ) -> torch.Tensor:
+        """first and second not third"""
         return torch.logical_and(torch.logical_and(first, second), ~third)
 
     def get_observations(self, states) -> Any:

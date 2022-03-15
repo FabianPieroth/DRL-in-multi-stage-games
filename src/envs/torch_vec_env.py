@@ -1,4 +1,6 @@
-from typing import Any, Iterable, List, Optional, Sequence, Tuple, Type, Union
+"""Base classes for vectorized Gym environments"""
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
 import gym
 import numpy as np
@@ -11,7 +13,79 @@ TorchVecEnvStepReturn = Tuple[
 ]
 
 
+class BaseEnvForVec(ABC):
+    """TODO"""
+
+    def __init__(self, config: Dict, device):
+        self.device = device
+        self.config = config
+        self.num_agents = None
+
+    @abstractmethod
+    def to(self, device) -> Any:
+        """Takes an available GPU device and shifts all tensors to the newly specified device.
+
+        Args:
+            device (int or string): The device to send the data to.
+        Returns:
+            Any: returns self of class
+        """
+        return self
+
+    @abstractmethod
+    def sample_new_states(self, n: int) -> Any:
+        """?
+
+        Args:
+            n (int): Number of states to sample.
+
+        Returns:
+            States: Returns n states.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def compute_step(self, cur_states, actions: torch.Tensor):
+        """
+        Given a state batch and an action batch makes a step of env.
+        Args:
+            cur_states ():
+            actions (torch.Tensor):
+        Returns:
+            observations:
+            rewards:
+            episode-done markers:
+            updated_states:
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_observations(self, states) -> Any:
+        """Takes a number of states and returns the corresponding observations for the agents.
+
+        Args:
+            states (_type_): _description_
+
+        Returns:
+            observations: _description_
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def render(self, state):
+        """Takes a state and returns a tensor to render.
+
+        Args:
+            state (_type_):
+
+        Returns:
+            image:
+        """
+
+
 class TorchVecEnv(VecEnv):
+    """Vectorized Gym environment base class"""
+
     metadata = {"render.modes": ["console"]}
 
     def __init__(self, model, num_envs, device, render_num_envs=16):
@@ -116,7 +190,7 @@ class TorchVecEnv(VecEnv):
         calls to methods like torch.randn and can be seeded with
         `torch.manual_seed`.
         """
-        raise NotImplementedError()
+        raise self.model.seed(seed)
 
     def reset(self):
         """
@@ -139,16 +213,13 @@ class TorchVecEnv(VecEnv):
     def render(self, mode: str) -> Optional[np.ndarray]:
         pass
 
-    def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
-        return self.model.seed(seed)
-
     def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> List[Any]:
-        return self.venv.get_attr(attr_name, indices)
+        return self.model.get_attr(attr_name, indices)
 
     def set_attr(
         self, attr_name: str, value: Any, indices: VecEnvIndices = None
     ) -> None:
-        return self.venv.set_attr(attr_name, value, indices)
+        return self.model.set_attr(attr_name, value, indices)
 
     def env_method(
         self,
@@ -157,14 +228,14 @@ class TorchVecEnv(VecEnv):
         indices: VecEnvIndices = None,
         **method_kwargs
     ) -> List[Any]:
-        return self.venv.env_method(
+        return self.model.env_method(
             method_name, *method_args, indices=indices, **method_kwargs
         )
 
     def env_is_wrapped(
         self, wrapper_class: Type[gym.Wrapper], indices: VecEnvIndices = None
     ) -> List[bool]:
-        return self.venv.env_is_wrapped(wrapper_class, indices=indices)
+        return [False] * self.num_envs
 
     def close(self) -> None:
-        return self.venv.close()
+        return self.model.close()
