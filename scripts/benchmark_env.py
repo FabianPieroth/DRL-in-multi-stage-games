@@ -1,4 +1,9 @@
+import os
+import sys
 import time
+
+sys.path.append(os.path.realpath("."))
+sys.path.append(os.path.join(os.path.expanduser("~"), "sequential-auction-on-gpu"))
 
 import hydra
 import numpy as np
@@ -6,13 +11,13 @@ import torch
 
 import src.utils_folder.spaces_utils as sp_ut
 from src.envs.rock_paper_scissors import RockPaperScissors
-from src.torch_vec_env import TorchVecEnv
+from src.envs.torch_vec_env import TorchVecEnv
 
 
 def make_vec_env(config, num_envs, device, render_n_envs=16):
     env = RockPaperScissors(config, device=device)
     neural_venv = TorchVecEnv(
-        env, num_envs=num_envs, device=device, render_n_envs=render_n_envs
+        env, num_envs=num_envs, device=device  # render_n_envs=render_n_envs
     )
     return neural_venv
 
@@ -65,12 +70,12 @@ def plot(parallel_env_vals, sps_vals):
     ax.set_yticklabels(["10k", "100k", "1M", "10M", "20M"])
     ax.set_title("Batch scaling Rock-Paper-Scissors")
     fig.tight_layout()
-    plt.savefig("./benchmark_rps.png")
+    plt.savefig("./logs/figures/benchmark_rps.png")
     plt.show()
 
 
 def get_config():
-    hydra.initialize(config_path="configs", job_name="run")
+    hydra.initialize(config_path="../configs", job_name="run")
     cfg = hydra.compose(config_name="config")
     return cfg
 

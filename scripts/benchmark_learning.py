@@ -6,7 +6,12 @@
     * symmetric only (tensorflow): https://github.com/HumanCompatibleAI/adversarial-policies/blob/99700aab22f99f8353dc74b0ddaf8e5861ff34a5/src/aprl/agents/ppo_self_play.py
     * vanilla PG self-play (no stable baselines): https://github.com/mtrencseni/pytorch-playground/blob/master/11-gym-self-play/OpenAI%20Gym%20classic%20control.ipynb
 """
+import os
+import sys
 import time
+
+sys.path.append(os.path.realpath("."))
+sys.path.append(os.path.join(os.path.expanduser("~"), "sequential-auction-on-gpu"))
 
 import hydra
 import matplotlib.pyplot as plt
@@ -15,12 +20,12 @@ import torch
 from stable_baselines3.common.env_checker import check_env
 
 from src.envs.rock_paper_scissors import RockPaperScissors
+from src.envs.torch_vec_env import TorchVecEnv
 from src.learners.ppo import VecPPO
-from src.torch_vec_env import TorchVecEnv
 
 
 def get_config():
-    hydra.initialize(config_path="configs", job_name="run")
+    hydra.initialize(config_path="../configs", job_name="run")
     cfg = hydra.compose(config_name="config")
     return cfg
 
@@ -50,7 +55,7 @@ def benchmark_learning():
 
         # train the agent
         learning_tic = time.time()
-        model.learn(1_000_000)
+        model.learn(1)
         learn_times[i] = time.time() - learning_tic
 
         # evaluate the trained agent
@@ -92,7 +97,7 @@ def plot(parallel_env_vals, learn_times, eval_times):
     ax1.set_xlabel("# parallel environments")
 
     fig.tight_layout()
-    plt.savefig("./benchmark_learning.png")
+    plt.savefig("./logs/figures/benchmark_learning.png")
 
 
 if __name__ == "__main__":

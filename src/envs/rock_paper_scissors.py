@@ -5,7 +5,7 @@ import torch
 from gym import spaces
 
 import src.utils_folder.spaces_utils as sp_ut
-from src.base_env_for_vec_env import BaseEnvForVec
+from src.envs.base_env_for_vec_env import BaseEnvForVec
 
 
 class RockPaperScissors(BaseEnvForVec):
