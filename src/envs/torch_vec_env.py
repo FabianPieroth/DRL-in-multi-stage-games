@@ -105,7 +105,7 @@ class TorchVecEnv(VecEnv):
         self.actions = None
         self.current_states = self.model.sample_new_states(num_envs)
         self.ep_stats = {
-            "returns": torch.zeros((num_envs, self.model.num_agents), device=device),
+            "returns": torch.zeros((num_envs,), device=device),
             "lengths": torch.zeros((num_envs,), device=device),
         }
         # self.render_n_envs = render_num_envs
@@ -135,7 +135,7 @@ class TorchVecEnv(VecEnv):
                 current_states, actions
             )
 
-        self.ep_stats["returns"] += rewards.unsqueeze(1)  # single-agent
+        self.ep_stats["returns"] += rewards
         self.ep_stats["lengths"] += torch.ones((self.num_envs,), device=self.device)
 
         self.current_states = next_states

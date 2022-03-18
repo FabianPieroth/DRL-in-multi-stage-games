@@ -1,11 +1,4 @@
-"""
-# Resources:
-* https://github.com/HumanCompatibleAI/adversarial-policies/blob/baa359420641b721aa8132d289c3318edc45ec74/src/aprl/envs/multi_agent.py
-* Stable-baselines PPO self-play:
-    * symmetric only (pytorch): https://github.com/hardmaru/slimevolleygym/blob/master/training_scripts/train_ppo_selfplay.py
-    * symmetric only (tensorflow): https://github.com/HumanCompatibleAI/adversarial-policies/blob/99700aab22f99f8353dc74b0ddaf8e5861ff34a5/src/aprl/agents/ppo_self_play.py
-    * vanilla PG self-play (no stable baselines): https://github.com/mtrencseni/pytorch-playground/blob/master/11-gym-self-play/OpenAI%20Gym%20classic%20control.ipynb
-"""
+"""Run script for single-agent PPO in RPS."""
 import os
 import sys
 import time
@@ -19,24 +12,26 @@ import numpy as np
 import torch
 from stable_baselines3.common.env_checker import check_env
 
-from src.envs.rock_paper_scissors import RockPaperScissors
+from src.envs.rock_paper_scissors import RockPaperScissorsSingleAgent
 from src.envs.torch_vec_env import TorchVecEnv
 from src.learners.ppo import VecPPO
 
 
 def get_config():
+    """Config"""
     hydra.initialize(config_path="../configs", job_name="run")
     cfg = hydra.compose(config_name="config")
     return cfg
 
 
-def benchmark_learning():
+def single_agent_rps_main():
+    """Benchmark single-agent learning in custom RPS env."""
     config = get_config()
     device = "cuda:1"
-    num_envs_list = [2 ** i for i in range(0, 18, 3)]
+    num_envs_list = [64]  # [2 ** i for i in range(1, 18, 3)]
     n_steps = 128  # default: 2048
 
-    base_env = RockPaperScissors(config, device=device)
+    base_env = RockPaperScissorsSingleAgent(config, player_position=0, device=device)
 
     learn_times = [None] * len(num_envs_list)
     eval_times = [None] * len(num_envs_list)
@@ -49,13 +44,13 @@ def benchmark_learning():
             device=device,
             n_steps=n_steps,
             batch_size=n_steps * num_envs,
-            tensorboard_log="logs",
-            verbose=2,
+            tensorboard_log="logs/single_agent",
+            verbose=0,  # 2,
         )
 
         # train the agent
         learning_tic = time.time()
-        model.learn(1)
+        model.learn(total_timesteps=1_000)
         learn_times[i] = time.time() - learning_tic
 
         # evaluate the trained agent
@@ -64,9 +59,9 @@ def benchmark_learning():
         while True:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
-            # print('obs', obs[0, ...])
-            # print('action', action[0, ...])
-            # print('reward', reward[0, ...])
+            print("obs", obs[0, ...])
+            print("action", action[0, ...])
+            print("reward", reward[0, ...])
             if done.all():
                 break
         eval_times[i] = time.time() - eval_tic
@@ -75,7 +70,7 @@ def benchmark_learning():
 
 
 def plot(parallel_env_vals, learn_times, eval_times):
-
+    """Plot benchmarking"""
     fig, ax1 = plt.subplots(figsize=(6, 4), dpi=120)
 
     color = "tab:red"
@@ -95,10 +90,13 @@ def plot(parallel_env_vals, learn_times, eval_times):
     # ax.grid(axis="y", alpha=0.2)
     ax1.set_title("Batch Scaling: Learning in RPS")
     ax1.set_xlabel("# parallel environments")
-
     fig.tight_layout()
-    plt.savefig("./logs/figures/benchmark_learning.png")
+
+    path = "./logs/figures"
+    if not os.path.isdir(path):
+        os.makedirs(path)
+    plt.savefig(path + "/benchmark_learning.png")
 
 
 if __name__ == "__main__":
-    benchmark_learning()
+    single_agent_rps_main()

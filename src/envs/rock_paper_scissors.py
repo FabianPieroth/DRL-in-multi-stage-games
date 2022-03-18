@@ -8,7 +8,31 @@ import src.utils_folder.spaces_utils as sp_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 
-class RockPaperScissors(BaseEnvForVec):
+def eval_rps_strategy(env, player_position, eval_strategy):
+    """Evaluate a given RPS strategy."""
+    env_player_position = env.model.player_position
+    env.model.player_position = player_position
+
+    obs = env.reset()
+    i = 1
+    while True:
+        action = eval_strategy(obs)
+        obs, reward, done, info = env.step(action)
+        print(
+            f"action frequencies player {player_position} round {i}/{env.model.num_rounds_to_play}:",
+            [round((action == i).sum().item() / action.shape[0], 2) for i in range(3)],
+        )
+        if done.all():
+            break
+        i += 1
+
+    # Reset `player_position` of env
+    env.model.player_position = env_player_position
+
+    return
+
+
+class RockPaperScissorsSingleAgent(BaseEnvForVec):
     """Iterated RockPaperScissors Game as simple env example.
 
     Also see
@@ -16,31 +40,45 @@ class RockPaperScissors(BaseEnvForVec):
     for a peeting zoo (multi-agent) implementation.
     """
 
-    def __init__(self, config: Dict, device):
+    def __init__(self, config: Dict, player_position: int = 0, device: str = None):
         super().__init__(config, device)
         self.rl_env_config = config["rl_envs"]
         self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
 
         # single-agent learning
-        self.num_agents = 1  # self.rl_env_config["num_agents"]
+        self.num_agents = 2  # self.rl_env_config["num_agents"]
 
+        self.state_dim = 2
         self.observation_space = spaces.Box(
-            0, self.num_rounds_to_play + 1, shape=(2, self.num_agents)
+            0, self.num_rounds_to_play + 1, shape=(self.state_dim,)
         )
 
-        self.action_space_sizes = tuple([3 for k in range(self.num_agents)])
+        self.action_space_size = 1
+        self.action_space_sizes = tuple([3])
         self.action_space = spaces.Discrete(np.prod(self.action_space_sizes))
+
+        # Positions
+        self.player_position = player_position
+
+        # Dummy strategies: These can be overwritten by strategies that are
+        # learned over time in repeated self-play.
+        self.strategies = [
+            lambda obs: torch.zeros(
+                (obs.shape[0], self.action_space_size), device=obs.device
+            )
+            for _ in range(self.num_agents)
+        ]
 
     def to(self, device) -> Any:
         self.device = device
         return self
 
-    def sample_new_states(self, num_envs: int) -> Any:
+    def sample_new_states(self, n: int) -> Any:
         """Creates states in shape=(num_envs, 2)
         The 2 stands for current_round and num_rounds_to_play
         """
-        states = torch.zeros((num_envs, 2), device=self.device)
-        states[:, -1] = self.num_rounds_to_play
+        states = torch.zeros((n, self.num_agents, 2), device=self.device)
+        states[:, :, -1] = self.num_rounds_to_play
         return states
 
     def compute_step(self, cur_states, actions: torch.Tensor):
@@ -49,14 +87,26 @@ class RockPaperScissors(BaseEnvForVec):
             rewards:
             episode-done markers:
             updated_states:"""
-        unraveled_actions = sp_ut.unravel_index(
-            actions, self.action_space_sizes
-        )  # .squeeze()  # not required for single-agent
+        unraveled_actions = sp_ut.unravel_index(actions, self.action_space_sizes)
+        unraveled_actions = unraveled_actions.view(-1, 1, self.action_space_size)
 
+        # Append opponents' actions
+        unraveled_actions = unraveled_actions.repeat(1, self.num_agents, 1)
+        for opponent_position, opponent_strategy in enumerate(self.strategies):
+            if opponent_position != self.player_position:
+                opponent_obs = self.get_observations(
+                    cur_states, player_position=opponent_position
+                )
+                unraveled_actions[:, opponent_position, :] = opponent_strategy(
+                    opponent_obs
+                ).view(-1, self.action_space_size)
+
+        # States are for all agents, obs and rewards for `player_position` only
         new_states = cur_states.detach().clone()
-        new_states[:, 0] += 1
+        new_states[:, :, 0] += 1
 
-        dones = new_states[:, 0] >= new_states[:, 1]
+        # Reached last stage? (Independent from `player_position`)
+        dones = new_states[:, 0, 0] >= new_states[:, 0, 1]
 
         observations = self.get_observations(new_states)
 
@@ -81,14 +131,10 @@ class RockPaperScissors(BaseEnvForVec):
             draw: 0
             If all three options occur, there is always a draw.
         """
-
-        # single-agent vs. rock
-        num_envs = unraveled_actions.shape[0]
-        unraveled_actions = unraveled_actions.repeat(1, 2)
-        # unraveled_actions[:, 1] = torch.randint(0, 3, (num_envs,))  # BNE
-        unraveled_actions[:, 1] = 0  # rock
-
-        rewards = torch.zeros(unraveled_actions.shape, device=unraveled_actions.device)
+        rewards = torch.zeros(
+            (unraveled_actions.shape[0], self.num_agents),
+            device=unraveled_actions.device,
+        )
         rock_played = torch.any(unraveled_actions == 0, dim=1)
         paper_played = torch.any(unraveled_actions == 1, dim=1)
         scissors_played = torch.any(unraveled_actions == 2, dim=1)
@@ -97,26 +143,24 @@ class RockPaperScissors(BaseEnvForVec):
         paper_wins = self.first_and_second_not_third(
             rock_played, paper_played, scissors_played
         )
-        rewards[
-            torch.logical_and(paper_wins.unsqueeze(1), unraveled_actions == 1)
-        ] = 1.0
+        rewards[torch.logical_and(paper_wins, unraveled_actions.squeeze() == 1)] = 1.0
 
         # Case 2: Paper vs Scissors
         scissors_wins = self.first_and_second_not_third(
             paper_played, scissors_played, rock_played
         )
         rewards[
-            torch.logical_and(scissors_wins.unsqueeze(1), unraveled_actions == 2)
+            torch.logical_and(scissors_wins, unraveled_actions.squeeze() == 2)
         ] = 1.0
 
         # Case 3: Scissors vs Rock
         rock_wins = self.first_and_second_not_third(
             scissors_played, rock_played, paper_played
         )
-        rewards[torch.logical_and(rock_wins.unsqueeze(1), unraveled_actions == 0)] = 1.0
+        rewards[torch.logical_and(rock_wins, unraveled_actions.squeeze() == 0)] = 1.0
 
         # single-agent
-        rewards = rewards[:, 0]
+        rewards = rewards[:, self.player_position]
 
         return rewards
 
@@ -127,19 +171,25 @@ class RockPaperScissors(BaseEnvForVec):
         """first and second not third"""
         return torch.logical_and(torch.logical_and(first, second), ~third)
 
-    def get_observations(self, states) -> Any:
+    def get_observations(self, states, player_position: int = None) -> Any:
         """
         Args:
             states (_type_): shape=(num_samples, state_dim)
+            player_position (int): Needed when called for one of the static
+            (non-learning) strategies.
 
         Returns:
             Any: observations.shape=(num_samples, state_dim, num_agents)
         """
-        return states.view(-1, 2, self.num_agents)
+        if player_position is None:
+            player_position = self.player_position
+
+        return states.view(-1, self.num_agents, self.state_dim)[:, player_position, :]
 
     def render(self, state):
         return state
 
     def seed(self, seed: int):
+        """Set seeds."""
         torch.manual_seed(seed)
         np.random.seed(seed)

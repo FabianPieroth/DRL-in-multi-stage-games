@@ -25,4 +25,7 @@ We have "GPU support >> MARL": adding MARL afterward is easy, adding GPU support
 
 ---
 ## Todos & Questions
-* Perhaps it makes more sense to not use the `vectorized` feature of StableBaselines and just consider the batches as a single action. This might reduce complexity, because SB loops over `num_envs` which we don't want.
+* Perhaps it makes more sense to **not** use the `vectorized` feature of StableBaselines and just consider the batches as a single high-dim. action? This might reduce complexity, because SB loops over `num_envs` at multiple occasions - which we don't want. Essentially, this would increase the action space (by the batch dimension) and we would have to compress the rewards (over a batch) into a single reward.
+    * Is the error backpropagated correctly then? Can we call the networks with different batch sizes? 
+    * Does that mean we loss feedback? $\rightarrow$ I would argue no, because that's what is done in `bnelearn` with the intermediate stages still as additional information.
+    * How much hacking would be needed? (E.g. some copying to CPU would have to be changed.)

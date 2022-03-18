@@ -2,7 +2,7 @@
 import torch as th
 
 
-def explained_variance(y_pred: th.Tensor, y_true: th.Tensor) -> th.Tensor:
+def explained_variance(y_pred: th.Tensor, y_true: th.Tensor) -> float:
     """
     Computes fraction of variance that ypred explains about y.
     Returns 1 - Var[y-ypred] / Var[y]
@@ -18,4 +18,8 @@ def explained_variance(y_pred: th.Tensor, y_true: th.Tensor) -> th.Tensor:
     """
     assert y_true.ndim == 1 and y_pred.ndim == 1
     var_y = th.var(y_true)
-    return th.nan if var_y == 0 else 1 - th.var(y_true - y_pred) / var_y
+    return (
+        float("nan")
+        if var_y == 0
+        else (1 - th.var(y_true - y_pred) / var_y).cpu().item()
+    )
