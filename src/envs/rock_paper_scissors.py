@@ -32,12 +32,19 @@ def eval_rps_strategy(env, player_position, eval_strategy):
     return
 
 
-class RockPaperScissorsSingleAgent(BaseEnvForVec):
-    """Iterated RockPaperScissors Game as simple env example.
+class RockPaperScissors(BaseEnvForVec):
+    """Iterated RockPaperScissors game as simple env example.
 
-    Also see
+    This environment keeps track of the strategies of the participants and the
+    position of the current activa player. From the outside, this env always
+    looks like a single-agent env from the perspective of the active player.
+    This allows for simulatenous learning of all agents with dynamically
+    changing strategies of players via a `MultiAgentCoordinator`.
+
+    NOTE: Also see
     https://github.com/Farama-Foundation/PettingZoo/blob/master/pettingzoo/classic/rps/rps.py
-    for a peeting zoo (multi-agent) implementation.
+    for a peeting zoo (multi-agent) implementation. (Noticed after creating
+    this class.)
     """
 
     def __init__(self, config: Dict, player_position: int = 0, device: str = None):
@@ -54,13 +61,13 @@ class RockPaperScissorsSingleAgent(BaseEnvForVec):
         )
 
         self.action_space_size = 1
-        self.action_space_sizes = tuple([3])
+        self.action_space_sizes = (3,)
         self.action_space = spaces.Discrete(np.prod(self.action_space_sizes))
 
-        # Positions
+        # positions
         self.player_position = player_position
 
-        # Dummy strategies: These can be overwritten by strategies that are
+        # dummy strategies: these can be overwritten by strategies that are
         # learned over time in repeated self-play.
         self.strategies = [
             lambda obs: torch.zeros(
@@ -74,19 +81,27 @@ class RockPaperScissorsSingleAgent(BaseEnvForVec):
         return self
 
     def sample_new_states(self, n: int) -> Any:
-        """Creates states in shape=(num_envs, 2)
-        The 2 stands for current_round and num_rounds_to_play
+        """Create new initial states.
+
+        :param n: Batch size of how many games are played in parallel.        
+        :return: the new states, in shape=(n, 2), where 2 stands for
+        `current_round` and `num_rounds_to_play`.
         """
         states = torch.zeros((n, self.num_agents, 2), device=self.device)
         states[:, :, -1] = self.num_rounds_to_play
         return states
 
     def compute_step(self, cur_states, actions: torch.Tensor):
-        """ Returns:
-            observations:
-            rewards:
-            episode-done markers:
-            updated_states:"""
+        """Compute a step in the game.
+        
+        :param cur_states: The current states of the games.
+        :param actions: Actions that the active player at
+            `self.player_position` is choosing.
+        :return observations:
+        :return rewards:
+        :return episode-done markers:
+        :return updated_states:
+        """
         unraveled_actions = sp_ut.unravel_index(actions, self.action_space_sizes)
         unraveled_actions = unraveled_actions.view(-1, 1, self.action_space_size)
 
@@ -115,7 +130,9 @@ class RockPaperScissorsSingleAgent(BaseEnvForVec):
         return observations, rewards, dones, new_states
 
     def _compute_rewards(self, unraveled_actions: torch.Tensor) -> torch.Tensor:
-        """Computes the rewards for the played games of Rock-Paper-Scissors
+        """Computes the rewards for the played games of Rock-Paper-Scissors for
+        the player at `self.player_position`.
+
         0: Rock
         1: Paper
         2: Scissors
@@ -171,15 +188,17 @@ class RockPaperScissorsSingleAgent(BaseEnvForVec):
         """first and second not third"""
         return torch.logical_and(torch.logical_and(first, second), ~third)
 
-    def get_observations(self, states, player_position: int = None) -> Any:
-        """
-        Args:
-            states (_type_): shape=(num_samples, state_dim)
-            player_position (int): Needed when called for one of the static
-            (non-learning) strategies.
+    def get_observations(
+        self, states: torch.Tensor, player_position: int = None
+    ) -> torch.Tensor:
+        """Return the observations at the player at `player_position`.
 
-        Returns:
-            Any: observations.shape=(num_samples, state_dim, num_agents)
+        :param states: The current states of shape (num_env, num_agents,
+            state_dim).
+        :param player_position: Needed when called for one of the static
+            (non-learning) strategies.
+        :returns observations: Observations of shape (num_env, num_agents,
+            state_dim).
         """
         if player_position is None:
             player_position = self.player_position
