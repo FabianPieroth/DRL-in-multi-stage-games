@@ -4,6 +4,7 @@ from typing import List, Optional
 
 import torch
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback
+from torch.utils.tensorboard import SummaryWriter
 
 from src.envs.rock_paper_scissors import eval_rps_strategy
 from src.learners.ppo import VecPPO
@@ -30,25 +31,27 @@ class MultiAgentCoordinator:
 
         # Update strategy pointers
         def get_strategy_from_learner(learner):
-            return lambda obs: learner.policy.forward(obs)[0]
+            return lambda obs, deterministic=False: learner.policy.forward(
+                obs, deterministic=deterministic
+            )[0]
 
         self.env.strategies = [
             get_strategy_from_learner(learner) for learner in self.learners
         ]
+
+        self.writer = SummaryWriter(log_dir=self.learners[0].tensorboard_log)
 
     def learn(
         self,
         total_timesteps: int,
         callbacks: List[MaybeCallback] or MaybeCallback = None,
         log_interval: int = 1,
-        eval_env: Optional[GymEnv] = None,
-        eval_freq: int = -1,
+        eval_freq: int = 10,
         n_eval_episodes: int = 5,
         tb_log_name: str = "MultiAgentPPO",
-        eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
     ) -> "OnPolicyAlgorithm":
-        """Adapted from SB3 `OnPolicyAlgorithm`"""
+        """Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`"""
 
         # Each learner needs a callback
         if callbacks is None:
@@ -59,11 +62,11 @@ class MultiAgentCoordinator:
         for player_position, learner in enumerate(self.learners):
             timesteps, callbacks[player_position] = learner._setup_learn(
                 total_timesteps,
-                eval_env,
+                None,
                 callbacks[player_position],
                 eval_freq,
                 n_eval_episodes,
-                eval_log_path,
+                None,
                 reset_num_timesteps,
                 tb_log_name,
             )
@@ -82,6 +85,7 @@ class MultiAgentCoordinator:
 
         # Training loop
         while min(learner.num_timesteps for learner in self.learners) < total_timesteps:
+            print(f"Iteration {iteration} starts.")
 
             for player_position, (learner, callback) in enumerate(
                 zip(self.learners, callbacks)
@@ -93,6 +97,7 @@ class MultiAgentCoordinator:
 
                 # Set actively learning player
                 learner.env.model.player_position = player_position
+                # TODO should be equivalent to self.env.player_position
 
                 continue_training = learner.collect_rollouts(
                     learner.env,
@@ -104,7 +109,6 @@ class MultiAgentCoordinator:
                 if continue_training is False:
                     break
 
-                iteration += 1
                 learner._update_current_progress_remaining(
                     learner.num_timesteps, total_timesteps
                 )
@@ -115,9 +119,7 @@ class MultiAgentCoordinator:
                         (learner.num_timesteps - learner._num_timesteps_at_start)
                         / (time.time() - learner.start_time)
                     )
-                    learner.logger.record(
-                        "time/iterations", iteration, exclude="tensorboard"
-                    )
+                    learner.logger.record("time/iterations", iteration)
                     if (
                         len(learner.ep_info_buffer) > 0
                         and len(learner.ep_info_buffer[0]) > 0
@@ -136,23 +138,22 @@ class MultiAgentCoordinator:
                         )
                     learner.logger.record("time/fps", fps)
                     learner.logger.record(
-                        "time/time_elapsed",
-                        int(time.time() - learner.start_time),
-                        exclude="tensorboard",
+                        "time/time_elapsed", int(time.time() - learner.start_time)
                     )
-                    learner.logger.record(
-                        "time/total_timesteps",
-                        learner.num_timesteps,
-                        exclude="tensorboard",
-                    )
+                    learner.logger.record("time/total_timesteps", learner.num_timesteps)
                     learner.logger.dump(step=learner.num_timesteps)
+
+                # Custom evaluation
+                if iteration % eval_freq == 0:
+                    self.env.custom_eval(writer=self.writer, step=iteration)
+                    self.env.custom_eval_vs_bne(logger=learner.logger)
+                    # # RPS eval
+                    # eval_strategy = lambda obs: learner.policy(obs)[0]
+                    # eval_rps_strategy(learner.env, player_position, eval_strategy)
 
                 learner.train()
 
-                # Manuel evaluation
-                eval_strategy = lambda obs: learner.policy(obs)[0]
-                eval_rps_strategy(learner.env, player_position, eval_strategy)
-                print()
+            iteration += 1
 
         for callback in callbacks:
             callback.on_training_end()

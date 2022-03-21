@@ -162,15 +162,6 @@ class TorchVecEnv(VecEnv):
         # set "terminal_observation"
         obses[dones] = self.model.get_observations(self.current_states[dones])
 
-        # TODO `collect_rollouts` needs arrays!?
-        # if isinstance(self.actions, np.ndarray):
-        #     return (
-        #         np.array(obses.cpu()),
-        #         np.array(rewards.cpu()),
-        #         np.array(dones.cpu()),
-        #         infos,
-        #     )
-        # else:
         return obses.clone(), rewards.clone(), dones.clone(), infos
 
     def step(self, actions: np.ndarray):

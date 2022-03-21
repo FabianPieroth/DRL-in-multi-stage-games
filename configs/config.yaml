@@ -1,4 +1,4 @@
-valid_envs: ["rockpaperscissors"]
+valid_envs: ["rockpaperscissors", "sequential_fpsb_auction"]
 log_path: './logs/'
 defaults:
   - rl_envs: rockpaperscissors

@@ -25,11 +25,26 @@ from src.learners.utils import explained_variance
 
 class VecPPO(PPO):
     """
-    Extends Stable Baselines 3 PPO to vectorzied learning.
+    Extends Stable Baselines 3 PPO to vectorized learning.
     """
 
     def __init__(self, **kwargs):
+
+        # We want to start off with a much lower variance
+        self.log_std_init = -2.0  # default: 1
+        # TODO: possibly try out pretraining
+
         super(VecPPO, self).__init__(**kwargs)
+
+        # convert boundaries to tensors if necessary
+        if not isinstance(self.action_space.low, th.Tensor):
+            self.action_space.low = th.tensor(self.action_space.low)
+        if not isinstance(self.action_space.high, th.Tensor):
+            self.action_space.high = th.tensor(self.action_space.high)
+
+        # move boundaries to right device
+        self.action_space.low = self.action_space.low.to(device=self.device)
+        self.action_space.high = self.action_space.high.to(device=self.device)
 
     def collect_rollouts(
         self,
@@ -158,6 +173,7 @@ class VecPPO(PPO):
             self.action_space,
             self.lr_schedule,
             use_sde=self.use_sde,
+            log_std_init=self.log_std_init,
             **self.policy_kwargs,  # pytype:disable=not-instantiable
         )
         self.policy = self.policy.to(self.device)

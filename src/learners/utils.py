@@ -1,4 +1,6 @@
 """Utilities for our custom learners"""
+import os
+
 import torch as th
 
 
@@ -23,3 +25,13 @@ def explained_variance(y_pred: th.Tensor, y_true: th.Tensor) -> float:
         if var_y == 0
         else (1 - th.var(y_true - y_pred) / var_y).cpu().item()
     )
+
+
+def new_log_path(path: str):
+    """Increment path counter"""
+    i = 1
+    while os.path.isdir(f"{path}_{i}"):
+        i += 1
+    new_path = f"{path}_{i}"
+    os.makedirs(new_path)
+    return new_path

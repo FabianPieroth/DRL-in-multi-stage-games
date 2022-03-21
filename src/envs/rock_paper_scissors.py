@@ -84,8 +84,8 @@ class RockPaperScissors(BaseEnvForVec):
         """Create new initial states.
 
         :param n: Batch size of how many games are played in parallel.        
-        :return: the new states, in shape=(n, 2), where 2 stands for
-        `current_round` and `num_rounds_to_play`.
+        :return: the new states, in shape=(n, num_agents, 2), where 2 stands
+            for `current_round` and `num_rounds_to_play`.
         """
         states = torch.zeros((n, self.num_agents, 2), device=self.device)
         states[:, :, -1] = self.num_rounds_to_play
