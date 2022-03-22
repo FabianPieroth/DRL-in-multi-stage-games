@@ -54,6 +54,9 @@ def multi_agent_auction_main():
     )
 
     log_path = new_log_path("logs/sequential-auction/run")
+    print("============")
+    print("Starting run")
+    print("------------")
     learners = MultiAgentCoordinator(
         [
             VecPPO(
@@ -71,6 +74,7 @@ def multi_agent_auction_main():
     )
 
     # train the agent
+    print(f"Logging to {log_path}.")
     learners.learn(total_timesteps=10_000_000_000)
 
     return None

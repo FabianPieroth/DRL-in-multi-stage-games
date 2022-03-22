@@ -83,6 +83,17 @@ class BaseEnvForVec(ABC):
             image:
         """
 
+    def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
+        """
+        Environment-specific seeding is not used at the moment.
+        In the underlying environment, random numbers are generated through
+        calls to methods like torch.randn and can be seeded with
+        `torch.manual_seed`.
+        """
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
+
 
 class TorchVecEnv(VecEnv):
     """Vectorized Gym environment base class"""

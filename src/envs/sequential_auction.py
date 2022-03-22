@@ -3,6 +3,7 @@ Simple sequential auction game following Krishna.
 
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple
 
@@ -352,11 +353,6 @@ class SequentialFPSBAuction(BaseEnvForVec):
     def render(self, state):
         return state
 
-    def seed(self, seed: int):
-        """Set seeds."""
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-
     def log_plotting(self, writer, step: int, n: int = 500):
         """Evaluate and log current strategies."""
         seed = 69
@@ -435,6 +431,9 @@ class SequentialFPSBAuction(BaseEnvForVec):
         # plt.savefig(f"{path}/plot_{step}.png")
         writer.add_figure("images", fig, step)
 
+        # reset seed
+        self.seed(int(time.time()))
+
     def log_vs_bne(self, logger, n: int = 100):
         """Evaluate learned strategies vs BNE."""
         seed = 69
@@ -473,13 +472,9 @@ class SequentialFPSBAuction(BaseEnvForVec):
         bne_utility += rewards.mean().item()
         logger.record("eval/utility_bne", bne_utility)
 
-        # also log ratio
-        if bne_utility == 0:
-            relative_utility_loss = 1
-        else:
-            relative_utility_loss = (bne_utility - actual_utility) / bne_utility
-        logger.record("eval/relative_utility_loss", relative_utility_loss)
-
         # calculate distance in action space
         L2 = tensor_norm(actions_actual, actions_bne)
         logger.record("eval/action_norm_last_stage", L2)
+
+        # reset seed
+        self.seed(int(time.time()))

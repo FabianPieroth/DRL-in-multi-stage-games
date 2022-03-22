@@ -31,7 +31,7 @@ class VecPPO(PPO):
     def __init__(self, **kwargs):
 
         # We want to start off with a much lower variance
-        self.log_std_init = -4.0  # default: 1
+        self.log_std_init = -3.0  # default: 1
         # TODO: possibly try out pretraining
 
         super(VecPPO, self).__init__(**kwargs)

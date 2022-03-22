@@ -207,8 +207,3 @@ class RockPaperScissors(BaseEnvForVec):
 
     def render(self, state):
         return state
-
-    def seed(self, seed: int):
-        """Set seeds."""
-        torch.manual_seed(seed)
-        np.random.seed(seed)
