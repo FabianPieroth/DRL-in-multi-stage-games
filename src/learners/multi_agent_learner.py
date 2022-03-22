@@ -13,30 +13,41 @@ from src.learners.ppo import VecPPO
 class MultiAgentCoordinator:
     """Coordinates simultaneous learning of multiple learners."""
 
-    def __init__(self, learners: List[VecPPO], learner_names: List[str] = None):
-        self.learners = learners
+    def __init__(
+        self,
+        env,
+        learner_class: VecPPO,
+        learner_kwargs: dict = None,
+        policy_sharing: bool = True,
+    ):
+        self.env = env
+        self.policy_sharing = policy_sharing
 
-        if learner_names is None:
-            self.learner_names = [f"learner{i}" for i in range(len(learners))]
+        # check for possible symmetries
+        if self.policy_sharing:
+            self.num_learners = len(set(self.env.model.policy_symmetries))
         else:
-            self.learner_names = learner_names
+            self.num_learners = self.env.model.num_agents
 
-        for l in learners:
-            assert isinstance(l, VecPPO), "Learners must be of appropriate type."
+        self.learners = [
+            learner_class(env=self.env, **learner_kwargs)
+            for _ in range(self.num_learners)
+        ]
 
-        assert (
-            len(set(id(l.env.model) for l in self.learners)) == 1
-        ), "All learners must point to the same base env."
-        self.env = self.learners[0].env.model
+        for learner in self.learners:
+            assert isinstance(learner, VecPPO), "Learners must be of appropriate type."
 
-        # Update strategy pointers
-        def get_strategy_from_learner(learner):
+        # update strategy pointers
+        def _get_strategy(player_position: int):
+            policy_position = self.env.model.policy_symmetries[player_position]
+            learner = self.learners[policy_position]
             return lambda obs, deterministic=False: learner.policy.forward(
                 obs, deterministic=deterministic
             )[0]
 
-        self.env.strategies = [
-            get_strategy_from_learner(learner) for learner in self.learners
+        self.env.model.strategies = [
+            _get_strategy(player_position)
+            for player_position in range(self.env.model.num_agents)
         ]
 
         self.writer = SummaryWriter(log_dir=self.learners[0].tensorboard_log)
@@ -144,8 +155,8 @@ class MultiAgentCoordinator:
 
                 # Custom evaluation
                 if iteration % eval_freq == 0:
-                    self.env.log_plotting(writer=self.writer, step=iteration)
-                    self.env.log_vs_bne(logger=learner.logger)
+                    self.env.model.log_plotting(writer=self.writer, step=iteration)
+                    self.env.model.log_vs_bne(logger=learner.logger)
                     # # RPS eval
                     # eval_strategy = lambda obs: learner.policy(obs)[0]
                     # eval_rps_strategy(learner.env, player_position, eval_strategy)

@@ -39,31 +39,6 @@ class Mechanism(ABC):
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
-    # def __init__(self, **kwargs):
-    #     self.smoothing = .01
-    #     super().__init__(**kwargs)
-
-    # def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    #     assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batch_dims x players x items)"
-    #     # TODO can we prevent non-positive bids easily?
-    #     # assert (bids >= 0).all().item(), "All bids must be nonnegative."
-    #     bids[bids < 0] = 0
-    #     # rule_violations = (bids <= 0).any(axis=2)
-
-    #     # name dimensions
-    #     *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
-    #     *batch_sizes, n_players, n_items = bids.shape
-
-    #     payments = bids.clone()
-
-    #     allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing)
-
-    #     # Don't allocate items that have a winning bid of zero.
-    #     allocations.masked_fill_(mask=bids < 0, value=0)
-    #     payments.masked_fill_(mask=bids < 0, value=0)
-
-    #     return (allocations, payments[:, :, 0])  # payments: batches x players, allocation: batch x players x items
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -137,13 +112,21 @@ class SequentialFPSBAuction(BaseEnvForVec):
 
     DUMMY_PRICE_KEY = -1
 
-    def __init__(self, config: Dict, device, player_position: int = 0):
+    def __init__(
+        self,
+        config: Dict,
+        device,
+        player_position: int = 0,
+        reduced_observation_space: bool = True,
+    ):
         super().__init__(config, device)
         self.rl_env_config = config
         self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
 
         self.num_agents = self.rl_env_config["num_agents"]
-        assert self.num_agents == 2, "Only two bidders supported so far."
+
+        # list of indices which maps `player_position` to its strategy index
+        self.policy_symmetries = [0] * self.num_agents
 
         self.mechanism: Mechanism = FirstPriceSealedBidAuction()
 
@@ -151,20 +134,27 @@ class SequentialFPSBAuction(BaseEnvForVec):
         self.valuation_size = 1
         self.action_size = 1
 
-        # observations: valuation, allocation, previous prices
-        self.num_rounds_to_play
-        self.observation_space = spaces.Box(
-            low=np.array(
-                [0]
-                + [0] * self.num_rounds_to_play
-                + [-1] * (self.num_rounds_to_play * 2)
-            ),
-            high=np.array(
-                [1]
-                + [1] * self.num_rounds_to_play
+        # set up observation space
+        # NOTE: does not support non unit-demand
+        self.reduced_observation_space = reduced_observation_space
+        if self.reduced_observation_space:
+            # observations: valuation, allocations (up to last stage)
+            low = [0.0] + [0.0] * (self.num_rounds_to_play - 1)
+            high = [1.0] + [1.0] * (self.num_rounds_to_play - 1)
+        else:
+            # observations: valuation, allocation (including in which stage
+            # obtained), previous prices (including in which stage payed)
+            low = (
+                [0.0]
+                + [0.0] * self.num_rounds_to_play
+                + [-1.0] * (self.num_rounds_to_play * 2)
+            )
+            high = (
+                [1.0]
+                + [1.0] * self.num_rounds_to_play
                 + [np.inf] * (self.num_rounds_to_play * 2)
-            ),
-        )
+            )
+        self.observation_space = spaces.Box(low=np.array(low), high=np.array(high))
 
         # actions
         self.action_space = spaces.Box(
@@ -184,7 +174,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
             for _ in range(self.num_agents)
         ]
 
-        # Setup analytical BNE
+        # setup analytical BNE
         self.strategies_bne = [
             equilibrium_fpsb_symmetric_uniform(
                 num_agents=self.num_agents,
@@ -324,6 +314,18 @@ class SequentialFPSBAuction(BaseEnvForVec):
             self.payments_start_index + stage : self.payments_start_index + (stage + 1),
         ]
 
+        # set value to zero if we already own the unit
+        # NOTE: unit-demand hardcoded
+        if stage > 0:
+            onwer_mask = state[
+                :,
+                self.player_position,
+                self.allocations_start_index
+                + (stage - 1) * self.valuation_size : self.allocations_start_index
+                + stage * self.valuation_size,
+            ].bool()
+            valuations[onwer_mask] = 0
+
         # quasi-linear utility
         rewards = valuations * allocations - payments
 
@@ -346,6 +348,10 @@ class SequentialFPSBAuction(BaseEnvForVec):
         # obs consits of: own valuations, own allocations, own payments and
         # published (here = highest payments)
         obs_private = states[:, player_position, :]
+
+        if self.reduced_observation_space:
+            return obs_private[:, : -self.num_rounds_to_play - 1]
+
         obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
 
         return torch.concat((obs_private, obs_public), axis=1)
@@ -353,7 +359,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
     def render(self, state):
         return state
 
-    def log_plotting(self, writer, step: int, n: int = 500):
+    def log_plotting(self, writer, step: int, num_samples: int = 500):
         """Evaluate and log current strategies."""
         seed = 69
 
@@ -362,26 +368,22 @@ class SequentialFPSBAuction(BaseEnvForVec):
             axs = [axs]
 
         self.seed(seed)
-        states = self.sample_new_states(n)
+        states = self.sample_new_states(num_samples)
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
             for player_position in range(self.num_agents):
                 self.player_position = player_position
                 observations = self.get_observations(states)
-                observations = observations.sort(axis=0)[0].view(-1, 4)
+                order = observations[:, 0].sort(axis=0)[1]
 
                 # get actual actions
-                try:
-                    actions = self.strategies[player_position](
-                        observations, deterministic=True
-                    )
-                    actions_mixed = self.strategies[player_position](
-                        observations, deterministic=False
-                    )
-                except:
-                    actions = self.strategies[player_position](observations)
-                    actions_mixed = actions
+                actions = self.strategies[player_position](
+                    observations, deterministic=True
+                )
+                actions_mixed = self.strategies[player_position](
+                    observations, deterministic=False
+                )
 
                 # get BNE actions
                 actions_bne = self.strategies_bne[self.player_position](
@@ -389,25 +391,49 @@ class SequentialFPSBAuction(BaseEnvForVec):
                 )
 
                 # covert to numpy
-                observations = observations[:, 0].cpu().view(-1).numpy()
-                actions = actions.view(-1).detach().cpu().numpy()
-                actions_mixed = actions_mixed.view(-1).detach().cpu().numpy()
-                actions_bne = actions_bne.view(-1).detach().cpu().numpy()
+                observations = observations[order, 0].detach().cpu().view(-1).numpy()
+                actions_array = actions.view(-1, 1)[order, ...].detach().cpu().numpy()
+                actions_mixed = (
+                    actions_mixed.view(-1)[order, ...].detach().cpu().numpy()
+                )
+                actions_bne = actions_bne.view(-1, 1)[order, ...].detach().cpu().numpy()
 
                 # plotting
-                drawing, = ax.plot(
-                    observations,
-                    actions,
-                    linestyle="--",
-                    marker="o",
-                    markevery=32,
-                    label=f"bidder {player_position} PPO",
-                )
+                if stage == 0:
+                    drawing, = ax.plot(
+                        observations,
+                        actions_array,
+                        linestyle="--",
+                        marker="o",
+                        markevery=32,
+                        label=f"bidder {player_position} PPO",
+                    )
+                if stage == 1:
+                    won_in_first_round = (
+                        states[order, player_position, 1].bool().cpu().numpy()
+                    )
+                    drawing, = ax.plot(
+                        observations[~won_in_first_round],
+                        actions_array[~won_in_first_round],
+                        linestyle="--",
+                        marker="o",
+                        markevery=32,
+                        label=f"bidder {player_position} PPO",
+                    )
+                    ax.plot(
+                        observations[won_in_first_round],
+                        actions_array[won_in_first_round],
+                        linestyle="--",
+                        marker="o",
+                        markevery=32,
+                        label=f"bidder {player_position} PPO (won)",
+                        color=drawing.get_color(),
+                    )
                 ax.plot(
                     observations,
                     actions_mixed,
                     ".",
-                    alpha=0.3,
+                    alpha=0.2,
                     color=drawing.get_color(),
                 )
                 ax.plot(
@@ -424,7 +450,10 @@ class SequentialFPSBAuction(BaseEnvForVec):
                 ax.set_ylabel("bid $b$")
                 ax.legend(loc="upper left")
             ax.set_xlim([0, 1])
-            ax.set_ylim([-0.05, 0.55])
+            ax.set_ylim([-0.05, 1.05])
+
+            # apply actions to get to next stage
+            _, _, _, states = self.compute_step(states, actions)
 
         plt.tight_layout()
         plt.close()
@@ -434,25 +463,20 @@ class SequentialFPSBAuction(BaseEnvForVec):
         # reset seed
         self.seed(int(time.time()))
 
-    def log_vs_bne(self, logger, n: int = 100):
+    def log_vs_bne(self, logger, num_samples: int = 100):
         """Evaluate learned strategies vs BNE."""
         seed = 69
 
         # calculate utility in self-play (learned strategies only)
         actual_utility = 0
         self.seed(seed)
-        states = self.sample_new_states(n)
+        states = self.sample_new_states(num_samples)
+        observations = self.get_observations(states)
         for stage in range(self.num_rounds_to_play):
-            observations = self.get_observations(states)
-            try:
-                actions_actual = self.strategies[self.player_position](
-                    observations, deterministic=True
-                )
-            except:
-                actions_actual = self.strategies[self.player_position](observations)
-            observations, rewards, dones, states = self.compute_step(
-                states, actions_actual
+            actions_actual = self.strategies[self.player_position](
+                observations, deterministic=True
             )
+            observations, rewards, _, states = self.compute_step(states, actions_actual)
         actual_utility += rewards.mean().item()
         logger.record("eval/utility_actual", actual_utility)
 
@@ -460,15 +484,13 @@ class SequentialFPSBAuction(BaseEnvForVec):
         # would achieve
         bne_utility = 0
         self.seed(seed)
-        states = self.sample_new_states(n)
+        states = self.sample_new_states(num_samples)
+        observations = self.get_observations(states)
         for stage in range(self.num_rounds_to_play):
-            observations = self.get_observations(states)
             actions_bne = self.strategies_bne[self.player_position](
                 stage, observations[:, 0]
             )
-            observations, rewards, dones, states = self.compute_step(
-                states, actions_bne
-            )
+            observations, rewards, _, states = self.compute_step(states, actions_bne)
         bne_utility += rewards.mean().item()
         logger.record("eval/utility_bne", bne_utility)
 

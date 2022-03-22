@@ -155,17 +155,16 @@ class TorchVecEnv(VecEnv):
         n_dones = dones.sum()
         self.current_states[dones] = self.model.sample_new_states(n_dones)
 
-        # episode_returns = self.ep_stats["returns"][dones]
-        # episode_lengths = self.ep_stats["lengths"][dones]
-        # infos = (episode_returns, episode_lengths)
+        # NOTE: not sure if this is needed
+        episode_returns = self.ep_stats["returns"][dones]
+        episode_lengths = self.ep_stats["lengths"][dones]
+        infos = dict(episode_returns=episode_returns, episode_lengths=episode_lengths)
 
-        # TODO only support for constant length env.
-        # otherwise we are slow AF on CPU
-        infos = {}
+        # NOTE: only support for constant length env
         if dones.all():
             infos["terminal_observation"] = self.model.get_observations(
                 self.current_states[dones]
-            )  # TODO check
+            )
 
         self.ep_stats["returns"][dones] = 0
         self.ep_stats["lengths"][dones] = 0

@@ -33,13 +33,11 @@ def get_config(path):
 
 def multi_agent_auction_main():
     """Benchmark multi-agent learning in custom RPS env.
-
+    
     TODO:
-    * Model sharing
-    * Support for more than 2 agents
+    * Custom net: ReLU on output
     """
     config = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
-    config["num_rounds_to_play"] = 1
     device = "cuda:2"
     num_envs = 2 ** 12
     n_steps = 128
@@ -50,7 +48,7 @@ def multi_agent_auction_main():
 
     # policy
     policy_kwargs = dict(
-        activation_fn=torch.nn.SELU, net_arch=[dict(pi=[10, 10], vf=[10, 10])]
+        activation_fn=torch.nn.SELU, net_arch=[dict(pi=[20, 20], vf=[20, 20])]
     )
 
     log_path = new_log_path("logs/sequential-auction/run")
@@ -58,19 +56,18 @@ def multi_agent_auction_main():
     print("Starting run")
     print("------------")
     learners = MultiAgentCoordinator(
-        [
-            VecPPO(
-                policy="MlpPolicy",
-                env=env,
-                device=device,
-                n_steps=n_steps,
-                batch_size=n_steps * num_envs,
-                tensorboard_log=log_path,
-                verbose=0,
-                policy_kwargs=policy_kwargs,
-            )
-            for j in range(2)
-        ]
+        env=env,
+        learner_class=VecPPO,
+        learner_kwargs={
+            "policy": "MlpPolicy",
+            "device": device,
+            "n_steps": n_steps,
+            "batch_size": n_steps * num_envs,
+            "tensorboard_log": log_path,
+            "verbose": 0,
+            "policy_kwargs": policy_kwargs,
+        },
+        policy_sharing=True,
     )
 
     # train the agent

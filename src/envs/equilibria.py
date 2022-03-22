@@ -12,7 +12,7 @@ def equilibrium_fpsb_symmetric_uniform(
     ), "For this BNE, there must be more bidders than items."
 
     def bid_function(stage: int, valuation: torch.Tensor):
-        bid = (num_agents - num_units) / (num_agents - stage) * valuation
+        bid = ((num_agents - num_units) / (num_agents - stage)) * valuation
         return bid.view(-1, 1)
 
     return bid_function
