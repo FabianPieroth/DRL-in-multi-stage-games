@@ -119,7 +119,6 @@ class MultiAgentCoordinator:
                         (learner.num_timesteps - learner._num_timesteps_at_start)
                         / (time.time() - learner.start_time)
                     )
-                    learner.logger.record("time/iterations", iteration)
                     if (
                         len(learner.ep_info_buffer) > 0
                         and len(learner.ep_info_buffer[0]) > 0
@@ -145,8 +144,8 @@ class MultiAgentCoordinator:
 
                 # Custom evaluation
                 if iteration % eval_freq == 0:
-                    self.env.custom_eval(writer=self.writer, step=iteration)
-                    self.env.custom_eval_vs_bne(logger=learner.logger)
+                    self.env.log_plotting(writer=self.writer, step=iteration)
+                    self.env.log_vs_bne(logger=learner.logger)
                     # # RPS eval
                     # eval_strategy = lambda obs: learner.policy(obs)[0]
                     # eval_rps_strategy(learner.env, player_position, eval_strategy)

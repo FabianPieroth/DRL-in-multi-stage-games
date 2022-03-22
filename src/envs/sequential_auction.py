@@ -11,8 +11,9 @@ import numpy as np
 import torch
 from gym import spaces
 
-from src.envs.equilibira import equilibrium_fpsb_symmetric_uniform
+from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform
 from src.envs.torch_vec_env import BaseEnvForVec
+from src.learners.utils import tensor_norm
 
 
 class Mechanism(ABC):
@@ -193,6 +194,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
         ]
 
     def to(self, device) -> Any:
+        """Set device"""
         self.device = device
         return self
 
@@ -355,11 +357,15 @@ class SequentialFPSBAuction(BaseEnvForVec):
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-    def custom_eval(self, writer, step: int, n: int = 100):
+    def log_plotting(self, writer, step: int, n: int = 500):
         """Evaluate and log current strategies."""
+        seed = 69
+
         fig, axs = plt.subplots(nrows=1, ncols=self.num_rounds_to_play, sharey=True)
         if self.num_rounds_to_play == 1:
             axs = [axs]
+
+        self.seed(seed)
         states = self.sample_new_states(n)
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
@@ -394,7 +400,12 @@ class SequentialFPSBAuction(BaseEnvForVec):
 
                 # plotting
                 drawing, = ax.plot(
-                    observations, actions, "o", label=f"bidder {player_position} PPO"
+                    observations,
+                    actions,
+                    linestyle="--",
+                    marker="o",
+                    markevery=32,
+                    label=f"bidder {player_position} PPO",
                 )
                 ax.plot(
                     observations,
@@ -417,40 +428,58 @@ class SequentialFPSBAuction(BaseEnvForVec):
                 ax.set_ylabel("bid $b$")
                 ax.legend(loc="upper left")
             ax.set_xlim([0, 1])
-            ax.set_ylim([-0.1, 1.1])
+            ax.set_ylim([-0.05, 0.55])
 
         plt.tight_layout()
         plt.close()
         # plt.savefig(f"{path}/plot_{step}.png")
         writer.add_figure("images", fig, step)
 
-    def custom_eval_vs_bne(self, logger, n: int = 100):
+    def log_vs_bne(self, logger, n: int = 100):
+        """Evaluate learned strategies vs BNE."""
+        seed = 69
+
+        # calculate utility in self-play (learned strategies only)
         actual_utility = 0
+        self.seed(seed)
         states = self.sample_new_states(n)
         for stage in range(self.num_rounds_to_play):
             observations = self.get_observations(states)
             try:
-                actions = self.strategies[self.player_position](
+                actions_actual = self.strategies[self.player_position](
                     observations, deterministic=True
                 )
             except:
-                actions = self.strategies[self.player_position](observations)
-            observations, rewards, dones, states = self.compute_step(states, actions)
+                actions_actual = self.strategies[self.player_position](observations)
+            observations, rewards, dones, states = self.compute_step(
+                states, actions_actual
+            )
         actual_utility += rewards.mean().item()
+        logger.record("eval/utility_actual", actual_utility)
 
+        # calculate the utility that the BNE strategy of the current player
+        # would achieve
         bne_utility = 0
+        self.seed(seed)
         states = self.sample_new_states(n)
         for stage in range(self.num_rounds_to_play):
             observations = self.get_observations(states)
-            actions = self.strategies_bne[self.player_position](
+            actions_bne = self.strategies_bne[self.player_position](
                 stage, observations[:, 0]
             )
-            observations, rewards, dones, states = self.compute_step(states, actions)
+            observations, rewards, dones, states = self.compute_step(
+                states, actions_bne
+            )
         bne_utility += rewards.mean().item()
+        logger.record("eval/utility_bne", bne_utility)
 
+        # also log ratio
         if bne_utility == 0:
             relative_utility_loss = 1
         else:
             relative_utility_loss = (bne_utility - actual_utility) / bne_utility
-
         logger.record("eval/relative_utility_loss", relative_utility_loss)
+
+        # calculate distance in action space
+        L2 = tensor_norm(actions_actual, actions_bne)
+        logger.record("eval/action_norm_last_stage", L2)

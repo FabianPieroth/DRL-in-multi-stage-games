@@ -1,4 +1,5 @@
 """Base classes for vectorized Gym environments"""
+import random
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
@@ -181,7 +182,9 @@ class TorchVecEnv(VecEnv):
         calls to methods like torch.randn and can be seeded with
         `torch.manual_seed`.
         """
-        raise self.model.seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
 
     def reset(self):
         """

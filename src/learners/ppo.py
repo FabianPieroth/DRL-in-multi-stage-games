@@ -1,7 +1,7 @@
 """Customized PPO learner and corresponding buffer"""
 import time
 from collections import deque
-from typing import Dict, Generator, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import gym
 import numpy as np
@@ -31,7 +31,7 @@ class VecPPO(PPO):
     def __init__(self, **kwargs):
 
         # We want to start off with a much lower variance
-        self.log_std_init = -2.0  # default: 1
+        self.log_std_init = -4.0  # default: 1
         # TODO: possibly try out pretraining
 
         super(VecPPO, self).__init__(**kwargs)
@@ -111,7 +111,7 @@ class VecPPO(PPO):
 
             # TODO check if we need this
             # change for vectorized capability: ignore infos
-            # self._update_info_buffer(infos)
+            self._update_info_buffer(infos)
 
             n_steps += 1
 
@@ -262,6 +262,20 @@ class VecPPO(PPO):
         )
 
         return total_timesteps, callback
+
+    def _update_info_buffer(self, infos: List[Dict[str, Any]]) -> None:
+        """
+        Retrieve reward, episode length, episode success and update the buffer
+        if using Monitor wrapper or a GoalEnv.
+
+        :param infos: List of additional information about the transition.
+        :param dones: Termination signals
+        NOTE: Only supports fixed length games.
+        """
+        maybe_ep_info = infos.get("episode")
+        maybe_is_success = infos.get("is_success")
+        if maybe_ep_info is not None:
+            self.ep_info_buffer.extend([maybe_ep_info])
 
     def train(self) -> None:
         """

@@ -32,15 +32,26 @@ def get_config(path):
 
 
 def multi_agent_auction_main():
-    """Benchmark multi-agent learning in custom RPS env."""
+    """Benchmark multi-agent learning in custom RPS env.
+
+    TODO:
+    * Model sharing
+    * Support for more than 2 agents
+    """
     config = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
     config["num_rounds_to_play"] = 1
-    device = "cuda:3"
+    device = "cuda:2"
     num_envs = 2 ** 12
-    n_steps = 256
+    n_steps = 128
 
+    # env
     base_env = SequentialFPSBAuction(config, device=device)
     env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
+
+    # policy
+    policy_kwargs = dict(
+        activation_fn=torch.nn.SELU, net_arch=[dict(pi=[10, 10], vf=[10, 10])]
+    )
 
     log_path = new_log_path("logs/sequential-auction/run")
     learners = MultiAgentCoordinator(
@@ -53,6 +64,7 @@ def multi_agent_auction_main():
                 batch_size=n_steps * num_envs,
                 tensorboard_log=log_path,
                 verbose=0,
+                policy_kwargs=policy_kwargs,
             )
             for j in range(2)
         ]

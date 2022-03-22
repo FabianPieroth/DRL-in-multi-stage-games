@@ -35,3 +35,24 @@ def new_log_path(path: str):
     new_path = f"{path}_{i}"
     os.makedirs(new_path)
     return new_path
+
+
+def tensor_norm(b1: th.Tensor, b2: th.Tensor, p: float = 2) -> float:
+    r"""Calculates the approximate "mean" Lp-norm between two action vectors.
+    Source: https://gitlab.lrz.de/heidekrueger/bnelearn/-/blob/master/bnelearn/util/metrics.py
+
+    .. math::
+        \sum_i=1^n(1/n * |b1 - b2|^p)^{1/p}
+
+    If p = Infty, this evaluates to the supremum.
+    """
+    assert b1.shape == b2.shape
+
+    if p == float("Inf"):
+        return (b1 - b2).abs().max()
+
+    # finite p
+    n = float(b1.shape[0])
+
+    # calc. norm & detach for disregarding any gradient info
+    return (th.dist(b1, b2, p=p) * (1.0 / n) ** (1 / p)).detach().item()
