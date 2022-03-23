@@ -12,9 +12,9 @@ import numpy as np
 import torch
 from gym import spaces
 
-from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform
+from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
 from src.envs.torch_vec_env import BaseEnvForVec
-from src.learners.utils import tensor_norm
+from src.learners.utils import batched_index_select, tensor_norm
 
 
 class Mechanism(ABC):
@@ -36,7 +36,7 @@ class Mechanism(ABC):
         raise NotImplementedError()
 
 
-class FirstPriceSealedBidAuction(Mechanism):
+class FirstPriceAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
     def __init__(self, **kwargs):
@@ -96,7 +96,8 @@ class FirstPriceSealedBidAuction(Mechanism):
         allocations.scatter_(player_dim, winning_bidders, 1)
 
         # Don't allocate items that have a winning bid of zero.
-        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+        allocations.masked_fill_(mask=payments_per_item <= 0, value=0)
+        payments.masked_fill_(mask=payments < 0, value=0)
 
         return (
             allocations,
@@ -104,7 +105,76 @@ class FirstPriceSealedBidAuction(Mechanism):
         )  # payments: batches x players, allocation: batch x players x items
 
 
-class SequentialFPSBAuction(BaseEnvForVec):
+class VickreyAuction(Mechanism):
+    "Vickrey / Second Price Sealed Bid Auctions"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
+
+        This function is meant for single-item auctions.
+        If a bid tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert (
+            bids.dim() >= 3
+        ), "Bid tensor must be at least 3d (*batch_dims x players x items)"
+        # assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # name dimensions
+        *batch_dims, player_dim, item_dim = range(
+            bids.dim()
+        )  # pylint: disable=unused-variable
+        *batch_sizes, n_players, n_items = bids.shape
+
+        # allocate return variables
+        payments_per_item = torch.zeros(
+            *batch_sizes, n_players, n_items, device=bids.device
+        )
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=bids.device)
+
+        highest_bids, winning_bidders = bids.max(
+            dim=player_dim, keepdim=True
+        )  # shape of each: [batch_size, 1, n_items]
+
+        # getting the second prices --> price is the lowest of the two highest bids
+        top2_bids, _ = bids.topk(2, dim=player_dim, sorted=False)
+        second_prices, _ = top2_bids.min(player_dim, keepdim=True)
+
+        payments_per_item.scatter_(player_dim, winning_bidders, second_prices)
+        payments = payments_per_item.sum(item_dim)
+        allocations.scatter_(player_dim, winning_bidders, 1)
+
+        # Don't allocate items that have a winning bid of zero.
+        allocations.masked_fill_(mask=payments_per_item < 0, value=0)
+        payments.masked_fill_(mask=payments < 0, value=0)
+
+        return (
+            allocations,
+            payments,
+        )  # payments: batches x players, allocation: batch x players x items
+
+
+class SequentialAuction(BaseEnvForVec):
     """Sequential first price sealed bid auction.
 
     In each stage there is a single item sold.
@@ -115,9 +185,10 @@ class SequentialFPSBAuction(BaseEnvForVec):
     def __init__(
         self,
         config: Dict,
-        device,
+        payments: str,
+        device: str = "cpu",
         player_position: int = 0,
-        reduced_observation_space: bool = True,
+        reduced_observation_space: bool = False,
     ):
         super().__init__(config, device)
         self.rl_env_config = config
@@ -128,7 +199,15 @@ class SequentialFPSBAuction(BaseEnvForVec):
         # list of indices which maps `player_position` to its strategy index
         self.policy_symmetries = [0] * self.num_agents
 
-        self.mechanism: Mechanism = FirstPriceSealedBidAuction()
+        # set up mechanism
+        if payments == "first":
+            self.mechanism: Mechanism = FirstPriceAuction()
+            self.equilibrium_profile = equilibrium_fpsb_symmetric_uniform
+        elif payments in ["second", "vcg", "vickery"]:
+            self.mechanism: Mechanism = VickreyAuction()
+            self.equilibrium_profile = truthful
+        else:
+            raise NotImplementedError("Payment rule unknown.")
 
         # unit-demand
         self.valuation_size = 1
@@ -139,6 +218,9 @@ class SequentialFPSBAuction(BaseEnvForVec):
         self.reduced_observation_space = reduced_observation_space
         if self.reduced_observation_space:
             # observations: valuation, allocations (up to last stage)
+            raise NotImplementedError(
+                "Currently wrongly disregards previous alloations."
+            )
             low = [0.0] + [0.0] * (self.num_rounds_to_play - 1)
             high = [1.0] + [1.0] * (self.num_rounds_to_play - 1)
         else:
@@ -176,7 +258,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
 
         # setup analytical BNE
         self.strategies_bne = [
-            equilibrium_fpsb_symmetric_uniform(
+            self.equilibrium_profile(
                 num_agents=self.num_agents,
                 num_units=self.num_rounds_to_play,
                 player_position=i,
@@ -218,9 +300,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
         states[:, :, : self.valuation_size].uniform_(0, 1)
 
         # dummy prices
-        states[
-            :, :, self.payments_start_index :
-        ] = SequentialFPSBAuction.DUMMY_PRICE_KEY
+        states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
 
         return states
 
@@ -259,7 +339,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
             stage = (
                 cur_states[0, 0, self.payments_start_index :]
                 .tolist()
-                .index(SequentialFPSBAuction.DUMMY_PRICE_KEY)
+                .index(SequentialAuction.DUMMY_PRICE_KEY)
             )
         except ValueError as _:  # last round
             stage = self.num_rounds_to_play - 1
@@ -299,7 +379,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
             self.player_position,
             self.valuations_start_index : self.valuations_start_index
             + self.valuation_size,
-        ]
+        ].clone()
         # only consider this stage's allocation
         allocations = state[
             :,
@@ -363,7 +443,14 @@ class SequentialFPSBAuction(BaseEnvForVec):
         """Evaluate and log current strategies."""
         seed = 69
 
-        fig, axs = plt.subplots(nrows=1, ncols=self.num_rounds_to_play, sharey=True)
+        plt.style.use("ggplot")
+        fig, axs = plt.subplots(
+            nrows=1,
+            ncols=self.num_rounds_to_play,
+            sharey=True,
+            figsize=(5 * self.num_rounds_to_play, 5),
+        )
+        fig.suptitle(f"Iteration {step}", fontsize="x-large")
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
@@ -403,7 +490,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
                     drawing, = ax.plot(
                         observations,
                         actions_array,
-                        linestyle="--",
+                        linestyle="dotted",
                         marker="o",
                         markevery=32,
                         label=f"bidder {player_position} PPO",
@@ -415,7 +502,7 @@ class SequentialFPSBAuction(BaseEnvForVec):
                     drawing, = ax.plot(
                         observations[~won_in_first_round],
                         actions_array[~won_in_first_round],
-                        linestyle="--",
+                        linestyle="dotted",
                         marker="o",
                         markevery=32,
                         label=f"bidder {player_position} PPO",
@@ -423,8 +510,8 @@ class SequentialFPSBAuction(BaseEnvForVec):
                     ax.plot(
                         observations[won_in_first_round],
                         actions_array[won_in_first_round],
-                        linestyle="--",
-                        marker="o",
+                        linestyle="dotted",
+                        marker="x",
                         markevery=32,
                         label=f"bidder {player_position} PPO (won)",
                         color=drawing.get_color(),
@@ -439,32 +526,36 @@ class SequentialFPSBAuction(BaseEnvForVec):
                 ax.plot(
                     observations,
                     actions_bne,
-                    "--",
+                    linestyle="--",
+                    marker="*",
+                    markevery=32,
                     color=drawing.get_color(),
                     label=f"bidder {player_position} BNE",
                 )
             lin = np.linspace(0, 1, 2)
-            ax.plot(lin, lin, "--", color="grey", label="truthful")
+            ax.plot(lin, lin, "--", color="grey")
             ax.set_xlabel("valuation $v$")
             if stage == 0:
                 ax.set_ylabel("bid $b$")
-                ax.legend(loc="upper left")
             ax.set_xlim([0, 1])
             ax.set_ylim([-0.05, 1.05])
 
             # apply actions to get to next stage
             _, _, _, states = self.compute_step(states, actions)
 
+        handles, labels = ax.get_legend_handles_labels()
+        axs[0].legend(handles, labels, ncol=2)
         plt.tight_layout()
-        plt.close()
-        # plt.savefig(f"{path}/plot_{step}.png")
+        plt.savefig(f"{writer.log_dir}/plot_{step}.png")
         writer.add_figure("images", fig, step)
+        plt.close()
 
         # reset seed
         self.seed(int(time.time()))
 
     def log_vs_bne(self, logger, num_samples: int = 100):
         """Evaluate learned strategies vs BNE."""
+        # TODO: Currently not working for multi-stage: need cases?
         seed = 69
 
         # calculate utility in self-play (learned strategies only)

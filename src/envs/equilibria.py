@@ -16,3 +16,12 @@ def equilibrium_fpsb_symmetric_uniform(
         return bid.view(-1, 1)
 
     return bid_function
+
+
+def truthful(num_agents: int, num_units: int, player_position: int = 0):
+    """Truthful bidding."""
+
+    def bid_function(stage: int, valuation: torch.Tensor):
+        return valuation.view(-1, 1)
+
+    return bid_function

@@ -12,11 +12,12 @@ import numpy as np
 import torch
 from stable_baselines3.common.env_checker import check_env
 
-from src.envs.sequential_auction import SequentialFPSBAuction
+from src.envs.sequential_auction import SequentialAuction
 from src.envs.torch_vec_env import TorchVecEnv
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 from src.learners.ppo import VecPPO
 from src.learners.utils import new_log_path
+from src.utils_folder.logging_utils import logging_plots_to_gif
 
 
 def get_config(path):
@@ -33,46 +34,58 @@ def get_config(path):
 
 def multi_agent_auction_main():
     """Benchmark multi-agent learning in custom RPS env.
-    
+
     TODO:
     * Custom net: ReLU on output
     """
     config = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
-    device = "cuda:2"
-    num_envs = 2 ** 12
-    n_steps = 128
 
-    # env
-    base_env = SequentialFPSBAuction(config, device=device)
-    env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
+    for num_rounds_to_play in [1, 2]:
+        for payment in ["first", "second"]:
 
-    # policy
-    policy_kwargs = dict(
-        activation_fn=torch.nn.SELU, net_arch=[dict(pi=[20, 20], vf=[20, 20])]
-    )
+            config["num_rounds_to_play"] = num_rounds_to_play
+            config["num_agents"] = config["num_rounds_to_play"] + 1
+            device = "cuda:1"
+            num_envs = 2 ** 12
+            n_steps = 128
+            payments = payment
 
-    log_path = new_log_path("logs/sequential-auction/run")
-    print("============")
-    print("Starting run")
-    print("------------")
-    learners = MultiAgentCoordinator(
-        env=env,
-        learner_class=VecPPO,
-        learner_kwargs={
-            "policy": "MlpPolicy",
-            "device": device,
-            "n_steps": n_steps,
-            "batch_size": n_steps * num_envs,
-            "tensorboard_log": log_path,
-            "verbose": 0,
-            "policy_kwargs": policy_kwargs,
-        },
-        policy_sharing=True,
-    )
+            torch.set_printoptions(precision=4)
 
-    # train the agent
-    print(f"Logging to {log_path}.")
-    learners.learn(total_timesteps=10_000_000_000)
+            # env
+            base_env = SequentialAuction(config, payments=payments, device=device)
+            env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
+
+            # policy
+            policy_kwargs = dict(
+                activation_fn=torch.nn.SELU, net_arch=[dict(pi=[10, 10], vf=[10, 10])]
+            )
+
+            log_path = new_log_path(
+                f"logs/sequential-auction/{payments}/{config['num_rounds_to_play']}/run"
+            )
+            print("============")
+            print("Starting run")
+            print("------------")
+            learners = MultiAgentCoordinator(
+                env=env,
+                learner_class=VecPPO,
+                learner_kwargs={
+                    "policy": "MlpPolicy",
+                    "device": device,
+                    "n_steps": n_steps,
+                    "batch_size": n_steps * num_envs,
+                    "tensorboard_log": log_path,
+                    "verbose": 0,
+                    "policy_kwargs": policy_kwargs,
+                },
+                policy_sharing=True,
+            )
+
+            # train the agent
+            print(f"Logging to {log_path}.")
+            learners.learn(total_timesteps=500_000_000)
+            logging_plots_to_gif(learners.writer.log_dir)
 
     return None
 

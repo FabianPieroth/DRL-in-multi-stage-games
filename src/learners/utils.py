@@ -56,3 +56,32 @@ def tensor_norm(b1: th.Tensor, b2: th.Tensor, p: float = 2) -> float:
 
     # calc. norm & detach for disregarding any gradient info
     return (th.dist(b1, b2, p=p) * (1.0 / n) ** (1 / p)).detach().item()
+
+
+def batched_index_select(input: th.Tensor, dim: int, index: th.Tensor) -> th.Tensor:
+    """
+    Extends the torch `index_select` function to be used for multiple batches
+    at once.
+
+    This code is borrowed from https://discuss.pytorch.org/t/batched-index-select/9115/11.
+
+    author:
+        dashesy
+
+    args:
+        input: Tensor which is to be indexed
+        dim: Dimension
+        index: Index tensor which proviedes the seleting and ordering.
+
+    returns:
+        Indexed tensor
+    """
+    for ii in range(1, len(input.shape)):
+        if ii != dim:
+            index = index.unsqueeze(ii)
+    expanse = list(input.shape)
+    expanse[0] = -1
+    expanse[dim] = -1
+    index = index.expand(expanse)
+
+    return th.gather(input, dim, index)

@@ -57,7 +57,7 @@ class MultiAgentCoordinator:
         total_timesteps: int,
         callbacks: List[MaybeCallback] or MaybeCallback = None,
         log_interval: int = 1,
-        eval_freq: int = 10,
+        eval_freq: int = 50,
         n_eval_episodes: int = 5,
         tb_log_name: str = "MultiAgentPPO",
         reset_num_timesteps: bool = True,
