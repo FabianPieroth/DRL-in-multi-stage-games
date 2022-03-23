@@ -14,7 +14,7 @@ def logging_plots_to_gif(log_path: str, num_frames: int = 10):
             paths.append(f"{log_path}/{file}")
 
     # sort and subselect
-    paths = sorted(paths)
+    paths = sorted(paths, key=lambda x: int(x[x.rfind("_") + 1 : -4]))
     paths = paths[0 :: int(len(paths) / num_frames)]
 
     # create GIF
