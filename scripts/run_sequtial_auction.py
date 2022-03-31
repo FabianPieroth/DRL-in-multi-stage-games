@@ -40,8 +40,8 @@ def multi_agent_auction_main():
     """
     config = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
 
-    for num_rounds_to_play in [1, 2]:
-        for payment in ["first", "second"]:
+    for num_rounds_to_play in [3]:
+        for payment in ["first"]:
 
             config["num_rounds_to_play"] = num_rounds_to_play
             config["num_agents"] = config["num_rounds_to_play"] + 1
