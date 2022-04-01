@@ -138,7 +138,10 @@ class VickreyAuction(Mechanism):
         assert (
             bids.dim() >= 3
         ), "Bid tensor must be at least 3d (*batch_dims x players x items)"
+
+        # TODO can we prevent non-positive bids easily?
         # assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        bids[bids < 0] = 0
 
         # name dimensions
         *batch_dims, player_dim, item_dim = range(
@@ -501,21 +504,23 @@ class SequentialAuction(BaseEnvForVec):
                         markevery=32,
                         label=f"bidder {player_position} PPO",
                     )
-                if stage == 1:
-                    won_in_first_round = (
-                        states[order, player_position, 1].bool().cpu().numpy()
+                else:
+                    has_won_already = (
+                        (states[order, player_position, 1 : stage + 1].sum(axis=-1) > 0)
+                        .cpu()
+                        .numpy()
                     )
                     drawing, = ax.plot(
-                        observations[~won_in_first_round],
-                        actions_array[~won_in_first_round],
+                        observations[~has_won_already],
+                        actions_array[~has_won_already],
                         linestyle="dotted",
                         marker="o",
                         markevery=32,
                         label=f"bidder {player_position} PPO",
                     )
                     ax.plot(
-                        observations[won_in_first_round],
-                        actions_array[won_in_first_round],
+                        observations[has_won_already],
+                        actions_array[has_won_already],
                         linestyle="dotted",
                         marker="x",
                         markevery=32,
