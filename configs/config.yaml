@@ -1,6 +1,7 @@
 valid_envs: ["rockpaperscissors", "sequential_auction"]
 log_path: './logs/'
 device: 1
+num_envs: 4096
 defaults:
   - rl_envs: rockpaperscissors
   - _self_

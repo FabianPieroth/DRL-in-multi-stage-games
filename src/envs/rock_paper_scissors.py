@@ -113,9 +113,8 @@ class RockPaperScissors(BaseEnvForVec):
         new_states[:, :, current_round] = actions  # Store played actions
         new_states[:, :, -2] += 1.0  # Add current round
 
-        # Reached last stage? (Independent from `player_position`)
-        dones = new_states[:, :, -2] >= new_states[:, :, -1]
-        dones = {agent_id: dones[:, agent_id] for agent_id in range(self.num_agents)}
+        # Reached last stage? (Independent from agent)
+        dones = new_states[:, 0, -2] >= new_states[:, 0, -1]
 
         observations = self.get_observations(new_states)
 

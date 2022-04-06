@@ -95,7 +95,7 @@ class BaseEnvForVec(ABC):
         torch.manual_seed(seed)
 
 
-class TorchVecEnv(VecEnv):
+class MATorchVecEnv(VecEnv):
     """Vectorized Gym environment base class"""
 
     metadata = {"render.modes": ["console"]}
@@ -122,8 +122,8 @@ class TorchVecEnv(VecEnv):
         }
         # self.render_n_envs = render_num_envs
 
-        self.observation_space = model.observation_space
-        self.action_space = model.action_space
+        self.observation_spaces = model.observation_spaces
+        self.action_spaces = model.action_spaces
 
     def step_async(self, actions: np.ndarray) -> None:
         self.actions = actions
@@ -146,41 +146,54 @@ class TorchVecEnv(VecEnv):
             obses, rewards, dones, next_states = self.model.compute_step(
                 current_states, actions
             )
-
-        self.ep_stats["returns"] += rewards
-        self.ep_stats["lengths"] += torch.ones((self.num_envs,), device=self.device)
-
         self.current_states = next_states
 
         n_dones = dones.sum()
         self.current_states[dones] = self.model.sample_new_states(n_dones)
 
         # NOTE: not sure if this is needed
+        self.ep_stats["returns"] += torch.sum(
+            torch.stack(tuple(rewards.values())), axis=0
+        )  # global rewards
+        self.ep_stats["lengths"] += torch.ones((self.num_envs,), device=self.device)
         episode_returns = self.ep_stats["returns"][dones]
         episode_lengths = self.ep_stats["lengths"][dones]
+        self.ep_stats["returns"][dones] = 0
+        self.ep_stats["lengths"][dones] = 0
         infos = dict(episode_returns=episode_returns, episode_lengths=episode_lengths)
 
-        # NOTE: only support for constant length env
-        if dones.all():
+        if dones.any():
             infos["terminal_observation"] = self.model.get_observations(
                 self.current_states[dones]
             )
 
-        self.ep_stats["returns"][dones] = 0
-        self.ep_stats["lengths"][dones] = 0
+            # Override observations for resetted environments after using them to
+            # set "terminal_observation"
+            newly_sampled_obses = self.model.get_observations(
+                self.current_states[dones]
+            )
+            for agent_id in range(self.model.num_agents):
+                obses[agent_id][dones] = newly_sampled_obses[agent_id]
 
-        # Override observations for resetted environments after using them to
-        # set "terminal_observation"
-        obses[dones] = self.model.get_observations(self.current_states[dones])
+        return (
+            self.clone_tensor_dict(obses),
+            self.clone_tensor_dict(rewards),
+            dones.clone(),
+            infos,
+        )
 
-        return obses.clone(), rewards.clone(), dones.clone(), infos
+    @staticmethod
+    def clone_tensor_dict(
+        dict_to_clone: Dict[Any, torch.tensor]
+    ) -> Dict[Any, torch.tensor]:
+        return {key: value.clone() for key, value in dict_to_clone.items()}
 
     def step(self, actions: np.ndarray):
         """
         Step the environments with the given action
 
         :param actions: the action
-        :return: observation, reward, done, information
+        :return: observations, reward, done, information
         """
         self.step_async(actions)
         return self.step_wait()
