@@ -1,0 +1,5 @@
+name: "sequential_auction"
+num_agents: 3
+num_rounds_to_play: 2
+available_mechanism_types: ["first", "second"]
+mechanism_type: "first"
