@@ -138,7 +138,10 @@ class VickreyAuction(Mechanism):
         assert (
             bids.dim() >= 3
         ), "Bid tensor must be at least 3d (*batch_dims x players x items)"
+
+        # TODO can we prevent non-positive bids easily?
         # assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        bids[bids < 0] = 0
 
         # name dimensions
         *batch_dims, player_dim, item_dim = range(
@@ -368,27 +371,27 @@ class SequentialAuction(BaseEnvForVec):
 
         return observations, rewards, dones, new_states
 
-    def _compute_rewards(self, state: torch.Tensor, stage: int) -> torch.Tensor:
+    def _compute_rewards(self, states: torch.Tensor, stage: int) -> torch.Tensor:
         """Computes the rewards for the played auction games for the player at
         `self.player_position`.
 
         TODO: do we want intermediate rewards or not?
         """
-        valuations = state[
+        valuations = states[
             :,
             self.player_position,
             self.valuations_start_index : self.valuations_start_index
             + self.valuation_size,
         ].clone()
         # only consider this stage's allocation
-        allocations = state[
+        allocations = states[
             :,
             self.player_position,
             self.allocations_start_index
             + stage * self.valuation_size : self.allocations_start_index
             + (stage + 1) * self.valuation_size,
         ]
-        payments = state[
+        payments = states[
             :,
             self.player_position,
             self.payments_start_index + stage : self.payments_start_index + (stage + 1),
@@ -397,13 +400,16 @@ class SequentialAuction(BaseEnvForVec):
         # set value to zero if we already own the unit
         # NOTE: unit-demand hardcoded
         if stage > 0:
-            onwer_mask = state[
-                :,
-                self.player_position,
-                self.allocations_start_index
-                + (stage - 1) * self.valuation_size : self.allocations_start_index
-                + stage * self.valuation_size,
-            ].bool()
+            # sum over allocations of all previous stages
+            onwer_mask = (
+                states[
+                    :,
+                    self.player_position,
+                    self.allocations_start_index : self.allocations_start_index
+                    + stage * self.valuation_size,
+                ].sum(axis=1)
+                > 0
+            )
             valuations[onwer_mask] = 0
 
         # quasi-linear utility
@@ -420,7 +426,10 @@ class SequentialAuction(BaseEnvForVec):
             state_dim).
         :param player_position: Needed when called for one of the static
             (non-learning) strategies.
-        :returns observations: Observations of shape (num_env, state_dim).
+        :returns observations: Observations of shape (num_env, obs_private_dim
+            + obs_public_dim), where the private observations consist of the
+            valuation and a vector of allocations and payments (for each stage)
+            and the public observation consits of published prices.
         """
         if player_position is None:
             player_position = self.player_position
@@ -495,21 +504,23 @@ class SequentialAuction(BaseEnvForVec):
                         markevery=32,
                         label=f"bidder {player_position} PPO",
                     )
-                if stage == 1:
-                    won_in_first_round = (
-                        states[order, player_position, 1].bool().cpu().numpy()
+                else:
+                    has_won_already = (
+                        (states[order, player_position, 1 : stage + 1].sum(axis=-1) > 0)
+                        .cpu()
+                        .numpy()
                     )
                     drawing, = ax.plot(
-                        observations[~won_in_first_round],
-                        actions_array[~won_in_first_round],
+                        observations[~has_won_already],
+                        actions_array[~has_won_already],
                         linestyle="dotted",
                         marker="o",
                         markevery=32,
                         label=f"bidder {player_position} PPO",
                     )
                     ax.plot(
-                        observations[won_in_first_round],
-                        actions_array[won_in_first_round],
+                        observations[has_won_already],
+                        actions_array[has_won_already],
                         linestyle="dotted",
                         marker="x",
                         markevery=32,
