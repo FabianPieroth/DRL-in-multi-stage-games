@@ -32,6 +32,11 @@ def eval_rps_strategy(env, player_position, eval_strategy):
     return
 
 
+ROCK = 0
+PAPER = 1
+SCISSORS = 2
+
+
 class RockPaperScissors(BaseEnvForVec):
     """Iterated RockPaperScissors game as simple env example.
 
@@ -152,29 +157,31 @@ class RockPaperScissors(BaseEnvForVec):
             (unraveled_actions.shape[0], self.num_agents),
             device=unraveled_actions.device,
         )
-        rock_played = torch.any(unraveled_actions == 0, dim=1)
-        paper_played = torch.any(unraveled_actions == 1, dim=1)
-        scissors_played = torch.any(unraveled_actions == 2, dim=1)
+        rock_played = torch.any(unraveled_actions == ROCK, dim=1)
+        paper_played = torch.any(unraveled_actions == PAPER, dim=1)
+        scissors_played = torch.any(unraveled_actions == SCISSORS, dim=1)
 
         # Case 1: Rock vs Paper
         paper_wins = self.first_and_second_not_third(
             rock_played, paper_played, scissors_played
         )
-        rewards[torch.logical_and(paper_wins, unraveled_actions.squeeze() == 1)] = 1.0
+        rewards[
+            torch.logical_and(paper_wins, unraveled_actions.squeeze() == PAPER)
+        ] = 1.0
 
         # Case 2: Paper vs Scissors
         scissors_wins = self.first_and_second_not_third(
             paper_played, scissors_played, rock_played
         )
         rewards[
-            torch.logical_and(scissors_wins, unraveled_actions.squeeze() == 2)
+            torch.logical_and(scissors_wins, unraveled_actions.squeeze() == SCISSORS)
         ] = 1.0
 
         # Case 3: Scissors vs Rock
         rock_wins = self.first_and_second_not_third(
             scissors_played, rock_played, paper_played
         )
-        rewards[torch.logical_and(rock_wins, unraveled_actions.squeeze() == 0)] = 1.0
+        rewards[torch.logical_and(rock_wins, unraveled_actions.squeeze() == ROCK)] = 1.0
 
         # single-agent
         rewards = rewards[:, self.player_position]
