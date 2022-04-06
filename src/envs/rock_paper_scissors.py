@@ -1,8 +1,9 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
 from gym import spaces
+from gym.spaces import Space
 
 import src.utils_folder.spaces_utils as sp_ut
 from src.envs.torch_vec_env import BaseEnvForVec
@@ -39,47 +40,33 @@ SCISSORS = 2
 
 class RockPaperScissors(BaseEnvForVec):
     """Iterated RockPaperScissors game as simple env example.
-
-    This environment keeps track of the strategies of the participants and the
-    position of the current activa player. From the outside, this env always
-    looks like a single-agent env from the perspective of the active player.
-    This allows for simulatenous learning of all agents with dynamically
-    changing strategies of players via a `MultiAgentCoordinator`.
-
-    NOTE: Also see
-    https://github.com/Farama-Foundation/PettingZoo/blob/master/pettingzoo/classic/rps/rps.py
-    for a peeting zoo (multi-agent) implementation. (Noticed after creating
-    this class.)
     """
 
-    def __init__(self, config: Dict, player_position: int = 0, device: str = None):
+    def __init__(self, config: Dict, device: str = None):
         super().__init__(config, device)
-        self.rl_env_config = config["rl_envs"]
+        self.rl_env_config = config
         self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
 
-        # single-agent learning
-        self.num_agents = 2  # self.rl_env_config["num_agents"]
+        self.num_agents = self.rl_env_config["num_agents"]
+        self.state_shape = (self.num_agents, self.num_rounds_to_play + 2)
 
-        self.state_dim = 2
-        self.observation_space = spaces.Box(
-            0, self.num_rounds_to_play + 1, shape=(self.state_dim,)
-        )
+        self.observation_spaces = self._init_observation_spaces()
+        self.action_spaces = self._init_action_spaces()
+        self.action_space_sizes = self._init_action_space_sizes()
 
-        self.action_space_size = 1
-        self.action_space_sizes = (3,)
-        self.action_space = spaces.Discrete(np.prod(self.action_space_sizes))
-
-        # positions
-        self.player_position = player_position
-
-        # dummy strategies: these can be overwritten by strategies that are
-        # learned over time in repeated self-play.
-        self.strategies = [
-            lambda obs: torch.zeros(
-                (obs.shape[0], self.action_space_size), device=obs.device
+    def _init_observation_spaces(self) -> Dict[int, Space]:
+        return {
+            agent_id: spaces.Box(
+                0, self.num_rounds_to_play, shape=(self.num_rounds_to_play,)
             )
-            for _ in range(self.num_agents)
-        ]
+            for agent_id in range(self.num_agents)
+        }
+
+    def _init_action_spaces(self) -> Dict[int, Space]:
+        return {agent_id: spaces.Discrete(3) for agent_id in range(self.num_agents)}
+
+    def _init_action_space_sizes(self) -> Dict[int, int]:
+        return {agent_id: 3 for agent_id in range(self.num_agents)}
 
     def to(self, device) -> Any:
         self.device = device
@@ -92,7 +79,8 @@ class RockPaperScissors(BaseEnvForVec):
         :return: the new states, in shape=(n, num_agents, 2), where 2 stands
             for `current_round` and `num_rounds_to_play`.
         """
-        states = torch.zeros((n, self.num_agents, 2), device=self.device)
+        shape_to_sample = (n,) + self.state_shape
+        states = torch.zeros(shape_to_sample, device=self.device)
         states[:, :, -1] = self.num_rounds_to_play
         return states
 
@@ -100,14 +88,13 @@ class RockPaperScissors(BaseEnvForVec):
         """Compute a step in the game.
         
         :param cur_states: The current states of the games.
-        :param actions: Actions that the active player at
-            `self.player_position` is choosing.
+        :param actions: joint action.
         :return observations:
         :return rewards:
         :return episode-done markers:
         :return updated_states:
         """
-        unraveled_actions = sp_ut.unravel_index(actions, self.action_space_sizes)
+        """unraveled_actions = sp_ut.unravel_index(actions, self.action_space_sizes)
         unraveled_actions = unraveled_actions.view(-1, 1, self.action_space_size)
 
         # Append opponents' actions
@@ -119,22 +106,24 @@ class RockPaperScissors(BaseEnvForVec):
                 )
                 unraveled_actions[:, opponent_position, :] = opponent_strategy(
                     opponent_obs
-                ).view(-1, self.action_space_size)
+                ).view(-1, self.action_space_size)"""
 
-        # States are for all agents, obs and rewards for `player_position` only
         new_states = cur_states.detach().clone()
-        new_states[:, :, 0] += 1
+        current_round = int(new_states[0, 0, -2].detach().cpu())
+        new_states[:, :, current_round] = actions  # Store played actions
+        new_states[:, :, -2] += 1.0  # Add current round
 
         # Reached last stage? (Independent from `player_position`)
-        dones = new_states[:, 0, 0] >= new_states[:, 0, 1]
+        dones = new_states[:, :, -2] >= new_states[:, :, -1]
+        dones = {agent_id: dones[:, agent_id] for agent_id in range(self.num_agents)}
 
         observations = self.get_observations(new_states)
 
-        rewards = self._compute_rewards(unraveled_actions)
+        rewards = self._compute_rewards(actions)
 
         return observations, rewards, dones, new_states
 
-    def _compute_rewards(self, unraveled_actions: torch.Tensor) -> torch.Tensor:
+    def _compute_rewards(self, actions: torch.Tensor) -> torch.Tensor:
         """Computes the rewards for the played games of Rock-Paper-Scissors for
         the player at `self.player_position`.
 
@@ -144,7 +133,7 @@ class RockPaperScissors(BaseEnvForVec):
         We have a cycle Rock < Paper < Scissors < Rock.
 
         Args:
-            unraveled_actions (torch.Tensor): shape=(num_envs, num_agents)
+            actions (torch.Tensor): shape=(num_envs, num_agents)
 
         Returns:
             torch.Tensor: shape=(num_envs, num_agents)
@@ -154,39 +143,33 @@ class RockPaperScissors(BaseEnvForVec):
             If all three options occur, there is always a draw.
         """
         rewards = torch.zeros(
-            (unraveled_actions.shape[0], self.num_agents),
-            device=unraveled_actions.device,
+            (actions.shape[0], self.num_agents), device=actions.device
         )
-        rock_played = torch.any(unraveled_actions == ROCK, dim=1)
-        paper_played = torch.any(unraveled_actions == PAPER, dim=1)
-        scissors_played = torch.any(unraveled_actions == SCISSORS, dim=1)
+        rock_played = torch.any(actions == ROCK, dim=1)
+        paper_played = torch.any(actions == PAPER, dim=1)
+        scissors_played = torch.any(actions == SCISSORS, dim=1)
 
         # Case 1: Rock vs Paper
         paper_wins = self.first_and_second_not_third(
             rock_played, paper_played, scissors_played
         )
-        rewards[
-            torch.logical_and(paper_wins, unraveled_actions.squeeze() == PAPER)
-        ] = 1.0
+        rewards[torch.logical_and(paper_wins.unsqueeze(1), actions == PAPER)] = 1.0
 
         # Case 2: Paper vs Scissors
         scissors_wins = self.first_and_second_not_third(
             paper_played, scissors_played, rock_played
         )
         rewards[
-            torch.logical_and(scissors_wins, unraveled_actions.squeeze() == SCISSORS)
+            torch.logical_and(scissors_wins.unsqueeze(1), actions == SCISSORS)
         ] = 1.0
 
         # Case 3: Scissors vs Rock
         rock_wins = self.first_and_second_not_third(
             scissors_played, rock_played, paper_played
         )
-        rewards[torch.logical_and(rock_wins, unraveled_actions.squeeze() == ROCK)] = 1.0
+        rewards[torch.logical_and(rock_wins.unsqueeze(1), actions == ROCK)] = 1.0
 
-        # single-agent
-        rewards = rewards[:, self.player_position]
-
-        return rewards
+        return {agent_id: rewards[:, agent_id] for agent_id in range(self.num_agents)}
 
     @staticmethod
     def first_and_second_not_third(
@@ -195,22 +178,16 @@ class RockPaperScissors(BaseEnvForVec):
         """first and second not third"""
         return torch.logical_and(torch.logical_and(first, second), ~third)
 
-    def get_observations(
-        self, states: torch.Tensor, player_position: int = None
-    ) -> torch.Tensor:
-        """Return the observations at the player at `player_position`.
+    def get_observations(self, states: torch.Tensor) -> Dict[int, torch.Tensor]:
+        """Return the observations of the players.
 
         :param states: The current states of shape (num_env, num_agents,
             state_dim).
-        :param player_position: Needed when called for one of the static
-            (non-learning) strategies.
-        :returns observations: Observations of shape (num_env, num_agents,
-            state_dim).
+        :returns observations: Dict of Observations of shape (num_env, num_agents,
+            num_rounds_to_play + 2).
         """
-        if player_position is None:
-            player_position = self.player_position
 
-        return states.view(-1, self.num_agents, self.state_dim)[:, player_position, :]
+        return {agent_id: states[:, agent_id, :] for agent_id in range(self.num_agents)}
 
     def render(self, state):
         return state
