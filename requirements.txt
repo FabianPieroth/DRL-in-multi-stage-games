@@ -1,9 +1,9 @@
-gizeh==0.1.11
-torch==1.10.1
-gym
+gizeh
+torch
 matplotlib
 seaborn
 stable-baselines3
+gym
 
 hydra-core
 opencv-python
