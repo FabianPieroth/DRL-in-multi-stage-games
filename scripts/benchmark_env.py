@@ -11,12 +11,12 @@ import torch
 
 import src.utils_folder.spaces_utils as sp_ut
 from src.envs.rock_paper_scissors import RockPaperScissors
-from src.envs.torch_vec_env import TorchVecEnv
+from src.envs.torch_vec_env import MATorchVecEnv
 
 
 def make_vec_env(config, num_envs, device, render_n_envs=16):
     env = RockPaperScissors(config, device=device)
-    neural_venv = TorchVecEnv(
+    neural_venv = MATorchVecEnv(
         env, num_envs=num_envs, device=device  # render_n_envs=render_n_envs
     )
     return neural_venv

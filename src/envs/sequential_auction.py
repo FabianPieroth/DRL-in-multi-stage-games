@@ -188,7 +188,6 @@ class SequentialAuction(BaseEnvForVec):
     def __init__(
         self,
         config: Dict,
-        payments: str,
         device: str = "cpu",
         player_position: int = 0,
         reduced_observation_space: bool = False,
@@ -201,12 +200,13 @@ class SequentialAuction(BaseEnvForVec):
 
         # list of indices which maps `player_position` to its strategy index
         self.policy_symmetries = [0] * self.num_agents
+        self.mechanism_type = config["mechanism_type"]
 
         # set up mechanism
-        if payments == "first":
+        if self.mechanism_type == "first":
             self.mechanism: Mechanism = FirstPriceAuction()
             self.equilibrium_profile = equilibrium_fpsb_symmetric_uniform
-        elif payments in ["second", "vcg", "vickery"]:
+        elif self.mechanism_type in ["second", "vcg", "vickery"]:
             self.mechanism: Mechanism = VickreyAuction()
             self.equilibrium_profile = truthful
         else:

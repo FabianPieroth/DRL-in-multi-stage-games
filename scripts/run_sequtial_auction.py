@@ -13,22 +13,17 @@ import torch
 from stable_baselines3.common.env_checker import check_env
 
 from src.envs.sequential_auction import SequentialAuction
-from src.envs.torch_vec_env import TorchVecEnv
+from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 from src.learners.ppo import VecPPO
 from src.learners.utils import new_log_path
 from src.utils_folder.logging_utils import logging_plots_to_gif
 
 
-def get_config(path):
+def get_config():
     """Config"""
-    # hydra.initialize(config_path="../configs", job_name="run")
-    # cfg = hydra.compose(config_name="config")
-    # TODO: no time for this:-D
-    import yaml
-
-    with open(path, "r") as stream:
-        cfg = yaml.safe_load(stream)
+    hydra.initialize(config_path="./../configs", job_name="run")
+    cfg = hydra.compose(config_name="config")
     return cfg
 
 
@@ -38,7 +33,8 @@ def multi_agent_auction_main():
     TODO:
     * Custom net: ReLU on output
     """
-    config = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
+    cfg = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
+    config = cfg.rl_envs
 
     for num_rounds_to_play in [3]:
         for payment in ["first"]:
@@ -54,7 +50,7 @@ def multi_agent_auction_main():
 
             # env
             base_env = SequentialAuction(config, payments=payments, device=device)
-            env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
+            env = MATorchVecEnv(base_env, num_envs=num_envs, device=device)
 
             # policy
             policy_kwargs = dict(
