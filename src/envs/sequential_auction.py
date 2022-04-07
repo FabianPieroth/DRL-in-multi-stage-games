@@ -597,6 +597,8 @@ class SequentialAuction(BaseEnvForVec):
         logger.record("eval/utility_bne", bne_utility)
 
         # calculate distance in action space
+        # TODO: either log all stages or average over them
+        actions_actual[actions_actual < 0] = 0
         L2 = tensor_norm(actions_actual, actions_bne)
         logger.record("eval/action_norm_last_stage", L2)
 
