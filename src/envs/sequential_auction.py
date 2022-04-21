@@ -191,7 +191,7 @@ class SequentialAuction(BaseEnvForVec):
         payments: str,
         device: str = "cpu",
         player_position: int = 0,
-        reduced_observation_space: bool = False,
+        reduced_observation_space: bool = True,
     ):
         super().__init__(config, device)
         self.rl_env_config = config
@@ -220,12 +220,9 @@ class SequentialAuction(BaseEnvForVec):
         # NOTE: does not support non unit-demand
         self.reduced_observation_space = reduced_observation_space
         if self.reduced_observation_space:
-            # observations: valuation, allocations (up to last stage)
-            raise NotImplementedError(
-                "Currently wrongly disregards previous alloations."
-            )
-            low = [0.0] + [0.0] * (self.num_rounds_to_play - 1)
-            high = [1.0] + [1.0] * (self.num_rounds_to_play - 1)
+            # observations: valuation, stage, allocation (up to now)
+            low = [0.0] * 3
+            high = [1.0, self.num_rounds_to_play, 1.0]
         else:
             # observations: valuation, allocation (including in which stage
             # obtained), previous prices (including in which stage payed)
@@ -338,14 +335,7 @@ class SequentialAuction(BaseEnvForVec):
         new_states = cur_states.detach().clone()
 
         # get current stage
-        try:
-            stage = (
-                cur_states[0, 0, self.payments_start_index :]
-                .tolist()
-                .index(SequentialAuction.DUMMY_PRICE_KEY)
-            )
-        except ValueError as _:  # last round
-            stage = self.num_rounds_to_play - 1
+        stage = self._state2stage(cur_states)
 
         # update payments
         new_states[:, :, self.payments_start_index + stage] = payments
@@ -439,14 +429,35 @@ class SequentialAuction(BaseEnvForVec):
         obs_private = states[:, player_position, :]
 
         if self.reduced_observation_space:
-            return obs_private[:, : -self.num_rounds_to_play - 1]
-
-        obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
-
-        return torch.concat((obs_private, obs_public), axis=1)
+            stage = self._state2stage(states)
+            value = states[:, player_position, 0]
+            won = obs_private[:, 1 : self.payments_start_index].sum(axis=-1) > 0
+            obs = torch.zeros((states.shape[0], 3), device=states.device)
+            obs[:, 0] = value
+            obs[:, 1] = stage
+            obs[:, 2] = won
+            return obs
+        else:
+            obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
+            return torch.concat((obs_private, obs_public), axis=1)
 
     def render(self, state):
         return state
+
+    def _state2stage(self, cur_states):
+        """Get the current stage from the state."""
+        if cur_states.shape[0] == 0:  # empty batch
+            return -1
+        try:
+            # NOTE: only works for fixed length / each batch at same stage
+            stage = (
+                cur_states[0, 0, self.payments_start_index :]
+                .tolist()
+                .index(SequentialAuction.DUMMY_PRICE_KEY)
+            )
+        except ValueError as _:  # last round
+            stage = self.num_rounds_to_play - 1
+        return stage
 
     def log_plotting(self, writer, step: int, num_samples: int = 500):
         """Evaluate and log current strategies."""
