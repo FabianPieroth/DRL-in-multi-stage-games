@@ -4,10 +4,12 @@ from typing import List, Optional
 
 import torch
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback
+from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 from src.envs.rock_paper_scissors import eval_rps_strategy
 from src.learners.ppo import VecPPO
+from src.learners.utils import tensor_norm
 
 
 class MultiAgentCoordinator:
@@ -51,6 +53,14 @@ class MultiAgentCoordinator:
         ]
 
         self.writer = SummaryWriter(log_dir=self.learners[0].tensorboard_log)
+
+        # Keep track of running length as Mertikopoulos suggests to detect
+        # oscillations
+        self.running_length = [0] * self.num_learners
+        self.current_parameters = [
+            parameters_to_vector([_ for _ in l.policy.parameters()])
+            for l in self.learners
+        ]
 
     def learn(
         self,
@@ -162,6 +172,18 @@ class MultiAgentCoordinator:
                     # eval_rps_strategy(learner.env, player_position, eval_strategy)
 
                 learner.train()
+
+            # Log running length
+            prev_parameters = self.current_parameters
+            self.current_parameters = [
+                parameters_to_vector([_ for _ in learner.policy.parameters()])
+                for learner in self.learners
+            ]
+            for i, learner in enumerate(self.learners):
+                self.running_length[i] += tensor_norm(
+                    self.current_parameters[i], prev_parameters[i]
+                )
+                learner.logger.record("train/running_length", self.running_length[i])
 
             iteration += 1
 
