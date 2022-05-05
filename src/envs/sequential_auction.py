@@ -191,6 +191,7 @@ class SequentialAuction(BaseEnvForVec):
         payments: str,
         device: str = "cpu",
         player_position: int = 0,
+        collapse_symmetric_opponents: bool = False,
         reduced_observation_space: bool = True,
     ):
         super().__init__(config, device)
@@ -266,6 +267,14 @@ class SequentialAuction(BaseEnvForVec):
             for i in range(self.num_agents)
         ]
 
+        # If the opponents are all symmetric, we may just sample from one
+        # opponent with the max order statstic corresponding to the same
+        # competition as the original opponents
+        self.collapse_symmetric_opponents = collapse_symmetric_opponents
+        self.num_opponents = (
+            1 if self.collapse_symmetric_opponents else self.num_agents - 1
+        )
+
         # backward induction: simulate previous stages
         self.earliest_stage = None
 
@@ -295,12 +304,25 @@ class SequentialAuction(BaseEnvForVec):
         )
         # NOTE: We keep track of all (incl. zero) payments for reward calculations
         states = torch.zeros(
-            (n, self.num_agents, self.payments_start_index + self.num_rounds_to_play),
+            (
+                n,
+                1 + self.num_opponents,
+                self.payments_start_index + self.num_rounds_to_play,
+            ),
             device=self.device,
         )
 
         # ipv symmetric unifrom priors
         states[:, :, : self.valuation_size].uniform_(0, 1)
+
+        if self.collapse_symmetric_opponents:
+            m = torch.distributions.Beta(
+                torch.tensor([self.num_agents - 1], device=self.device),
+                torch.tensor([1.0], device=self.device),
+            )
+            states[
+                :, 1 if self.player_position == 0 else 0, : self.valuation_size
+            ] = m.sample((n,))
 
         # dummy prices
         states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
@@ -347,16 +369,20 @@ class SequentialAuction(BaseEnvForVec):
         """
         # append opponents' actions
         action_profile = actions.view(-1, 1, self.action_size).repeat(
-            1, self.num_agents, 1
+            1, 1 + self.num_opponents, 1
         )
-        for opponent_position, opponent_strategy in enumerate(self.strategies):
+        for opponent_position, opponent_strategy in enumerate(
+            self.strategies[: 1 + self.num_opponents]
+        ):
             if opponent_position != self.player_position:
                 opponent_obs = self.get_observations(
                     cur_states, player_position=opponent_position
                 )
-                action_profile[:, opponent_position, :] = opponent_strategy(
-                    opponent_obs, deterministic=True
-                ).view(-1, self.action_size)
+                action_profile[:, opponent_position, :] = (
+                    opponent_strategy(opponent_obs, deterministic=True)
+                    .detach()
+                    .view(-1, self.action_size)
+                )
 
         # run auction round
         allocations, payments = self.mechanism.run(action_profile)
@@ -378,6 +404,31 @@ class SequentialAuction(BaseEnvForVec):
             + stage * self.valuation_size : self.allocations_start_index
             + (stage + 1) * self.valuation_size,
         ] = allocations
+
+        if self.collapse_symmetric_opponents:
+            opponent_position = 1 if self.player_position == 0 else 0
+
+            # the only thing the current player knows is that the opponent
+            # faced in the next round is weaker
+            highest_opponent = new_states[:, opponent_position, : self.valuation_size]
+            m = torch.distributions.Beta(
+                torch.tensor([max(1, self.num_agents - 2 - stage)], device=self.device),
+                torch.tensor([1.0], device=self.device),
+            )
+            batch_size = cur_states.shape[0]
+            new_states[
+                :, opponent_position, : self.valuation_size
+            ] = highest_opponent * m.sample((batch_size,))
+
+            # force opponent's allocation to zero again st it compets in next
+            # stage
+            new_states[
+                :,
+                opponent_position,
+                self.allocations_start_index
+                + stage * self.valuation_size : self.allocations_start_index
+                + (stage + 1) * self.valuation_size,
+            ] = 0
 
         # reached last stage?
         if stage >= self.num_rounds_to_play - 1:
@@ -450,7 +501,12 @@ class SequentialAuction(BaseEnvForVec):
         if self.reduced_observation_space:
             stage = self._state2stage(states)
             value = states[:, player_position, 0]
-            won = obs_private[:, 1 : self.payments_start_index].sum(axis=-1) > 0
+            won = (
+                obs_private[
+                    :, self.allocations_start_index : self.payments_start_index
+                ].sum(axis=-1)
+                > 0
+            )
             obs = torch.zeros((states.shape[0], 3), device=states.device)
             obs[:, 0] = value
             obs[:, 1] = stage
@@ -514,7 +570,7 @@ class SequentialAuction(BaseEnvForVec):
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
-            for player_position in range(self.num_agents):
+            for player_position in range(1 + self.num_opponents):
                 self.player_position = player_position
 
                 # sort by valuations

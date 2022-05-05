@@ -53,7 +53,10 @@ def multi_agent_auction_main():
 
             config["num_rounds_to_play"] = num_rounds_to_play
             config["num_agents"] = config["num_rounds_to_play"] + 1
-            device = "cuda:1"
+
+            collapse_symmetric_opponents = True
+
+            device = "cuda:2"
             num_envs = 2 ** 12
             n_steps = 128
             payments = payment
@@ -61,7 +64,12 @@ def multi_agent_auction_main():
             torch.set_printoptions(precision=4)
 
             # env
-            base_env = SequentialAuction(config, payments=payments, device=device)
+            base_env = SequentialAuction(
+                config,
+                payments=payments,
+                collapse_symmetric_opponents=collapse_symmetric_opponents,
+                device=device,
+            )
             env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
 
             # policy
