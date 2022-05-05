@@ -514,7 +514,7 @@ class SequentialAuction(BaseEnvForVec):
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
-            for player_position in range(2):
+            for player_position in range(self.num_agents):
                 self.player_position = player_position
 
                 # sort by valuations
@@ -531,6 +531,10 @@ class SequentialAuction(BaseEnvForVec):
                 actions_mixed = self.strategies[player_position](
                     observations, deterministic=False
                 )
+
+                # Manual clipping
+                actions[actions < 0] = 0
+                actions_mixed[actions_mixed < 0] = 0
 
                 # get BNE actions
                 actions_bne = self.strategies_bne[player_position](
