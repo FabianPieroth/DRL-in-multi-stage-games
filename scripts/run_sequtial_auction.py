@@ -36,7 +36,15 @@ def multi_agent_auction_main():
     """Benchmark multi-agent learning in custom RPS env.
 
     TODO:
-    * Custom net: ReLU on output
+    * Custom net: ReLU on output, ResNet for truthful initial 
+    * What about actual elimination of winners? (-> More feedback in later
+    stages)
+    * Backward induction learning:
+        * Perhaps benefit only comes for large settings?
+        * How to fix learned strategies in later stages?
+            * Randomly sample later simulated stages does not work
+        * Perhaps approximate later reward w/o actual play? (This would
+        perhaps also help with forgetting)
     """
     config = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
 
@@ -62,7 +70,7 @@ def multi_agent_auction_main():
             )
 
             log_path = new_log_path(
-                f"logs/sequential-auction/{payments}/{config['num_rounds_to_play']}/run"
+                f"logs/sequential-auction-debug/{payments}/{config['num_rounds_to_play']}/run"
             )
             print("============")
             print("Starting run")

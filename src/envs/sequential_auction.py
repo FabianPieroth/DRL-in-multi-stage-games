@@ -266,6 +266,9 @@ class SequentialAuction(BaseEnvForVec):
             for i in range(self.num_agents)
         ]
 
+        # backward induction: simulate previous stages
+        self.earliest_stage = None
+
     def to(self, device) -> Any:
         """Set device"""
         self.device = device
@@ -278,7 +281,7 @@ class SequentialAuction(BaseEnvForVec):
             * prices of all stages (-1 for future stages TODO?)
                 -> implicitly tells agents which the current round is
 
-        :param n: Batch size of how many auction games are played in parallel.        
+        :param n: Batch size of how many auction games are played in parallel.
         :return: The new states, in shape=(n, num_agents*2 + num_rounds_to_play),
             where ...
         `current_round` and `num_rounds_to_play`.
@@ -301,6 +304,33 @@ class SequentialAuction(BaseEnvForVec):
 
         # dummy prices
         states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
+
+        # simulate earlier stages:
+        if self.earliest_stage is not None:
+            # set all payments to zero that are in the past
+            states[
+                :,
+                :,
+                self.payments_start_index : self.payments_start_index
+                + self.earliest_stage,
+            ] = 0  # zero payments
+            # only the first players are left
+            for player_position in range(
+                self.num_rounds_to_play - self.earliest_stage + 1, self.num_agents
+            ):
+                index_shift = (
+                    player_position + self.earliest_stage - self.num_rounds_to_play - 1
+                )
+                states[
+                    :, player_position, self.allocations_start_index + index_shift
+                ] = 1  # allocations
+                states[
+                    :, player_position, self.payments_start_index + index_shift
+                ] = states[
+                    :, player_position, 0
+                ]  # payments
+                # TODO: Other choice? Or even actually drop eliminated players from participating?
+            states = states[:, np.random.permutation(self.num_agents), :]
 
         return states
 
@@ -372,7 +402,7 @@ class SequentialAuction(BaseEnvForVec):
             self.player_position,
             self.valuations_start_index : self.valuations_start_index
             + self.valuation_size,
-        ].clone()
+        ]
         # only consider this stage's allocation
         allocations = states[
             :,
@@ -387,23 +417,12 @@ class SequentialAuction(BaseEnvForVec):
             self.payments_start_index + stage : self.payments_start_index + (stage + 1),
         ]
 
-        # set value to zero if we already own the unit
-        # NOTE: unit-demand hardcoded
-        if stage > 0:
-            # sum over allocations of all previous stages
-            onwer_mask = (
-                states[
-                    :,
-                    self.player_position,
-                    self.allocations_start_index : self.allocations_start_index
-                    + stage * self.valuation_size,
-                ].sum(axis=1)
-                > 0
-            )
-            valuations[onwer_mask] = 0
+        # set valuation to zero if we already own the unit
+        has_won_already = self._has_won_already(states, stage)
 
         # quasi-linear utility
         rewards = valuations * allocations - payments
+        rewards[has_won_already] = -payments[has_won_already]
 
         return rewards.view(-1)
 
@@ -459,6 +478,19 @@ class SequentialAuction(BaseEnvForVec):
             stage = self.num_rounds_to_play - 1
         return stage
 
+    def _has_won_already(
+        self, state: torch.Tensor, stage: int, player_position: int = None
+    ):
+        """Check if the current player already has won in previous stages of the auction."""
+        # NOTE: unit-demand hardcoded
+
+        if player_position is None:
+            player_position = self.player_position
+
+        low = self.allocations_start_index
+        high = self.allocations_start_index + stage
+        return state[:, player_position, low:high].sum(axis=-1) > 0
+
     def log_plotting(self, writer, step: int, num_samples: int = 500):
         """Evaluate and log current strategies."""
         seed = 69
@@ -474,15 +506,23 @@ class SequentialAuction(BaseEnvForVec):
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
+        _earliest_stage = self.earliest_stage
+        self.earliest_stage = None
+
         self.seed(seed)
         states = self.sample_new_states(num_samples)
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
-            for player_position in range(self.num_agents):
+            for player_position in range(2):
                 self.player_position = player_position
+
+                # sort by valuations
+                order = states[:, player_position, 0].sort(axis=0)[1]
+                states = states[order]
                 observations = self.get_observations(states)
-                order = observations[:, 0].sort(axis=0)[1]
+
+                has_won_already = self._has_won_already(states, stage)
 
                 # get actual actions
                 actions = self.strategies[player_position](
@@ -493,40 +533,50 @@ class SequentialAuction(BaseEnvForVec):
                 )
 
                 # get BNE actions
-                actions_bne = self.strategies_bne[self.player_position](
-                    stage, observations[:, 0]
+                actions_bne = self.strategies_bne[player_position](
+                    stage, valuation=observations[:, 0], won=has_won_already
                 )
 
                 # covert to numpy
-                observations = observations[order, 0].detach().cpu().view(-1).numpy()
-                actions_array = actions.view(-1, 1)[order, ...].detach().cpu().numpy()
-                actions_mixed = (
-                    actions_mixed.view(-1)[order, ...].detach().cpu().numpy()
-                )
-                actions_bne = actions_bne.view(-1, 1)[order, ...].detach().cpu().numpy()
+                observations = observations[:, 0].detach().cpu().view(-1).numpy()
+                actions_array = actions.view(-1, 1).detach().cpu().numpy()
+                actions_mixed = actions_mixed.view(-1).detach().cpu().numpy()
+                actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
+                has_won_already = has_won_already.cpu().numpy()
 
                 # plotting
-                if stage == 0:
-                    drawing, = ax.plot(
-                        observations,
-                        actions_array,
-                        linestyle="dotted",
-                        marker="o",
-                        markevery=32,
-                        label=f"bidder {player_position} PPO",
-                    )
-                else:
-                    has_won_already = (
-                        (states[order, player_position, 1 : stage + 1].sum(axis=-1) > 0)
-                        .cpu()
-                        .numpy()
-                    )
-                    drawing, = ax.plot(
+                drawing, = ax.plot(
+                    observations[~has_won_already],
+                    actions_array[~has_won_already],
+                    linestyle="dotted",
+                    marker="o",
+                    markevery=32,
+                    label=f"bidder {player_position} PPO",
+                )
+                ax.plot(
+                    observations[~has_won_already],
+                    actions_bne[~has_won_already],
+                    linestyle="--",
+                    marker="*",
+                    markevery=32,
+                    color=drawing.get_color(),
+                    label=f"bidder {player_position} BNE",
+                )
+                ax.plot(
+                    observations,
+                    actions_mixed,
+                    ".",
+                    alpha=0.2,
+                    color=drawing.get_color(),
+                )
+                if stage > 0:
+                    ax.plot(
                         observations[~has_won_already],
                         actions_array[~has_won_already],
                         linestyle="dotted",
                         marker="o",
                         markevery=32,
+                        color=drawing.get_color(),
                         label=f"bidder {player_position} PPO",
                     )
                     ax.plot(
@@ -535,25 +585,19 @@ class SequentialAuction(BaseEnvForVec):
                         linestyle="dotted",
                         marker="x",
                         markevery=32,
-                        label=f"bidder {player_position} PPO (won)",
                         color=drawing.get_color(),
+                        label=f"bidder {player_position} PPO (won)",
                     )
-                ax.plot(
-                    observations,
-                    actions_mixed,
-                    ".",
-                    alpha=0.2,
-                    color=drawing.get_color(),
-                )
-                ax.plot(
-                    observations,
-                    actions_bne,
-                    linestyle="--",
-                    marker="*",
-                    markevery=32,
-                    color=drawing.get_color(),
-                    label=f"bidder {player_position} BNE",
-                )
+                    ax.plot(
+                        observations[has_won_already],
+                        actions_bne[has_won_already],
+                        linestyle="--",
+                        marker="*",
+                        markevery=32,
+                        color=drawing.get_color(),
+                        label=f"bidder {player_position} BNE",
+                    )
+
             lin = np.linspace(0, 1, 2)
             ax.plot(lin, lin, "--", color="grey")
             ax.set_xlabel("valuation $v$")
@@ -572,6 +616,8 @@ class SequentialAuction(BaseEnvForVec):
         writer.add_figure("images", fig, step)
         plt.close()
 
+        self.earliest_stage = _earliest_stage
+
         # reset seed
         self.seed(int(time.time()))
 
@@ -579,39 +625,58 @@ class SequentialAuction(BaseEnvForVec):
         """Evaluate learned strategies vs BNE."""
         # TODO: Currently not working for multi-stage: need cases?
         seed = 69
-
-        # calculate utility in self-play (learned strategies only)
-        actual_utility = 0
         self.seed(seed)
-        states = self.sample_new_states(num_samples)
-        observations = self.get_observations(states)
+
+        _earliest_stage = self.earliest_stage
+        self.earliest_stage = None
+
+        # calculate utility in self-play (learned strategies only) and the
+        # utility that the BNE strategy of the current player would achieve
+        actual_utility = 0
+        bne_utility = 0
+
+        actual_states = self.sample_new_states(num_samples)
+        actual_observations = self.get_observations(actual_states)
+
+        bne_states = self.sample_new_states(num_samples)
+        bne_observations = self.get_observations(bne_states)
+
         for stage in range(self.num_rounds_to_play):
             actions_actual = self.strategies[self.player_position](
-                observations, deterministic=True
+                actual_observations, deterministic=True
             )
-            observations, rewards, _, states = self.compute_step(states, actions_actual)
-        actual_utility += rewards.mean().item()
-        logger.record("eval/utility_actual", actual_utility)
+            actions_actual[actions_actual < 0] = 0
+            actions_bne_in_actual_env = self.strategies_bne[self.player_position](
+                stage,
+                valuation=actual_observations[:, 0],
+                won=self._has_won_already(actual_states, stage),
+            )
 
-        # calculate the utility that the BNE strategy of the current player
-        # would achieve
-        bne_utility = 0
-        self.seed(seed)
-        states = self.sample_new_states(num_samples)
-        observations = self.get_observations(states)
-        for stage in range(self.num_rounds_to_play):
+            # calculate distance in action space
+            L2 = tensor_norm(actions_actual, actions_bne_in_actual_env)
+            logger.record(f"eval/L2_action_stage{stage}", L2)
+
+            # act in env like the player would always follow the BNE
             actions_bne = self.strategies_bne[self.player_position](
-                stage, observations[:, 0]
+                stage,
+                valuation=bne_observations[:, 0],
+                won=self._has_won_already(bne_states, stage),
             )
-            observations, rewards, _, states = self.compute_step(states, actions_bne)
-        bne_utility += rewards.mean().item()
+
+            actual_observations, actual_rewards, _, actual_states = self.compute_step(
+                actual_states, actions_actual
+            )
+            bne_observations, bne_rewards, _, bne_states = self.compute_step(
+                bne_states, actions_bne
+            )
+
+        actual_utility += actual_rewards.mean().item()
+        bne_utility += bne_rewards.mean().item()
+
+        logger.record("eval/utility_actual", actual_utility)
         logger.record("eval/utility_bne", bne_utility)
 
-        # calculate distance in action space
-        # TODO: either log all stages or average over them
-        actions_actual[actions_actual < 0] = 0
-        L2 = tensor_norm(actions_actual, actions_bne)
-        logger.record("eval/action_norm_last_stage", L2)
+        self.earliest_stage = _earliest_stage
 
         # reset seed
         self.seed(int(time.time()))
