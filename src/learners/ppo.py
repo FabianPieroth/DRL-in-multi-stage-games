@@ -35,16 +35,19 @@ class VecPPO(PPO):
         # TODO: possibly try out pretraining
 
         super(VecPPO, self).__init__(**kwargs)
+        self._change_space_attributes_to_tensors()
 
+    def _change_space_attributes_to_tensors(self):
         # convert boundaries to tensors if necessary
-        if not isinstance(self.action_space.low, th.Tensor):
-            self.action_space.low = th.tensor(self.action_space.low)
-        if not isinstance(self.action_space.high, th.Tensor):
-            self.action_space.high = th.tensor(self.action_space.high)
+        if isinstance(self.action_space, gym.spaces.Box):
+            if not isinstance(self.action_space.low, th.Tensor):
+                self.action_space.low = th.tensor(self.action_space.low)
+            if not isinstance(self.action_space.high, th.Tensor):
+                self.action_space.high = th.tensor(self.action_space.high)
 
-        # move boundaries to right device
-        self.action_space.low = self.action_space.low.to(device=self.device)
-        self.action_space.high = self.action_space.high.to(device=self.device)
+            # move boundaries to right device
+            self.action_space.low = self.action_space.low.to(device=self.device)
+            self.action_space.high = self.action_space.high.to(device=self.device)
 
     def collect_rollouts(
         self,

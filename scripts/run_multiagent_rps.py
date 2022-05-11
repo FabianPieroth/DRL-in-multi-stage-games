@@ -51,7 +51,7 @@ def multi_agent_rps_main():
         ]
     )
 
-    # train the agent
+    # train the agents
     learners.learn(total_timesteps=100_000)
 
     return None

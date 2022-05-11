@@ -21,6 +21,10 @@ class BaseEnvForVec(ABC):
         self.device = device
         self.config = config
         self.num_agents = None
+        self.observation_spaces = None
+        self.action_spaces = None
+        self.observation_space = None
+        self.action_space = None
 
     @abstractmethod
     def to(self, device) -> Any:
@@ -124,6 +128,15 @@ class MATorchVecEnv(VecEnv):
 
         self.observation_spaces = model.observation_spaces
         self.action_spaces = model.action_spaces
+        self.observation_space = None
+        self.action_space = None
+
+    def set_env_for_current_agent(self, agent_id: int):
+        """Sets the environment to the view of provided agent. 
+        Needed to initialize leaners.
+        """
+        self.observation_space = self.observation_spaces[agent_id]
+        self.action_space = self.action_spaces[agent_id]
 
     def step_async(self, actions: np.ndarray) -> None:
         self.actions = actions

@@ -1,11 +1,9 @@
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-import numpy as np
 import torch
 from gym import spaces
 from gym.spaces import Space
 
-import src.utils_folder.spaces_utils as sp_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 
@@ -48,7 +46,7 @@ class RockPaperScissors(BaseEnvForVec):
         self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
 
         self.num_agents = self.rl_env_config["num_agents"]
-        self.state_shape = (self.num_agents, self.num_rounds_to_play + 2)
+        self.state_shape = (self.num_agents, 2)
 
         self.observation_spaces = self._init_observation_spaces()
         self.action_spaces = self._init_action_spaces()
@@ -56,9 +54,7 @@ class RockPaperScissors(BaseEnvForVec):
 
     def _init_observation_spaces(self) -> Dict[int, Space]:
         return {
-            agent_id: spaces.Box(
-                0, self.num_rounds_to_play, shape=(self.num_rounds_to_play,)
-            )
+            agent_id: spaces.Box(0, self.num_rounds_to_play, shape=(2,))
             for agent_id in range(self.num_agents)
         }
 
@@ -109,8 +105,8 @@ class RockPaperScissors(BaseEnvForVec):
                 ).view(-1, self.action_space_size)"""
 
         new_states = cur_states.detach().clone()
-        current_round = int(new_states[0, 0, -2].detach().cpu())
-        new_states[:, :, current_round] = actions  # Store played actions
+        # current_round = int(new_states[0, 0, -2].detach().cpu())
+        # new_states[:, :, current_round] = actions  # Store played actions
         new_states[:, :, -2] += 1.0  # Add current round
 
         # Reached last stage? (Independent from agent)
@@ -182,8 +178,7 @@ class RockPaperScissors(BaseEnvForVec):
 
         :param states: The current states of shape (num_env, num_agents,
             state_dim).
-        :returns observations: Dict of Observations of shape (num_env, num_agents,
-            num_rounds_to_play + 2).
+        :returns observations: Dict of Observations of shape (num_env, num_agents, 2).
         """
 
         return {agent_id: states[:, agent_id, :] for agent_id in range(self.num_agents)}
