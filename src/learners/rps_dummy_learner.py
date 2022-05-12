@@ -4,4 +4,8 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 
 class RPSDummyLearner:
-    pass
+    def __init__(self) -> None:
+        pass
+
+    def _setup_learn(self):
+        pass

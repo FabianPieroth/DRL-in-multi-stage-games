@@ -49,6 +49,85 @@ class VecPPO(PPO):
             self.action_space.low = self.action_space.low.to(device=self.device)
             self.action_space.high = self.action_space.high.to(device=self.device)
 
+    def prepare_rollout(self, env, callback):
+        assert self._last_obs is not None, "No previous observation was provided"
+        # Switch to eval mode (this affects batch norm / dropout)
+        self.policy.set_training_mode(False)
+
+        n_steps = 0
+        self.rollout_buffer.reset()
+        # Sample new weights for the state dependent exploration
+        if self.use_sde:
+            self.policy.reset_noise(env.num_envs)
+
+        callback.on_rollout_start()
+
+    def prepare_step(self, n_steps, env):
+        if (
+            self.use_sde
+            and self.sde_sample_freq > 0
+            and n_steps % self.sde_sample_freq == 0
+        ):
+            # Sample a new noise matrix
+            self.policy.reset_noise(env.num_envs)
+
+    def get_actions_with_data(self):
+        with th.no_grad():
+            # Convert to pytorch tensor or to TensorDict
+            obs_tensor = self._last_obs
+            actions, values, log_probs = self.policy.forward(obs_tensor)
+
+        # Rescale and perform action
+        clipped_actions = actions
+        # Clip the actions to avoid out of bound error
+        if isinstance(self.action_space, gym.spaces.Box):
+            clipped_actions = th.clip(
+                actions, self.action_space.low, self.action_space.high
+            )
+        return clipped_actions, actions, (values, log_probs)
+
+    def prepare_actions_for_buffer(self, actions):
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            # Reshape in case of discrete action
+            actions = actions.reshape(-1, 1)
+        return actions
+
+    def handle_dones(self, dones, infos, rewards):
+        # change for vectorized capability
+        # TODO: limitation: only constant length games
+        if dones.all():
+            terminal_obs = infos["terminal_observation"]
+            with th.no_grad():
+                terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
+            rewards += self.gamma * terminal_value
+        return rewards
+
+    def add_data_to_replay_buffer(self, actions, rewards, additional_actions_data):
+        values, log_probs = additional_actions_data
+        self.rollout_buffer.add(
+            self._last_obs,
+            actions,
+            rewards,
+            self._last_episode_starts,
+            values,
+            log_probs,
+        )
+
+    def update_internal_state_after_step(self, new_obs, dones):
+        self._last_obs = new_obs
+        self._last_episode_starts = dones
+
+    def postprocess_rollout(self, new_obs, dones):
+        with th.no_grad():
+            # Compute value for the last timestep
+            values = self.policy.predict_values(new_obs)[
+                :, 0
+            ]  # TODO why do we need to index here?
+
+        self.rollout_buffer.compute_returns_and_advantage(
+            last_values=values, dones=dones
+        )
+
     def collect_rollouts(
         self,
         env: VecEnv,
@@ -123,7 +202,7 @@ class VecPPO(PPO):
                 actions = actions.reshape(-1, 1)
 
             # change for vectorized capability
-            # limitation: only constant length games
+            # TODO: limitation: only constant length games
             if dones.all():
                 terminal_obs = infos["terminal_observation"]
                 with th.no_grad():
