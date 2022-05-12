@@ -46,10 +46,27 @@ class MultiAgentCoordinator:
         ]"""
 
     def get_ma_action(self):
-        pass
+        actions_for_env = {}
+        actions = {}
+        additional_actions_data = {}
+        for agent_id, learner in self.learners.items():
+            sa_actions_for_env, sa_actions, sa_additional_actions_data = learner.get_actions_with_data(
+                agent_id
+            )
+            actions_for_env[agent_id] = sa_actions_for_env
+            actions[agent_id] = sa_actions
+            additional_actions_data[agent_id] = sa_additional_actions_data
+        return actions_for_env, actions, additional_actions_data
 
-    def prepare_ma_actions_for_buffer(self):
-        pass
+    def prepare_ma_actions_for_buffer(self, actions: Dict[int, torch.Tensor]):
+        adapted_actions_dict = {}
+        for (agent_id, sa_actions), learner in zip(
+            actions.items(), self.learners.values()
+        ):
+            adapted_actions_dict[agent_id] = learner.prepare_actions_for_buffer(
+                sa_actions
+            )
+        return adapted_actions_dict
 
     def collect_ma_rollouts(self, callbacks, n_rollout_steps):
         """
@@ -75,7 +92,7 @@ class MultiAgentCoordinator:
 
             new_obs, rewards, dones, infos = self.env.step(actions_for_env)
 
-            self.num_timesteps += self.env.num_envs
+            self.update_learner_timesteps()
 
             # Give access to local variables
             for callback in callbacks:
@@ -87,7 +104,7 @@ class MultiAgentCoordinator:
 
             n_steps += 1
 
-            actions = self.prepare_ma_actions_for_buffer()
+            actions = self.prepare_ma_actions_for_buffer(actions)
 
             rewards = self.handle_ma_dones(rewards, dones, infos)
 
@@ -95,10 +112,7 @@ class MultiAgentCoordinator:
                 actions, additional_actions_data, rewards
             )
 
-            for agent_id, learner in self.learners.items():
-                learner.update_internal_state_after_step(
-                    new_obs[agent_id], dones[agent_id]
-                )
+            self.update_ma_external_state_after_step(new_obs, dones)
 
         self.postprocess_ma_rollout(new_obs, dones)
 
@@ -107,28 +121,39 @@ class MultiAgentCoordinator:
 
         return True
 
+    def update_ma_external_state_after_step(self, new_obs, dones):
+        for _, learner in self.learners.items():
+            learner.update_internal_state_after_step(new_obs, dones)
+
+    def update_learner_timesteps(self):
+        for learner in self.learners.values():
+            learner.num_timesteps += self.env.num_envs
+
     def postprocess_ma_rollout(self, new_obs, dones):
         for agent_id, learner in self.learners.items():
-            learner.postprocess_rollout(new_obs[agent_id], dones[agent_id])
+            learner.postprocess_rollout(new_obs[agent_id], dones)
 
     def add_ma_data_to_replay_buffers(self, actions, additional_actions_data, rewards):
         for agent_id, learner in self.learners.items():
             learner.add_data_to_replay_buffer(
-                actions[agent_id], rewards[agent_id], additional_actions_data[agent_id]
+                actions[agent_id],
+                rewards[agent_id],
+                additional_actions_data[agent_id],
+                agent_id,
             )
 
     def handle_ma_dones(self, rewards, dones, infos):
         for agent_id, learner in self.learners.items():
             rewards[agent_id] = learner.handle_dones(
-                dones[agent_id], infos[agent_id], rewards[agent_id]
+                dones, infos, rewards[agent_id], agent_id
             )
         return rewards
 
     def update_ma_info_buffer(self, infos):
-        # TODO check if we need this
+        # TODO check if we need this; the info coming out of VecEnv is not agent specific
         # change for vectorized capability: ignore infos
-        for agent_id, learner in self.learners.items():
-            learner._update_info_buffer(infos[agent_id])
+        for _, learner in self.learners.items():
+            learner._update_info_buffer(infos)
 
     def prepare_ma_step(self, n_steps):
         for learner in self.learners.values():
@@ -139,8 +164,19 @@ class MultiAgentCoordinator:
             learner.prepare_rollout(self.env, callback)
 
     def _get_n_rollout_steps_from_learners(self) -> int:
-        print("give a warning if this is not identical!")
-        return 512
+        n_rollout_steps = None
+        for agent_id, learner in self.learners.items():
+            if learner.n_steps is not None and n_rollout_steps is None:
+                n_rollout_steps = learner.n_steps
+            elif learner.n_steps is not None and n_rollout_steps is not None:
+                if learner.n_steps != n_rollout_steps:
+                    raise ValueError(
+                        "Cannot handle algorithms with different rollout lengths! Check for agent: "
+                        + str(agent_id)
+                    )
+        if n_rollout_steps is None:
+            return 2
+        return n_rollout_steps
 
     def _update_remaining_progress(self, total_timesteps):
         for learner in self.learners.values():
@@ -177,12 +213,12 @@ class MultiAgentCoordinator:
                 learner.logger.dump(step=learner.num_timesteps)
 
             # Custom evaluation
-            if iteration % eval_freq == 0:
-                self.env.model.log_plotting(writer=self.writer, step=iteration)
-                self.env.model.log_vs_bne(logger=learner.logger)
-                # # RPS eval
-                # eval_strategy = lambda obs: learner.policy(obs)[0]
-                # eval_rps_strategy(learner.env, player_position, eval_strategy)
+            # if iteration % eval_freq == 0:
+            # self.env.model.log_plotting(writer=self.writer, step=iteration)
+            # self.env.model.log_vs_bne(logger=learner.logger)
+            # # RPS eval
+            # eval_strategy = lambda obs: learner.policy(obs)[0]
+            # eval_rps_strategy(learner.env, player_position, eval_strategy)
 
     def train_policies(self):
         # TODO: check if policy sharing needs to be handled differently
@@ -230,7 +266,7 @@ class MultiAgentCoordinator:
 
             self._update_remaining_progress(total_timesteps)
 
-            self._display_and_log_training_progress()
+            self._display_and_log_training_progress(iteration, log_interval, eval_freq)
 
             self.train_policies()
 

@@ -2,7 +2,7 @@ valid_envs: ["rockpaperscissors", "sequential_auction"]
 log_path: './logs/'
 device: 1
 num_envs: 4096
-total_training_steps: 100_000
+total_training_steps: 10_000_000
 algorithms: ["ppo", "ppo", "ppo"]
 policy_sharing: false
 defaults:

@@ -80,11 +80,11 @@ class RockPaperScissors(BaseEnvForVec):
         states[:, :, -1] = self.num_rounds_to_play
         return states
 
-    def compute_step(self, cur_states, actions: torch.Tensor):
+    def compute_step(self, cur_states, actions: Dict[int, torch.Tensor]):
         """Compute a step in the game.
         
         :param cur_states: The current states of the games.
-        :param actions: joint action.
+        :param actions: Dict[agent_id, actions]
         :return observations:
         :return rewards:
         :return episode-done markers:
@@ -110,6 +110,7 @@ class RockPaperScissors(BaseEnvForVec):
         new_states[:, :, -2] += 1.0  # Add current round
 
         # Reached last stage? (Independent from agent)
+        # TODO: dones cannot handle individual agents finishing before episode ends!
         dones = new_states[:, 0, -2] >= new_states[:, 0, -1]
 
         observations = self.get_observations(new_states)
@@ -118,7 +119,7 @@ class RockPaperScissors(BaseEnvForVec):
 
         return observations, rewards, dones, new_states
 
-    def _compute_rewards(self, actions: torch.Tensor) -> torch.Tensor:
+    def _compute_rewards(self, actions: Dict[int, torch.Tensor]) -> torch.Tensor:
         """Computes the rewards for the played games of Rock-Paper-Scissors for
         the player at `self.player_position`.
 
@@ -128,7 +129,7 @@ class RockPaperScissors(BaseEnvForVec):
         We have a cycle Rock < Paper < Scissors < Rock.
 
         Args:
-            actions (torch.Tensor): shape=(num_envs, num_agents)
+            actions Dict[int, torch.Tensor]: each tensor of shape (num_envs, )
 
         Returns:
             torch.Tensor: shape=(num_envs, num_agents)
@@ -137,6 +138,10 @@ class RockPaperScissors(BaseEnvForVec):
             draw: 0
             If all three options occur, there is always a draw.
         """
+
+        # stack actions to single tensor
+        actions = torch.stack([sa_action for sa_action in actions.values()], dim=1)
+
         rewards = torch.zeros(
             (actions.shape[0], self.num_agents), device=actions.device
         )

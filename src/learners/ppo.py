@@ -54,7 +54,6 @@ class VecPPO(PPO):
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
 
-        n_steps = 0
         self.rollout_buffer.reset()
         # Sample new weights for the state dependent exploration
         if self.use_sde:
@@ -71,10 +70,10 @@ class VecPPO(PPO):
             # Sample a new noise matrix
             self.policy.reset_noise(env.num_envs)
 
-    def get_actions_with_data(self):
+    def get_actions_with_data(self, agent_id: int):
         with th.no_grad():
             # Convert to pytorch tensor or to TensorDict
-            obs_tensor = self._last_obs
+            obs_tensor = self._last_obs[agent_id]
             actions, values, log_probs = self.policy.forward(obs_tensor)
 
         # Rescale and perform action
@@ -92,20 +91,22 @@ class VecPPO(PPO):
             actions = actions.reshape(-1, 1)
         return actions
 
-    def handle_dones(self, dones, infos, rewards):
+    def handle_dones(self, dones, infos, rewards, agent_id: int):
         # change for vectorized capability
         # TODO: limitation: only constant length games
         if dones.all():
-            terminal_obs = infos["terminal_observation"]
+            terminal_obs = infos["terminal_observation"][agent_id]
             with th.no_grad():
                 terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
             rewards += self.gamma * terminal_value
         return rewards
 
-    def add_data_to_replay_buffer(self, actions, rewards, additional_actions_data):
+    def add_data_to_replay_buffer(
+        self, actions, rewards, additional_actions_data, agent_id: int
+    ):
         values, log_probs = additional_actions_data
         self.rollout_buffer.add(
-            self._last_obs,
+            self._last_obs[agent_id],
             actions,
             rewards,
             self._last_episode_starts,
@@ -117,10 +118,10 @@ class VecPPO(PPO):
         self._last_obs = new_obs
         self._last_episode_starts = dones
 
-    def postprocess_rollout(self, new_obs, dones):
+    def postprocess_rollout(self, sa_new_obs, dones):
         with th.no_grad():
             # Compute value for the last timestep
-            values = self.policy.predict_values(new_obs)[
+            values = self.policy.predict_values(sa_new_obs)[
                 :, 0
             ]  # TODO why do we need to index here?
 
