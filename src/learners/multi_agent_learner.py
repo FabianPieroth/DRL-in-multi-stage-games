@@ -100,7 +100,7 @@ class MultiAgentCoordinator:
                 if callback.on_step() is False:
                     return False
 
-            self.update_ma_info_buffer(infos)
+            self.update_ma_info_buffer(infos, dones)
 
             n_steps += 1
 
@@ -149,11 +149,11 @@ class MultiAgentCoordinator:
             )
         return rewards
 
-    def update_ma_info_buffer(self, infos):
+    def update_ma_info_buffer(self, infos, dones):
         # TODO check if we need this; the info coming out of VecEnv is not agent specific
         # change for vectorized capability: ignore infos
         for _, learner in self.learners.items():
-            learner._update_info_buffer(infos)
+            learner._update_info_buffer(infos, dones)
 
     def prepare_ma_step(self, n_steps):
         for learner in self.learners.values():
@@ -199,11 +199,29 @@ class MultiAgentCoordinator:
                 ):
                     learner.logger.record(
                         "rollout/ep_rew_mean",
-                        safe_mean([ep_info["r"] for ep_info in learner.ep_info_buffer]),
+                        torch.mean(
+                            torch.stack(
+                                [
+                                    ep_info[agent_id]["sa_episode_returns"]
+                                    for ep_info in learner.ep_info_buffer
+                                ]
+                            )
+                        )
+                        .detach()
+                        .item(),
                     )
                     learner.logger.record(
                         "rollout/ep_len_mean",
-                        safe_mean([ep_info["l"] for ep_info in learner.ep_info_buffer]),
+                        torch.mean(
+                            torch.stack(
+                                [
+                                    ep_info[agent_id]["sa_episode_lengths"]
+                                    for ep_info in learner.ep_info_buffer
+                                ]
+                            )
+                        )
+                        .detach()
+                        .item(),
                     )
                 learner.logger.record("time/fps", fps)
                 learner.logger.record(

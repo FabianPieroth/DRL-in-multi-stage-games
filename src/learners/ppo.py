@@ -346,7 +346,7 @@ class VecPPO(PPO):
 
         return total_timesteps, callback
 
-    def _update_info_buffer(self, infos: List[Dict[str, Any]]) -> None:
+    def _update_info_buffer(self, infos: List[Dict[str, Any]], dones=None) -> None:
         """
         Retrieve reward, episode length, episode success and update the buffer
         if using Monitor wrapper or a GoalEnv.
@@ -355,10 +355,14 @@ class VecPPO(PPO):
         :param dones: Termination signals
         NOTE: Only supports fixed length games.
         """
-        maybe_ep_info = infos.get("episode")
+        if dones is None:
+            dones = th.tensor([False])
+        if dones.all().detach().item():
+            self.ep_info_buffer.extend([infos])
+        """maybe_ep_info = infos.get("episode")
         maybe_is_success = infos.get("is_success")
         if maybe_ep_info is not None:
-            self.ep_info_buffer.extend([maybe_ep_info])
+            self.ep_info_buffer.extend([maybe_ep_info])"""
 
     def train(self) -> None:
         """

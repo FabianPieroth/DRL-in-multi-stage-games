@@ -124,6 +124,13 @@ class MATorchVecEnv(VecEnv):
             "returns": torch.zeros((num_envs,), device=device),
             "lengths": torch.zeros((num_envs,), device=device),
         }
+        self.sa_ep_stats = {
+            agent_id: {
+                "returns": torch.zeros((num_envs,), device=device),
+                "lengths": torch.zeros((num_envs,), device=device),
+            }
+            for agent_id in range(self.model.num_agents)
+        }
         # self.render_n_envs = render_num_envs
 
         self.observation_spaces = model.observation_spaces
@@ -173,7 +180,22 @@ class MATorchVecEnv(VecEnv):
         episode_lengths = self.ep_stats["lengths"][dones]
         self.ep_stats["returns"][dones] = 0
         self.ep_stats["lengths"][dones] = 0
+
         infos = dict(episode_returns=episode_returns, episode_lengths=episode_lengths)
+
+        for agent_id in range(self.model.num_agents):
+            self.sa_ep_stats[agent_id]["returns"] += rewards[agent_id]
+            self.sa_ep_stats[agent_id]["lengths"] += torch.ones(
+                (self.num_envs,), device=self.device
+            )
+            sa_episode_returns = self.sa_ep_stats[agent_id]["returns"][dones]
+            sa_episode_lengths = self.sa_ep_stats[agent_id]["lengths"][dones]
+            self.sa_ep_stats[agent_id]["returns"][dones] = 0
+            self.sa_ep_stats[agent_id]["lengths"][dones] = 0
+            infos[agent_id] = dict(
+                sa_episode_returns=sa_episode_returns,
+                sa_episode_lengths=sa_episode_lengths,
+            )
 
         if dones.any():
             infos["terminal_observation"] = self.model.get_observations(

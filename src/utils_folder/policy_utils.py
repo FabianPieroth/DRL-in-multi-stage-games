@@ -5,6 +5,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.ppo import VecPPO
+from src.learners.rps_dummy_learner import RPSDummyLearner
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
@@ -35,7 +36,12 @@ def get_policy_for_agent(
             verbose=0,
         )
     elif algo_name == "rps_single_action" and isinstance(env.model, RockPaperScissors):
-        pass
+        return RPSDummyLearner(
+            agent_id,
+            config["algorithm_configs"]["rps_single_action"],
+            env=env,
+            device=config["device"],
+        )
     else:
         raise ValueError(
             "No valid algorithm provided, check again for "
