@@ -21,7 +21,7 @@ class MultiAgentCoordinator:
 
         self.learners = pl_ut.get_policies(config, env)
         # TODO: make this adaptable to different policy types
-        self.writer = SummaryWriter(log_dir=self.learners[0].tensorboard_log)
+        self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
 
         # check for possible symmetries
         """if self.policy_sharing:
@@ -197,6 +197,7 @@ class MultiAgentCoordinator:
                     len(learner.ep_info_buffer) > 0
                     and len(learner.ep_info_buffer[0]) > 0
                 ):
+                    # TODO: not working for MABaseAlgorithm leaner!
                     learner.logger.record(
                         "rollout/ep_rew_mean",
                         torch.mean(
@@ -250,7 +251,7 @@ class MultiAgentCoordinator:
         log_interval: int = 1,
         eval_freq: int = 20,
         n_eval_episodes: int = 5,
-        tb_log_name: str = "MultiAgentPPO",
+        tb_log_name: str = "MultiAgent",
         reset_num_timesteps: bool = True,
     ) -> "OnPolicyAlgorithm":
         """Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`"""
@@ -379,14 +380,14 @@ class MultiAgentCoordinator:
 
         for agent_id, learner in self.learners.items():
             timesteps, callbacks[agent_id] = learner._setup_learn(
-                total_timesteps,
-                None,
-                callbacks[agent_id],
-                eval_freq,
-                n_eval_episodes,
-                None,
-                reset_num_timesteps,
-                tb_log_name,
+                total_timesteps=total_timesteps,
+                eval_env=None,
+                callback=callbacks[agent_id],
+                eval_freq=eval_freq,
+                n_eval_episodes=n_eval_episodes,
+                log_path=self.config["experiment_log_path"],
+                reset_num_timesteps=reset_num_timesteps,
+                tb_log_name=tb_log_name,
             )
             callbacks[agent_id].on_training_start(locals(), globals())
             total_timesteps = max(timesteps, total_timesteps)

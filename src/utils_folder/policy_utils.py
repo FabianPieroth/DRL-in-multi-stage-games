@@ -32,7 +32,7 @@ def get_policy_for_agent(
             device=config["device"],
             n_steps=ppo_config["n_rollout_steps"],
             batch_size=ppo_config["n_rollout_steps"] * config["num_envs"],
-            tensorboard_log=f"logs/multi_agent_{agent_id}",
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
             verbose=0,
         )
     elif algo_name == "rps_single_action" and isinstance(env.model, RockPaperScissors):
@@ -41,6 +41,8 @@ def get_policy_for_agent(
             config["algorithm_configs"]["rps_single_action"],
             env=env,
             device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
         )
     else:
         raise ValueError(

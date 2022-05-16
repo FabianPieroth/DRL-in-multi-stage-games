@@ -29,7 +29,14 @@ class RPSDummyLearner(MABaseAlgorithm):
         sde_sample_freq: int = -1,
         supported_action_spaces: Optional[Tuple[gym.spaces.Space, ...]] = None,
     ):
-        super().__init__(agent_id, config, policy, env, device=device)
+        super().__init__(
+            agent_id,
+            config,
+            policy,
+            env,
+            device=device,
+            tensorboard_log=tensorboard_log,
+        )
         self.dummy_action = config["action"]
         self.action_dict = {"ROCK": 0, "PAPER": 1, "SCISSORS": 2}
 

@@ -1,9 +1,11 @@
 valid_envs: ["rockpaperscissors", "sequential_auction"]
 log_path: './logs/'
+experiment_log_path: ''
+experiment_name: ''
 device: 1
 num_envs: 4096
 total_training_steps: 100_000_000
-algorithms: ["ppo", "rps_single_action", "rps_single_action"]
+algorithms: ["ppo", "rps_single_action", "ppo"]
 policy_sharing: false
 defaults:
   - rl_envs: rockpaperscissors
