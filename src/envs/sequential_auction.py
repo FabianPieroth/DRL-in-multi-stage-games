@@ -193,10 +193,7 @@ class SequentialAuction(BaseEnvForVec):
         reduced_observation_space: bool = False,
     ):
         super().__init__(config, device)
-        self.rl_env_config = config
-        self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
-
-        self.num_agents = self.rl_env_config["num_agents"]
+        self.num_rounds_to_play = self.config["num_rounds_to_play"]
 
         # list of indices which maps `player_position` to its strategy index
         self.policy_symmetries = [0] * self.num_agents
@@ -213,48 +210,17 @@ class SequentialAuction(BaseEnvForVec):
             raise NotImplementedError("Payment rule unknown.")
 
         # unit-demand
-        self.valuation_size = 1
-        self.action_size = 1
+        self.valuation_size = self.config["valuation_size"]
+        self.action_size = self.config["action_size"]
 
         # set up observation space
         # NOTE: does not support non unit-demand
-        self.reduced_observation_space = reduced_observation_space
-        if self.reduced_observation_space:
-            # observations: valuation, allocations (up to last stage)
-            raise NotImplementedError(
-                "Currently wrongly disregards previous alloations."
-            )
-            low = [0.0] + [0.0] * (self.num_rounds_to_play - 1)
-            high = [1.0] + [1.0] * (self.num_rounds_to_play - 1)
-        else:
-            # observations: valuation, allocation (including in which stage
-            # obtained), previous prices (including in which stage payed)
-            low = (
-                [0.0]
-                + [0.0] * self.num_rounds_to_play
-                + [-1.0] * (self.num_rounds_to_play * 2)
-            )
-            high = (
-                [1.0]
-                + [1.0] * self.num_rounds_to_play
-                + [np.inf] * (self.num_rounds_to_play * 2)
-            )
-        self.observation_space = spaces.Box(low=np.array(low), high=np.array(high))
-
-        # actions
-        self.action_space = spaces.Box(
-            low=np.array([0] * self.action_size),
-            high=np.array([np.inf] * self.action_size),
-        )
-
-        # positions
-        self.player_position = player_position
 
         # dummy strategies: these can be overwritten by strategies that are
         # learned over time in repeated self-play.
         self.strategies = [
             lambda obs, deterministic=True: torch.zeros(
-                (obs.shape[0], self.action_size), device=obs.device
+                (obs.shape[0], self.config["action_size"]), device=obs.device
             )
             for _ in range(self.num_agents)
         ]
@@ -268,6 +234,40 @@ class SequentialAuction(BaseEnvForVec):
             )
             for i in range(self.num_agents)
         ]
+
+    def _get_num_agents(self) -> int:
+        return self.config["num_agents"]
+
+    def _init_observation_spaces(self):
+        """Returns dict with agent - observation space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: observation space
+        """
+        low = (
+            [0.0]
+            + [0.0] * self.config["num_rounds_to_play"]
+            + [-1.0] * (self.config["num_rounds_to_play"] * 2)
+        )
+        high = (
+            [1.0]
+            + [1.0] * self.config["num_rounds_to_play"]
+            + [np.inf] * (self.config["num_rounds_to_play"] * 2)
+        )
+        return {
+            agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
+            for agent_id in range(self.num_agents)
+        }
+
+    def _init_action_spaces(self):
+        """Returns dict with agent - action space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: action space
+        """
+        sa_action_space = spaces.Box(
+            low=np.float32([0] * self.config["action_size"]),
+            high=np.float32([np.inf] * self.config["action_size"]),
+        )
+        return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
 
     def to(self, device) -> Any:
         """Set device"""
@@ -299,7 +299,7 @@ class SequentialAuction(BaseEnvForVec):
             device=self.device,
         )
 
-        # ipv symmetric unifrom priors
+        # ipv symmetric uniform priors
         states[:, :, : self.valuation_size].uniform_(0, 1)
 
         # dummy prices
@@ -319,17 +319,7 @@ class SequentialAuction(BaseEnvForVec):
         :return updated_states:
         """
         # append opponents' actions
-        action_profile = actions.view(-1, 1, self.action_size).repeat(
-            1, self.num_agents, 1
-        )
-        for opponent_position, opponent_strategy in enumerate(self.strategies):
-            if opponent_position != self.player_position:
-                opponent_obs = self.get_observations(
-                    cur_states, player_position=opponent_position
-                )
-                action_profile[:, opponent_position, :] = opponent_strategy(
-                    opponent_obs, deterministic=True
-                ).view(-1, self.action_size)
+        action_profile = torch.stack(tuple(actions.values()), dim=1)
 
         # run auction round
         allocations, payments = self.mechanism.run(action_profile)
@@ -377,23 +367,30 @@ class SequentialAuction(BaseEnvForVec):
 
         TODO: do we want intermediate rewards or not?
         """
+
+        return {
+            agent_id: self._compute_sa_rewards(states, stage, agent_id)
+            for agent_id in range(self.num_agents)
+        }
+
+    def _compute_sa_rewards(self, states: torch.Tensor, stage: int, agent_id: int):
         valuations = states[
             :,
-            self.player_position,
+            agent_id,
             self.valuations_start_index : self.valuations_start_index
             + self.valuation_size,
         ].clone()
         # only consider this stage's allocation
         allocations = states[
             :,
-            self.player_position,
+            agent_id,
             self.allocations_start_index
             + stage * self.valuation_size : self.allocations_start_index
             + (stage + 1) * self.valuation_size,
         ]
         payments = states[
             :,
-            self.player_position,
+            agent_id,
             self.payments_start_index + stage : self.payments_start_index + (stage + 1),
         ]
 
@@ -404,7 +401,7 @@ class SequentialAuction(BaseEnvForVec):
             onwer_mask = (
                 states[
                     :,
-                    self.player_position,
+                    agent_id,
                     self.allocations_start_index : self.allocations_start_index
                     + stage * self.valuation_size,
                 ].sum(axis=1)
@@ -413,13 +410,9 @@ class SequentialAuction(BaseEnvForVec):
             valuations[onwer_mask] = 0
 
         # quasi-linear utility
-        rewards = valuations * allocations - payments
+        return torch.sum(valuations * allocations - payments, dim=1)
 
-        return rewards.view(-1)
-
-    def get_observations(
-        self, states: torch.Tensor, player_position: int = None
-    ) -> torch.Tensor:
+    def get_observations(self, states: torch.Tensor) -> torch.Tensor:
         """Return the observations at the player at `player_position`.
 
         :param states: The current states of shape (num_env, num_agents,
@@ -431,19 +424,14 @@ class SequentialAuction(BaseEnvForVec):
             valuation and a vector of allocations and payments (for each stage)
             and the public observation consits of published prices.
         """
-        if player_position is None:
-            player_position = self.player_position
-
         # obs consits of: own valuations, own allocations, own payments and
         # published (here = highest payments)
-        obs_private = states[:, player_position, :]
-
-        if self.reduced_observation_space:
-            return obs_private[:, : -self.num_rounds_to_play - 1]
-
         obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
-
-        return torch.concat((obs_private, obs_public), axis=1)
+        observation_dict = {
+            agent_id: torch.concat((states[:, agent_id, :], obs_public), axis=1)
+            for agent_id in range(self.num_agents)
+        }
+        return observation_dict
 
     def render(self, state):
         return state

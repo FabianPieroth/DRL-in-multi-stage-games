@@ -8,6 +8,6 @@ total_training_steps: 100_000_000
 algorithms: ["ppo", "ppo", "ppo"]
 policy_sharing: false
 defaults:
-  - rl_envs: rockpaperscissors
+  - rl_envs: sequential_auction
   - algorithm_configs: all_algos
   - _self_
