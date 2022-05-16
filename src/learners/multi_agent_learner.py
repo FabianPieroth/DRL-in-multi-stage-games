@@ -176,6 +176,8 @@ class MultiAgentCoordinator:
                     )
         if n_rollout_steps is None:
             return 2
+        if self.config["policy_sharing"]:
+            n_rollout_steps = int(n_rollout_steps / self.env.model.num_agents)
         return n_rollout_steps
 
     def _update_remaining_progress(self, total_timesteps):
@@ -240,7 +242,7 @@ class MultiAgentCoordinator:
             # eval_rps_strategy(learner.env, player_position, eval_strategy)
 
     def train_policies(self):
-        # TODO: check if policy sharing needs to be handled differently
+        # TODO: check if policy sharing needs to be handled differently - takes longer than independent policies right now!
         for learner in self.learners.values():
             learner.train()
 
@@ -295,75 +297,6 @@ class MultiAgentCoordinator:
             callback.on_training_end()
 
         return self
-        """for (agent_id, learner), callback in zip(self.learners.items(), callbacks):
-
-            # # Testing: Dummy non-learner
-            # if player_position == 1:
-            #     continue
-
-            # Set actively learning player
-            learner.env.model.player_position = agent_id
-            # TODO should be equivalent to self.env.player_position
-
-            continue_training = learner.collect_rollouts(
-                learner.env,
-                callback,
-                learner.rollout_buffer,
-                n_rollout_steps=learner.n_steps,
-            )
-
-            if continue_training is False:
-                break
-
-            learner._update_current_progress_remaining(
-                learner.num_timesteps, total_timesteps
-            )
-
-            # Display training infos
-            if log_interval is not None and iteration % log_interval == 0:
-                fps = int(
-                    (learner.num_timesteps - learner._num_timesteps_at_start)
-                    / (time.time() - learner.start_time)
-                )
-                if (
-                    len(learner.ep_info_buffer) > 0
-                    and len(learner.ep_info_buffer[0]) > 0
-                ):
-                    learner.logger.record(
-                        "rollout/ep_rew_mean",
-                        safe_mean(
-                            [ep_info["r"] for ep_info in learner.ep_info_buffer]
-                        ),
-                    )
-                    learner.logger.record(
-                        "rollout/ep_len_mean",
-                        safe_mean(
-                            [ep_info["l"] for ep_info in learner.ep_info_buffer]
-                        ),
-                    )
-                learner.logger.record("time/fps", fps)
-                learner.logger.record(
-                    "time/time_elapsed", int(time.time() - learner.start_time)
-                )
-                learner.logger.record("time/total_timesteps", learner.num_timesteps)
-                learner.logger.dump(step=learner.num_timesteps)
-
-            # Custom evaluation
-            if iteration % eval_freq == 0:
-                self.env.model.log_plotting(writer=self.writer, step=iteration)
-                self.env.model.log_vs_bne(logger=learner.logger)
-                # # RPS eval
-                # eval_strategy = lambda obs: learner.policy(obs)[0]
-                # eval_rps_strategy(learner.env, player_position, eval_strategy)
-
-            learner.train()
-
-        iteration += 1
-
-    for callback in callbacks:
-        callback.on_training_end()
-
-    return self"""
 
     def _setup_learners_for_training(
         self,

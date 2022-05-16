@@ -26,11 +26,14 @@ def get_policy_for_agent(
     env.set_env_for_current_agent(agent_id)
     if algo_name == "ppo":
         ppo_config = config["algorithm_configs"]["ppo"]
+        n_rollout_steps = ppo_config["n_rollout_steps"]
+        if config["policy_sharing"]:
+            n_rollout_steps *= env.model.num_agents
         return VecPPO(
             policy=ppo_config["policy"],
             env=env,
             device=config["device"],
-            n_steps=ppo_config["n_rollout_steps"],
+            n_steps=n_rollout_steps,
             batch_size=ppo_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
             verbose=0,
