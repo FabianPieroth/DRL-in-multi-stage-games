@@ -1,4 +1,5 @@
 import datetime
+import warnings
 from typing import Dict
 
 import hydra
@@ -21,13 +22,27 @@ def get_config():
 
 def enrich_config(config: Dict):
     # TODO: This is tedious as the key needs to exist in the yaml file before one can assign a new value
+    env_specific_log_path_extension = get_env_log_path_extension(config)
     config["experiment_log_path"] = (
         config["log_path"]
         + config["rl_envs"]["name"]
+        + get_env_log_path_extension(config)
         + "/"
         + datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
         + "/"
     )
+
+
+def get_env_log_path_extension(config: Dict) -> str:
+    if config["rl_envs"]["name"] == "rockpaperscissors":
+        return ""
+    elif config["rl_envs"]["name"] == "sequential_auction":
+        return "/" + config["rl_envs"]["mechanism_type"]
+    else:
+        warnings.warn(
+            "No env log path extension specified for: " + config["rl_envs"]["name"]
+        )
+        return ""
 
 
 def main():
