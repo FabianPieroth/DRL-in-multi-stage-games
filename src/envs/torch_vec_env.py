@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, U
 import gym
 import numpy as np
 import torch
+from gym.spaces import Space
 from stable_baselines3.common.vec_env import VecEnv
 
 VecEnvIndices = Union[None, int, Iterable[int]]
@@ -15,16 +16,39 @@ TorchVecEnvStepReturn = Tuple[
 
 
 class BaseEnvForVec(ABC):
-    """TODO"""
+    """Base Environment used for GPU based environment inference.
+    Inherit from this class when writing a new env. Use MATorchVecEnv
+    to wrap it."""
 
     def __init__(self, config: Dict, device):
         self.device = device
         self.config = config
-        self.num_agents = None
-        self.observation_spaces = None
-        self.action_spaces = None
+        self.num_agents = self._get_num_agents()
+        self.observation_spaces = self._init_observation_spaces()
+        self.action_spaces = self._init_action_spaces()
         self.observation_space = None
         self.action_space = None
+
+    @abstractmethod
+    def _get_num_agents(self) -> int:
+        """
+        Returns:
+            int: number of agents in env
+        """
+
+    @abstractmethod
+    def _init_observation_spaces(self) -> Dict[int, Space]:
+        """Returns dict with agent - observation space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: observation space
+        """
+
+    @abstractmethod
+    def _init_action_spaces(self) -> Dict[int, Space]:
+        """Returns dict with agent - action space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: action space
+        """
 
     @abstractmethod
     def to(self, device) -> Any:
@@ -38,9 +62,8 @@ class BaseEnvForVec(ABC):
         return self
 
     @abstractmethod
-    def sample_new_states(self, n: int) -> Any:
-        """?
-
+    def sample_new_states(self, n: int) -> torch.Tensor:
+        """
         Args:
             n (int): Number of states to sample.
 
@@ -65,7 +88,7 @@ class BaseEnvForVec(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_observations(self, states) -> Any:
+    def get_observations(self, states) -> torch.Tensor:
         """Takes a number of states and returns the corresponding observations for the agents.
 
         Args:

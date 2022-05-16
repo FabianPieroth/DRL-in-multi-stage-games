@@ -6,55 +6,25 @@ from gym.spaces import Space
 
 from src.envs.torch_vec_env import BaseEnvForVec
 
-
-def eval_rps_strategy(env, player_position, eval_strategy):
-    """Evaluate a given RPS strategy."""
-    env_player_position = env.model.player_position
-    env.model.player_position = player_position
-
-    obs = env.reset()
-    i = 1
-    while True:
-        action = eval_strategy(obs)
-        obs, reward, done, info = env.step(action)
-        print(
-            f"action frequencies player {player_position} round {i}/{env.model.num_rounds_to_play}:",
-            [round((action == i).sum().item() / action.shape[0], 2) for i in range(3)],
-        )
-        if done.all():
-            break
-        i += 1
-
-    # Reset `player_position` of env
-    env.model.player_position = env_player_position
-
-    return
-
-
 ROCK = 0
 PAPER = 1
 SCISSORS = 2
 
 
 class RockPaperScissors(BaseEnvForVec):
-    """Iterated RockPaperScissors game as simple env example.
-    """
+    """Iterated RockPaperScissors game as simple env example."""
 
     def __init__(self, config: Dict, device: str = None):
         super().__init__(config, device)
-        self.rl_env_config = config
-        self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
-
-        self.num_agents = self.rl_env_config["num_agents"]
         self.state_shape = (self.num_agents, 2)
-
-        self.observation_spaces = self._init_observation_spaces()
-        self.action_spaces = self._init_action_spaces()
         self.action_space_sizes = self._init_action_space_sizes()
+
+    def _get_num_agents(self) -> int:
+        return self.config["num_agents"]
 
     def _init_observation_spaces(self) -> Dict[int, Space]:
         return {
-            agent_id: spaces.Box(0, self.num_rounds_to_play, shape=(2,))
+            agent_id: spaces.Box(0, self.config["num_rounds_to_play"], shape=(2,))
             for agent_id in range(self.num_agents)
         }
 
@@ -77,7 +47,7 @@ class RockPaperScissors(BaseEnvForVec):
         """
         shape_to_sample = (n,) + self.state_shape
         states = torch.zeros(shape_to_sample, device=self.device)
-        states[:, :, -1] = self.num_rounds_to_play
+        states[:, :, -1] = self.config["num_rounds_to_play"]
         return states
 
     def compute_step(self, cur_states, actions: Dict[int, torch.Tensor]):
@@ -90,23 +60,8 @@ class RockPaperScissors(BaseEnvForVec):
         :return episode-done markers:
         :return updated_states:
         """
-        """unraveled_actions = sp_ut.unravel_index(actions, self.action_space_sizes)
-        unraveled_actions = unraveled_actions.view(-1, 1, self.action_space_size)
-
-        # Append opponents' actions
-        unraveled_actions = unraveled_actions.repeat(1, self.num_agents, 1)
-        for opponent_position, opponent_strategy in enumerate(self.strategies):
-            if opponent_position != self.player_position:
-                opponent_obs = self.get_observations(
-                    cur_states, player_position=opponent_position
-                )
-                unraveled_actions[:, opponent_position, :] = opponent_strategy(
-                    opponent_obs
-                ).view(-1, self.action_space_size)"""
 
         new_states = cur_states.detach().clone()
-        # current_round = int(new_states[0, 0, -2].detach().cpu())
-        # new_states[:, :, current_round] = actions  # Store played actions
         new_states[:, :, -2] += 1.0  # Add current round
 
         # Reached last stage? (Independent from agent)

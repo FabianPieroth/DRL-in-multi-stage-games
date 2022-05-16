@@ -1,14 +1,12 @@
 """Multi agent learning for SB3"""
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import torch
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback
+from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils_folder.policy_utils as pl_ut
-from src.envs.rock_paper_scissors import eval_rps_strategy
-from src.learners.ppo import VecPPO
 
 
 class MultiAgentCoordinator:
