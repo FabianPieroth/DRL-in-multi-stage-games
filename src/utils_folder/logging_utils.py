@@ -115,14 +115,9 @@ def evaluate_policies(
     states = {agent_id: None for agent_id in range(env.model.num_agents)}
     episode_starts = torch.ones((env.num_envs,), dtype=bool)
     while episode_iter < n_eval_episodes:
-        actions = {}
-        for agent_id in range(env.model.num_agents):
-            actions[agent_id], states[agent_id] = learners[agent_id].predict(
-                observations[agent_id],
-                states[agent_id],
-                episode_start=episode_starts,
-                deterministic=deterministic,
-            )
+        actions = get_eval_ma_actions(
+            learners, observations, states, episode_starts, deterministic
+        )
         observations, rewards, dones, infos = env.step(actions)
         for agent_id in range(env.model.num_agents):
             current_rewards[agent_id] += rewards[agent_id]
@@ -153,3 +148,15 @@ def evaluate_policies(
         )
         learner.logger.record("eval/ep_len_mean", mean_episode_lengths)
     return episode_rewards, episode_lengths
+
+
+def get_eval_ma_actions(learners, observations, states, episode_starts, deterministic):
+    actions = {}
+    for agent_id, learner in learners.items():
+        actions[agent_id], states[agent_id] = learner.predict(
+            observations[agent_id],
+            states[agent_id],
+            episode_start=episode_starts,
+            deterministic=deterministic,
+        )
+    return actions

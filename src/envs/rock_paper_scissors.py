@@ -4,6 +4,7 @@ import torch
 from gym import spaces
 from gym.spaces import Space
 
+import src.utils_folder.logging_utils as log_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 ROCK = 0
@@ -151,7 +152,75 @@ class RockPaperScissors(BaseEnvForVec):
             learners (Dict[int, BaseAlgorithm]):
             env (_type_): evaluation env
         """
-        pass
+        deterministic = True
+        episode_iter = 0
+        observations = env.reset()
+        states = {agent_id: None for agent_id in range(env.model.num_agents)}
+        episode_starts = torch.ones((env.num_envs,), dtype=bool)
+
+        freq_dict = {
+            agent_id: {
+                "rock_freq": 0,
+                "paper_freq": 0,
+                "scissors_freq": 0,
+                "total_num_actions": 0,
+            }
+            for agent_id in range(env.model.num_agents)
+        }
+
+        while episode_iter < 10:
+            actions = log_ut.get_eval_ma_actions(
+                learners, observations, states, episode_starts, deterministic
+            )
+            observations, rewards, dones, infos = env.step(actions)
+            for agent_id in range(env.model.num_agents):
+                num_rock, num_paper, num_scissors, num_total = RockPaperScissors.get_action_nums(
+                    actions[agent_id]
+                )
+                freq_dict[agent_id]["rock_freq"] += num_rock
+                freq_dict[agent_id]["paper_freq"] += num_paper
+                freq_dict[agent_id]["scissors_freq"] += num_scissors
+                freq_dict[agent_id]["total_num_actions"] += num_total
+
+            episode_starts = dones
+            if dones.any().detach().item():
+                episode_iter += 1
+        for agent_id, learner in learners.items():
+            learner.logger.record(
+                "eval/rock_freq",
+                (
+                    freq_dict[agent_id]["rock_freq"]
+                    / freq_dict[agent_id]["total_num_actions"]
+                )
+                .detach()
+                .item(),
+            )
+            learner.logger.record(
+                "eval/paper_freq",
+                (
+                    freq_dict[agent_id]["paper_freq"]
+                    / freq_dict[agent_id]["total_num_actions"]
+                )
+                .detach()
+                .item(),
+            )
+            learner.logger.record(
+                "eval/scissors_freq",
+                (
+                    freq_dict[agent_id]["scissors_freq"]
+                    / freq_dict[agent_id]["total_num_actions"]
+                )
+                .detach()
+                .item(),
+            )
+
+    @staticmethod
+    def get_action_nums(sa_actions):
+        num_rock = torch.sum(sa_actions == ROCK)
+        num_paper = torch.sum(sa_actions == PAPER)
+        num_scissors = torch.sum(sa_actions == SCISSORS)
+        num_total = torch.numel(sa_actions)
+        return num_rock, num_paper, num_scissors, num_total
 
     def render(self, state):
         return state
