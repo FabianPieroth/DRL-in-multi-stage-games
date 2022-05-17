@@ -59,3 +59,15 @@ class RPSDummyLearner(MABaseAlgorithm):
         actions_for_env = actions
         additional_actions_data = ()
         return actions_for_env, actions, additional_actions_data
+
+    def predict(
+        self,
+        observation: torch.Tensor,
+        state: Optional[Tuple[torch.Tensor, ...]] = None,
+        episode_start: Optional[torch.Tensor] = None,
+        deterministic: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, ...]]]:
+        action_to_play = self.action_dict[self.dummy_action]
+        num_envs = observation.shape[0]
+        actions = torch.ones([num_envs], dtype=int, device=self.device) * action_to_play
+        return actions, state

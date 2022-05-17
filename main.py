@@ -53,7 +53,7 @@ def main():
     ma_learner.learn(
         total_timesteps=config["total_training_steps"],
         log_interval=1,
-        eval_freq=20,
+        eval_freq=config["eval_freq"],
         n_eval_episodes=5,
         tb_log_name="MultiAgent",
     )

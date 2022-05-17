@@ -4,10 +4,11 @@ experiment_log_path: ''
 experiment_name: ''
 device: 1
 num_envs: 4096
+eval_freq: 1
 total_training_steps: 100_000_000
-algorithms: ["ppo", "ppo", "ppo"]
+algorithms: ["ppo", "rps_single_action", "ppo"]
 policy_sharing: false
 defaults:
-  - rl_envs: sequential_auction
+  - rl_envs: rockpaperscissors
   - algorithm_configs: all_algos
   - _self_

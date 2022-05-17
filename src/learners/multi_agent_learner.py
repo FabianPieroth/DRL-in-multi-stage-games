@@ -6,6 +6,7 @@ import torch
 from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.utils.tensorboard import SummaryWriter
 
+import src.utils_folder.logging_utils as log_ut
 import src.utils_folder.policy_utils as pl_ut
 
 
@@ -184,7 +185,7 @@ class MultiAgentCoordinator:
                 learner.num_timesteps, total_timesteps
             )
 
-    def _display_and_log_training_progress(self, iteration, log_interval, eval_freq):
+    def _display_and_log_training_progress(self, iteration, log_interval):
         # Display training infos
         # TODO: Check if policy sharing needs to be handled differently!
         if log_interval is not None and iteration % log_interval == 0:
@@ -197,7 +198,6 @@ class MultiAgentCoordinator:
                     len(learner.ep_info_buffer) > 0
                     and len(learner.ep_info_buffer[0]) > 0
                 ):
-                    # TODO: not working for MABaseAlgorithm leaner!
                     learner.logger.record(
                         "rollout/ep_rew_mean",
                         torch.mean(
@@ -231,13 +231,24 @@ class MultiAgentCoordinator:
                 learner.logger.record("time/total_timesteps", learner.num_timesteps)
                 learner.logger.dump(step=learner.num_timesteps)
 
-            # Custom evaluation
-            # if iteration % eval_freq == 0:
-            # self.env.model.log_plotting(writer=self.writer, step=iteration)
-            # self.env.model.log_vs_bne(logger=learner.logger)
-            # # RPS eval
-            # eval_strategy = lambda obs: learner.policy(obs)[0]
-            # eval_rps_strategy(learner.env, player_position, eval_strategy)
+    def _evaluate_policies(
+        self, iteration: int, eval_freq: int, callbacks: None
+    ) -> None:
+        if (iteration + 1) % eval_freq == 0:
+            log_ut.evaluate_policies(
+                self.learners,
+                self.env,
+                callbacks=callbacks,
+                device=self.config["device"],
+            )
+            self.env.model.custom_evaluation(self.learners, self.env)
+        # Custom evaluation
+        # if iteration % eval_freq == 0:
+        # self.env.model.log_plotting(writer=self.writer, step=iteration)
+        # self.env.model.log_vs_bne(logger=learner.logger)
+        # # RPS eval
+        # eval_strategy = lambda obs: learner.policy(obs)[0]
+        # eval_rps_strategy(learner.env, player_position, eval_strategy)
 
     def train_policies(self):
         # TODO: check if policy sharing needs to be handled differently - takes longer than independent policies right now!
@@ -285,7 +296,9 @@ class MultiAgentCoordinator:
 
             self._update_remaining_progress(total_timesteps)
 
-            self._display_and_log_training_progress(iteration, log_interval, eval_freq)
+            self._display_and_log_training_progress(iteration, log_interval)
+
+            self._evaluate_policies(iteration, eval_freq, callbacks)
 
             self.train_policies()
 

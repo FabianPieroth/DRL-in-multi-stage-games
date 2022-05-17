@@ -58,6 +58,15 @@ class MABaseAlgorithm(BaseAlgorithm):
     def prepare_step(self, n_steps, env):
         pass
 
+    def predict(
+        self,
+        observation: torch.Tensor,
+        state: Optional[Tuple[torch.Tensor, ...]] = None,
+        episode_start: Optional[torch.Tensor] = None,
+        deterministic: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, ...]]]:
+        raise NotImplementedError
+
     def get_actions_with_data(
         self, agent_id: int
     ) -> Tuple[torch.Tensor, torch.Tensor, Tuple]:

@@ -2,7 +2,7 @@ from typing import Dict
 
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.sequential_auction import SequentialAuction
-from src.envs.torch_vec_env import BaseEnvForVec, MATorchVecEnv
+from src.envs.torch_vec_env import MATorchVecEnv
 
 
 def get_env(config: Dict) -> MATorchVecEnv:

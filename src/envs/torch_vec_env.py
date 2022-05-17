@@ -7,6 +7,7 @@ import gym
 import numpy as np
 import torch
 from gym.spaces import Space
+from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.vec_env import VecEnv
 
 VecEnvIndices = Union[None, int, Iterable[int]]
@@ -109,6 +110,16 @@ class BaseEnvForVec(ABC):
         Returns:
             image:
         """
+
+    @staticmethod
+    def custom_evaluation(learners: Dict[int, BaseAlgorithm], env):
+        """Method is called during training process and allows environment specific logging.
+
+        Args:
+            learners (Dict[int, BaseAlgorithm]):
+            env (_type_): evaluation env
+        """
+        pass
 
     def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
         """
