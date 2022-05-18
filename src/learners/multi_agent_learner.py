@@ -232,7 +232,7 @@ class MultiAgentCoordinator:
                 learner.logger.dump(step=learner.num_timesteps)
 
     def _evaluate_policies(
-        self, iteration: int, eval_freq: int, callbacks: None
+        self, iteration: int, eval_freq: int, n_eval_episodes: int, callbacks: None
     ) -> None:
         if (iteration + 1) % eval_freq == 0:
             log_ut.evaluate_policies(
@@ -240,15 +240,14 @@ class MultiAgentCoordinator:
                 self.env,
                 callbacks=callbacks,
                 device=self.config["device"],
+                n_eval_episodes=n_eval_episodes,
             )
-            self.env.model.custom_evaluation(self.learners, self.env)
+            self.env.model.custom_evaluation(
+                self.learners, self.env, self.writer, iteration, self.config
+            )
         # Custom evaluation
-        # if iteration % eval_freq == 0:
         # self.env.model.log_plotting(writer=self.writer, step=iteration)
         # self.env.model.log_vs_bne(logger=learner.logger)
-        # # RPS eval
-        # eval_strategy = lambda obs: learner.policy(obs)[0]
-        # eval_rps_strategy(learner.env, player_position, eval_strategy)
 
     def train_policies(self):
         # TODO: check if policy sharing needs to be handled differently - takes longer than independent policies right now!
@@ -298,7 +297,7 @@ class MultiAgentCoordinator:
 
             self._display_and_log_training_progress(iteration, log_interval)
 
-            self._evaluate_policies(iteration, eval_freq, callbacks)
+            self._evaluate_policies(iteration, eval_freq, n_eval_episodes, callbacks)
 
             self.train_policies()
 

@@ -111,13 +111,21 @@ class BaseEnvForVec(ABC):
             image:
         """
 
-    @staticmethod
-    def custom_evaluation(learners: Dict[int, BaseAlgorithm], env):
+    def custom_evaluation(
+        self,
+        learners: Dict[int, BaseAlgorithm],
+        env,
+        writer,
+        iteration: int,
+        config: Dict,
+    ):
         """Method is called during training process and allows environment specific logging.
 
         Args:
             learners (Dict[int, BaseAlgorithm]):
             env (_type_): evaluation env
+            writer: tensorboard summary writer
+            config: Dict of additional data
         """
         pass
 

@@ -185,54 +185,48 @@ class SequentialAuction(BaseEnvForVec):
 
     DUMMY_PRICE_KEY = -1
 
-    def __init__(
-        self,
-        config: Dict,
-        device: str = "cpu",
-        player_position: int = 0,
-        reduced_observation_space: bool = False,
-    ):
+    def __init__(self, config: Dict, device: str = "cpu"):
         super().__init__(config, device)
         self.num_rounds_to_play = self.config["num_rounds_to_play"]
 
-        # list of indices which maps `player_position` to its strategy index
-        self.policy_symmetries = [0] * self.num_agents
-        self.mechanism_type = config["mechanism_type"]
+        self.mechanism, self.equilibrium_profile = (
+            self._init_mechanism_and_equilibrium_profile()
+        )
 
-        # set up mechanism
-        if self.mechanism_type == "first":
-            self.mechanism: Mechanism = FirstPriceAuction()
-            self.equilibrium_profile = equilibrium_fpsb_symmetric_uniform
-        elif self.mechanism_type in ["second", "vcg", "vickery"]:
-            self.mechanism: Mechanism = VickreyAuction()
-            self.equilibrium_profile = truthful
-        else:
-            raise NotImplementedError("Payment rule unknown.")
-
-        # unit-demand
+        # NOTE: unit-demand only atm
         self.valuation_size = self.config["valuation_size"]
         self.action_size = self.config["action_size"]
+        self.strategies = self._init_dummy_strategies()
 
-        # set up observation space
-        # NOTE: does not support non unit-demand
+        self.strategies_bne = self._init_bne_strategies()
 
-        # dummy strategies: these can be overwritten by strategies that are
-        # learned over time in repeated self-play.
-        self.strategies = [
-            lambda obs, deterministic=True: torch.zeros(
-                (obs.shape[0], self.config["action_size"]), device=obs.device
-            )
-            for _ in range(self.num_agents)
-        ]
+    def _init_mechanism_and_equilibrium_profile(self):
+        if self.config["mechanism_type"] == "first":
+            mechanism: Mechanism = FirstPriceAuction()
+            equilibrium_profile = equilibrium_fpsb_symmetric_uniform
+        elif self.config["mechanism_type"] in ["second", "vcg", "vickery"]:
+            mechanism: Mechanism = VickreyAuction()
+            equilibrium_profile = truthful
+        else:
+            raise NotImplementedError("Payment rule unknown.")
+        return mechanism, equilibrium_profile
 
-        # setup analytical BNE
-        self.strategies_bne = [
+    def _init_bne_strategies(self):
+        return [
             self.equilibrium_profile(
                 num_agents=self.num_agents,
                 num_units=self.num_rounds_to_play,
                 player_position=i,
             )
             for i in range(self.num_agents)
+        ]
+
+    def _init_dummy_strategies(self):
+        return [
+            lambda obs, deterministic=True: torch.zeros(
+                (obs.shape[0], self.config["action_size"]), device=obs.device
+            )
+            for _ in range(self.num_agents)
         ]
 
     def _get_num_agents(self) -> int:
@@ -436,7 +430,32 @@ class SequentialAuction(BaseEnvForVec):
     def render(self, state):
         return state
 
-    def log_plotting(self, writer, step: int, num_samples: int = 500):
+    def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
+        """Method is called during training process and allows environment specific logging.
+
+        Args:
+            learners (Dict[int, BaseAlgorithm]):
+            env (_type_): evaluation env
+            writer: tensorboard summary writer
+            iteration: current training iteration
+        """
+        self.log_strategies_vs_bne(learners, writer, iteration, config)
+
+    def get_bne_actions(
+        self, valuations: torch.Tensor, stage: int, agent_id: int
+    ) -> torch.Tensor:
+        return self.strategies_bne[agent_id](stage, valuations)
+
+    @staticmethod
+    def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
+        return {
+            agent_id: learner.predict(observations[agent_id], deterministic)[0]
+            for agent_id, learner in learners.items()
+        }
+
+    def log_strategies_vs_bne(
+        self, learners, writer, iteration: int, config, num_samples: int = 500
+    ):
         """Evaluate and log current strategies."""
         seed = 69
 
@@ -447,7 +466,7 @@ class SequentialAuction(BaseEnvForVec):
             sharey=True,
             figsize=(5 * self.num_rounds_to_play, 5),
         )
-        fig.suptitle(f"Iteration {step}", fontsize="x-large")
+        fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
@@ -456,80 +475,97 @@ class SequentialAuction(BaseEnvForVec):
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
-            for player_position in range(self.num_agents):
-                self.player_position = player_position
-                observations = self.get_observations(states)
-                order = observations[:, 0].sort(axis=0)[1]
+            observations = self.get_observations(states)
+            ma_deterministic_actions = self.get_ma_learner_predictions(
+                learners, observations, True
+            )
+            ma_mixed_actions = self.get_ma_learner_predictions(
+                learners, observations, False
+            )
+            for agent_id, _ in learners.items():
+                agent_obs = observations[agent_id]
+                increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
                 # get actual actions
-                actions = self.strategies[player_position](
-                    observations, deterministic=True
-                )
-                actions_mixed = self.strategies[player_position](
-                    observations, deterministic=False
-                )
+                deterministic_actions = ma_deterministic_actions[agent_id]
+                mixed_actions = ma_mixed_actions[agent_id]
 
                 # get BNE actions
-                actions_bne = self.strategies_bne[self.player_position](
-                    stage, observations[:, 0]
-                )
+                bne_actions = self.get_bne_actions(agent_obs[:, 0], stage, agent_id)
 
                 # covert to numpy
-                observations = observations[order, 0].detach().cpu().view(-1).numpy()
-                actions_array = actions.view(-1, 1)[order, ...].detach().cpu().numpy()
-                actions_mixed = (
-                    actions_mixed.view(-1)[order, ...].detach().cpu().numpy()
+                agent_obs = (
+                    agent_obs[increasing_order, 0].detach().cpu().view(-1).numpy()
                 )
-                actions_bne = actions_bne.view(-1, 1)[order, ...].detach().cpu().numpy()
+                actions_array = (
+                    deterministic_actions.view(-1, 1)[increasing_order, ...]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
+                mixed_actions = (
+                    mixed_actions.view(-1)[increasing_order, ...].detach().cpu().numpy()
+                )
+                bne_actions = (
+                    bne_actions.view(-1, 1)[increasing_order, ...]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
 
+                if isinstance(config["algorithms"], str):
+                    algo_name = config["algorithms"]
+                else:
+                    algo_name = config["algorithms"][agent_id]
                 # plotting
                 if stage == 0:
                     drawing, = ax.plot(
-                        observations,
+                        agent_obs,
                         actions_array,
                         linestyle="dotted",
                         marker="o",
                         markevery=32,
-                        label=f"bidder {player_position} PPO",
+                        label=f"bidder {agent_id} " + algo_name,
                     )
                 else:
                     has_won_already = (
-                        (states[order, player_position, 1 : stage + 1].sum(axis=-1) > 0)
+                        (
+                            states[increasing_order, agent_id, 1 : stage + 1].sum(
+                                axis=-1
+                            )
+                            > 0
+                        )
                         .cpu()
                         .numpy()
                     )
                     drawing, = ax.plot(
-                        observations[~has_won_already],
+                        agent_obs[~has_won_already],
                         actions_array[~has_won_already],
                         linestyle="dotted",
                         marker="o",
                         markevery=32,
-                        label=f"bidder {player_position} PPO",
+                        label=f"bidder {agent_id} " + algo_name,
                     )
                     ax.plot(
-                        observations[has_won_already],
+                        agent_obs[has_won_already],
                         actions_array[has_won_already],
                         linestyle="dotted",
                         marker="x",
                         markevery=32,
-                        label=f"bidder {player_position} PPO (won)",
+                        label=f"bidder {agent_id} " + algo_name + " (won)",
                         color=drawing.get_color(),
                     )
                 ax.plot(
-                    observations,
-                    actions_mixed,
-                    ".",
-                    alpha=0.2,
-                    color=drawing.get_color(),
+                    agent_obs, mixed_actions, ".", alpha=0.2, color=drawing.get_color()
                 )
                 ax.plot(
-                    observations,
-                    actions_bne,
+                    agent_obs,
+                    bne_actions,
                     linestyle="--",
                     marker="*",
                     markevery=32,
                     color=drawing.get_color(),
-                    label=f"bidder {player_position} BNE",
+                    label=f"bidder {agent_id} BNE",
                 )
             lin = np.linspace(0, 1, 2)
             ax.plot(lin, lin, "--", color="grey")
@@ -540,13 +576,13 @@ class SequentialAuction(BaseEnvForVec):
             ax.set_ylim([-0.05, 1.05])
 
             # apply actions to get to next stage
-            _, _, _, states = self.compute_step(states, actions)
+            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
 
         handles, labels = ax.get_legend_handles_labels()
         axs[0].legend(handles, labels, ncol=2)
         plt.tight_layout()
-        plt.savefig(f"{writer.log_dir}/plot_{step}.png")
-        writer.add_figure("images", fig, step)
+        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
+        writer.add_figure("images", fig, iteration)
         plt.close()
 
         # reset seed

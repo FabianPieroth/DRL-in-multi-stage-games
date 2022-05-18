@@ -144,14 +144,9 @@ class RockPaperScissors(BaseEnvForVec):
 
         return {agent_id: states[:, agent_id, :] for agent_id in range(self.num_agents)}
 
-    @staticmethod
-    def custom_evaluation(learners, env):
-        """Method is called during training process and allows environment specific logging.
-
-        Args:
-            learners (Dict[int, BaseAlgorithm]):
-            env (_type_): evaluation env
-        """
+    def custom_evaluation(
+        self, learners, env, writer=None, iteration: int = 0, config: Dict = None
+    ):
         deterministic = True
         episode_iter = 0
         observations = env.reset()
