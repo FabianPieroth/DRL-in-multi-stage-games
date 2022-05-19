@@ -213,7 +213,6 @@ class MATorchVecEnv(VecEnv):
         n_dones = dones.sum()
         self.current_states[dones] = self.model.sample_new_states(n_dones)
 
-        # NOTE: not sure if this is needed
         self.ep_stats["returns"] += torch.sum(
             torch.stack(tuple(rewards.values())), axis=0
         )  # global rewards

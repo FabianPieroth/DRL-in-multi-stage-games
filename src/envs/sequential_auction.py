@@ -280,7 +280,7 @@ class SequentialAuction(BaseEnvForVec):
             where ...
         `current_round` and `num_rounds_to_play`.
         """
-        # TODO: perhaps it's easier to split state into multiple tensors?
+        # TODO: perhaps it's easier to split state into multiple tensors? @Nils: is this still relevant?
         # -> needs special treatment in `torch_vec_env`
         self.valuations_start_index = 0
         self.allocations_start_index = self.valuation_size
@@ -590,7 +590,7 @@ class SequentialAuction(BaseEnvForVec):
 
     def log_vs_bne(self, logger, num_samples: int = 100):
         """Evaluate learned strategies vs BNE."""
-        # TODO: Currently not working for multi-stage: need cases?
+        # TODO: Currently not working for multi-stage: need cases? @Nils: Still true?
         seed = 69
 
         # calculate utility in self-play (learned strategies only)

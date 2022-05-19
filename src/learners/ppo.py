@@ -94,21 +94,21 @@ class VecPPO(PPO):
     def handle_dones(self, dones, infos, rewards, agent_id: int):
         # change for vectorized capability
         # TODO: limitation: only constant length games
-        if dones.all():
+        if dones.any():
             terminal_obs = infos["terminal_observation"][agent_id]
             with th.no_grad():
                 terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
-            rewards += self.gamma * terminal_value
+            rewards[dones] += self.gamma * terminal_value
         return rewards
 
     def add_data_to_replay_buffer(
-        self, actions, rewards, additional_actions_data, agent_id: int
+        self, sa_actions, sa_rewards, additional_actions_data, agent_id: int
     ):
         values, log_probs = additional_actions_data
         self.rollout_buffer.add(
             self._last_obs[agent_id],
-            actions,
-            rewards,
+            sa_actions,
+            sa_rewards,
             self._last_episode_starts,
             values,
             log_probs,
@@ -128,110 +128,6 @@ class VecPPO(PPO):
         self.rollout_buffer.compute_returns_and_advantage(
             last_values=values, dones=dones
         )
-
-    def collect_rollouts(
-        self,
-        env: VecEnv,
-        callback: BaseCallback,
-        rollout_buffer: RolloutBuffer,
-        n_rollout_steps: int,
-    ) -> bool:
-        """
-        Collect experiences using the current policy and fill a ``RolloutBuffer``.
-        The term rollout here refers to the model-free notion and should not
-        be used with the concept of rollout used in model-based RL or planning.
-
-        :param env: The training environment
-        :param callback: Callback that will be called at each step
-            (and at the beginning and end of the rollout)
-        :param rollout_buffer: Buffer to fill with rollouts
-        :param n_steps: Number of experiences to collect per environment
-        :return: True if function returned with at least `n_rollout_steps`
-            collected, False if callback terminated rollout prematurely.
-        """
-        assert self._last_obs is not None, "No previous observation was provided"
-        # Switch to eval mode (this affects batch norm / dropout)
-        self.policy.set_training_mode(False)
-
-        n_steps = 0
-        rollout_buffer.reset()
-        # Sample new weights for the state dependent exploration
-        if self.use_sde:
-            self.policy.reset_noise(env.num_envs)
-
-        callback.on_rollout_start()
-
-        while n_steps < n_rollout_steps:
-            if (
-                self.use_sde
-                and self.sde_sample_freq > 0
-                and n_steps % self.sde_sample_freq == 0
-            ):
-                # Sample a new noise matrix
-                self.policy.reset_noise(env.num_envs)
-
-            with th.no_grad():
-                # Convert to pytorch tensor or to TensorDict
-                obs_tensor = self._last_obs
-                actions, values, log_probs = self.policy.forward(obs_tensor)
-
-            # Rescale and perform action
-            clipped_actions = actions
-            # Clip the actions to avoid out of bound error
-            if isinstance(self.action_space, gym.spaces.Box):
-                clipped_actions = th.clip(
-                    actions, self.action_space.low, self.action_space.high
-                )
-
-            new_obs, rewards, dones, infos = env.step(clipped_actions)
-
-            self.num_timesteps += env.num_envs
-
-            # Give access to local variables
-            callback.update_locals(locals())
-            if callback.on_step() is False:
-                return False
-
-            # TODO check if we need this
-            # change for vectorized capability: ignore infos
-            self._update_info_buffer(infos)
-
-            n_steps += 1
-
-            if isinstance(self.action_space, gym.spaces.Discrete):
-                # Reshape in case of discrete action
-                actions = actions.reshape(-1, 1)
-
-            # change for vectorized capability
-            # TODO: limitation: only constant length games
-            if dones.all():
-                terminal_obs = infos["terminal_observation"]
-                with th.no_grad():
-                    terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
-                rewards += self.gamma * terminal_value
-
-            rollout_buffer.add(
-                self._last_obs,
-                actions,
-                rewards,
-                self._last_episode_starts,
-                values,
-                log_probs,
-            )
-            self._last_obs = new_obs
-            self._last_episode_starts = dones
-
-        with th.no_grad():
-            # Compute value for the last timestep
-            values = self.policy.predict_values(new_obs)[
-                :, 0
-            ]  # TODO why do we need to index here?
-
-        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
-
-        callback.on_rollout_end()
-
-        return True
 
     def _setup_model(self) -> None:
         # 1. `_setup_model` from `BaseLearner` PPO
@@ -614,7 +510,7 @@ class VecRolloutBuffer(RolloutBuffer):
         if isinstance(self.observation_space, spaces.Discrete):
             obs = obs.reshape((self.n_envs,) + self.obs_shape)
 
-        # TODO: do we need `copy()` here? (as in original version)
+        # TODO: do we need `copy()` here? (as in original version) @Nils: could they be changed later on?
         self.observations[self.pos] = obs
         self.actions[self.pos] = action
         self.rewards[self.pos] = reward
@@ -646,7 +542,6 @@ class VecRolloutBuffer(RolloutBuffer):
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
-        # TODO need clone?
         last_values = last_values.clone()  # .cpu().numpy().flatten()
 
         last_gae_lam = 0

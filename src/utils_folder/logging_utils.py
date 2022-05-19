@@ -3,9 +3,7 @@ import os
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import gym
 import imageio
-import numpy as np
 import torch
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,

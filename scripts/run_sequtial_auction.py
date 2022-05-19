@@ -30,7 +30,7 @@ def get_config():
 def multi_agent_auction_main():
     """Benchmark multi-agent learning in custom RPS env.
 
-    TODO:
+    TODO: @Nils: does this solve the negative biddings at other TODOs as well?
     * Custom net: ReLU on output
     """
     cfg = get_config("configs/rl_envs/sequential_fpsb_auction.yaml")
