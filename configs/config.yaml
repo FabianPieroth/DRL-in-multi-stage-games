@@ -4,7 +4,7 @@ experiment_log_path: ''
 experiment_name: ''
 device: 1
 num_envs: 4096
-eval_freq: 5
+eval_freq: 50
 total_training_steps: 1_000_000_000
 algorithms: ["ppo", "ppo", "ppo"]
 policy_sharing: false
