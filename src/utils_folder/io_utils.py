@@ -62,8 +62,6 @@ def get_ma_n_rollout_steps(config: DictConfig) -> int:
                 )
     if n_rollout_steps is None:
         return config["rl_envs"]["num_agents"]
-    if config["policy_sharing"]:
-        n_rollout_steps = int(n_rollout_steps / config["rl_envs"]["num_agents"])
     return n_rollout_steps
 
 
