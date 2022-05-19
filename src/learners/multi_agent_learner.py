@@ -127,7 +127,9 @@ class MultiAgentCoordinator:
             learner.update_internal_state_after_step(new_obs, dones)
 
     def update_learner_timesteps(self):
-        for learner in self.learners.values():
+        for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner.num_timesteps += self.env.num_envs
 
     def postprocess_ma_rollout(self, new_obs, dones):
@@ -153,28 +155,36 @@ class MultiAgentCoordinator:
     def update_ma_info_buffer(self, infos, dones):
         # TODO check if we need this; the info coming out of VecEnv is not agent specific
         # change for vectorized capability: ignore infos
-        for _, learner in self.learners.items():
+        for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner._update_info_buffer(infos, dones)
 
     def prepare_ma_step(self, n_steps):
-        for learner in self.learners.values():
+        for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner.prepare_step(n_steps, self.env)
 
     def prepare_ma_rollout(self, callbacks):
-        for learner, callback in zip(self.learners.values(), callbacks):
+        for (agent_id, learner), callback in zip(self.learners.items(), callbacks):
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner.prepare_rollout(self.env, callback)
 
     def _update_remaining_progress(self, total_timesteps):
-        for learner in self.learners.values():
+        for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner._update_current_progress_remaining(
                 learner.num_timesteps, total_timesteps
             )
 
     def _display_and_log_training_progress(self, iteration, log_interval):
-        # Display training infos
-        # TODO: Check if policy sharing needs to be handled differently!
         if log_interval is not None and iteration % log_interval == 0:
             for agent_id, learner in self.learners.items():
+                if self.config["policy_sharing"] and agent_id > 0:
+                    break
                 fps = int(
                     (learner.num_timesteps - learner._num_timesteps_at_start)
                     / (time.time() - learner.start_time)
@@ -232,8 +242,9 @@ class MultiAgentCoordinator:
             )
 
     def train_policies(self):
-        # TODO: check if policy sharing needs to be handled differently - takes longer than independent policies right now!
-        for learner in self.learners.values():
+        for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner.train()
 
     def learn(
@@ -303,6 +314,9 @@ class MultiAgentCoordinator:
             callbacks = [None] * len(self.learners)
 
         for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                callbacks = [callbacks[0] for i in range(len(callbacks))]
+                break
             timesteps, callbacks[agent_id] = learner._setup_learn(
                 total_timesteps=total_timesteps,
                 eval_env=None,
