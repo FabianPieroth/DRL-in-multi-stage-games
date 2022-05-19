@@ -19,9 +19,9 @@ class MultiAgentCoordinator:
         self.policy_sharing = config["policy_sharing"]
 
         self.learners = pl_ut.get_policies(config, env)
-        # TODO: make this adaptable to different policy types
         self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
 
+        # TODO: @Nils: still needed? If used for sequential auctions only, move into env
         # check for possible symmetries
         """if self.policy_sharing:
             self.num_learners = len(set(self.env.model.policy_symmetries))
@@ -89,7 +89,9 @@ class MultiAgentCoordinator:
 
             actions_for_env, actions, additional_actions_data = self.get_ma_action()
 
-            new_obs, rewards, dones, infos = self.env.step(actions_for_env)
+            new_obs, rewards, dones, infos = self.env.step(
+                actions_for_env
+            )  # TODO: done for every single agent
 
             self.update_learner_timesteps()
 
@@ -162,23 +164,6 @@ class MultiAgentCoordinator:
         for learner, callback in zip(self.learners.values(), callbacks):
             learner.prepare_rollout(self.env, callback)
 
-    def _get_n_rollout_steps_from_learners(self) -> int:
-        n_rollout_steps = None
-        for agent_id, learner in self.learners.items():
-            if learner.n_steps is not None and n_rollout_steps is None:
-                n_rollout_steps = learner.n_steps
-            elif learner.n_steps is not None and n_rollout_steps is not None:
-                if learner.n_steps != n_rollout_steps:
-                    raise ValueError(
-                        "Cannot handle algorithms with different rollout lengths! Check for agent: "
-                        + str(agent_id)
-                    )
-        if n_rollout_steps is None:
-            return 2
-        if self.config["policy_sharing"]:
-            n_rollout_steps = int(n_rollout_steps / self.env.model.num_agents)
-        return n_rollout_steps
-
     def _update_remaining_progress(self, total_timesteps):
         for learner in self.learners.values():
             learner._update_current_progress_remaining(
@@ -243,11 +228,8 @@ class MultiAgentCoordinator:
                 n_eval_episodes=n_eval_episodes,
             )
             self.env.model.custom_evaluation(
-                self.learners, self.env, self.writer, iteration, self.config
+                self.learners, self.env, self.writer, iteration + 1, self.config
             )
-        # Custom evaluation
-        # self.env.model.log_plotting(writer=self.writer, step=iteration)
-        # self.env.model.log_vs_bne(logger=learner.logger)
 
     def train_policies(self):
         # TODO: check if policy sharing needs to be handled differently - takes longer than independent policies right now!
@@ -257,6 +239,7 @@ class MultiAgentCoordinator:
     def learn(
         self,
         total_timesteps: int,
+        n_rollout_steps: int,
         callbacks: List[MaybeCallback] or MaybeCallback = None,
         log_interval: int = 1,
         eval_freq: int = 20,
@@ -277,8 +260,6 @@ class MultiAgentCoordinator:
             reset_num_timesteps,
         )
 
-        n_steps = self._get_n_rollout_steps_from_learners()
-
         # Training loop
         while (
             min(learner.num_timesteps for learner in self.learners.values())
@@ -287,7 +268,7 @@ class MultiAgentCoordinator:
             print(f"Iteration {iteration} starts.")
 
             continue_training = self.collect_ma_rollouts(
-                callbacks, n_rollout_steps=n_steps
+                callbacks, n_rollout_steps=n_rollout_steps
             )
 
             if continue_training is False:
@@ -334,5 +315,4 @@ class MultiAgentCoordinator:
             )
             callbacks[agent_id].on_training_start(locals(), globals())
             total_timesteps = max(timesteps, total_timesteps)
-            # TODO: is that what we want here?
         return total_timesteps, callbacks

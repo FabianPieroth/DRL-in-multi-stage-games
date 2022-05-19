@@ -5,7 +5,9 @@ experiment_name: ''
 device: 1
 num_envs: 4096
 eval_freq: 50
-total_training_steps: 1_000_000_000
+iteration_num: 200
+total_training_steps: null
+ma_n_rollout_steps: null
 algorithms: ["ppo", "ppo", "ppo"]
 policy_sharing: false
 defaults:

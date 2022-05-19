@@ -39,8 +39,36 @@ def store_config(config: DictConfig):
 
 
 def enrich_config(config: DictConfig):
-    # TODO: This is tedious as the key needs to exist in the yaml file before one can assign a new value
-    config["experiment_log_path"] = (
+    config["experiment_log_path"] = get_experiment_log_path(config)
+    config["ma_n_rollout_steps"] = get_ma_n_rollout_steps(config)
+    config["total_training_steps"] = get_total_training_steps(config)
+
+
+def get_total_training_steps(config: DictConfig) -> int:
+    return config["ma_n_rollout_steps"] * config["num_envs"] * config["iteration_num"]
+
+
+def get_ma_n_rollout_steps(config: DictConfig) -> int:
+    n_rollout_steps = None
+    for agent_id, algo_name in enumerate(config["algorithms"]):
+        algo_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
+        if algo_rollout_steps is not None and n_rollout_steps is None:
+            n_rollout_steps = algo_rollout_steps
+        elif algo_rollout_steps is not None and n_rollout_steps is not None:
+            if algo_rollout_steps != n_rollout_steps:
+                raise ValueError(
+                    "Cannot handle algorithms with different rollout lengths! Check for agent: "
+                    + str(agent_id)
+                )
+    if n_rollout_steps is None:
+        return config["rl_envs"]["num_agents"]
+    if config["policy_sharing"]:
+        n_rollout_steps = int(n_rollout_steps / config["rl_envs"]["num_agents"])
+    return n_rollout_steps
+
+
+def get_experiment_log_path(config: DictConfig) -> str:
+    return (
         config["log_path"]
         + config["rl_envs"]["name"]
         + get_env_log_path_extension(config)
