@@ -91,42 +91,46 @@ class VecPPO(PPO):
             actions = actions.reshape(-1, 1)
         return actions
 
-    def handle_dones(self, dones, infos, rewards, agent_id: int):
+    def handle_dones(self, dones, infos, sa_rewards, agent_id: int):
         # change for vectorized capability
         # TODO: limitation: only constant length games
         if dones.any():
             terminal_obs = infos["terminal_observation"][agent_id]
             with th.no_grad():
                 terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
-            rewards[dones] += self.gamma * terminal_value
-        return rewards
+            sa_rewards[dones] += self.gamma * terminal_value
+        return sa_rewards
 
     def add_data_to_replay_buffer(
-        self, sa_actions, sa_rewards, additional_actions_data, agent_id: int
+        self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
     ):
-        values, log_probs = additional_actions_data
+        sa_values, sa_log_probs = sa_additional_actions_data
         self.rollout_buffer.add(
             self._last_obs[agent_id],
             sa_actions,
             sa_rewards,
             self._last_episode_starts,
-            values,
-            log_probs,
+            sa_values,
+            sa_log_probs,
+            th.ones(1, dtype=int) * agent_id,
         )
 
     def update_internal_state_after_step(self, new_obs, dones):
         self._last_obs = new_obs
         self._last_episode_starts = dones
 
-    def postprocess_rollout(self, sa_new_obs, dones):
+    def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         with th.no_grad():
-            # Compute value for the last timestep
-            values = self.policy.predict_values(sa_new_obs)[
-                :, 0
-            ]  # TODO why do we need to index here?
+            if policy_sharing:
+                values = {
+                    agent_id: self.policy.predict_values(sa_obs).squeeze()
+                    for agent_id, sa_obs in sa_new_obs.items()
+                }
+            else:
+                values = self.policy.predict_values(sa_new_obs).squeeze()
 
         self.rollout_buffer.compute_returns_and_advantage(
-            last_values=values, dones=dones
+            last_values=values, dones=dones, policy_sharing=policy_sharing
         )
 
     def _setup_model(self) -> None:
@@ -255,10 +259,6 @@ class VecPPO(PPO):
             dones = th.tensor([False])
         if dones.all().detach().item():
             self.ep_info_buffer.extend([infos])
-        """maybe_ep_info = infos.get("episode")
-        maybe_is_success = infos.get("is_success")
-        if maybe_ep_info is not None:
-            self.ep_info_buffer.extend([maybe_ep_info])"""
 
     def train(self) -> None:
         """
@@ -479,17 +479,19 @@ class VecRolloutBuffer(RolloutBuffer):
         self.advantages = th.zeros(
             (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
         )
+        self.agent_ids = th.zeros((self.buffer_size,), dtype=th.int, device=self.device)
         self.generator_ready = False
         super(RolloutBuffer, self).reset()
 
     def add(
         self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
+        obs: th.Tensor,
+        action: th.Tensor,
+        reward: th.Tensor,
+        episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
+        agent_ids: th.Tensor,
     ) -> None:
         """
         :param obs: Observation
@@ -517,12 +519,13 @@ class VecRolloutBuffer(RolloutBuffer):
         self.episode_starts[self.pos] = episode_start
         self.values[self.pos] = value.flatten()
         self.log_probs[self.pos] = log_prob
+        self.agent_ids[self.pos] = agent_ids
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
 
     def compute_returns_and_advantage(
-        self, last_values: th.Tensor, dones: np.ndarray
+        self, last_values: th.Tensor, dones: th.Tensor, policy_sharing: bool = False
     ) -> None:
         """
         Post-processing step: compute the lambda-return (TD(lambda) estimate)
@@ -542,16 +545,31 @@ class VecRolloutBuffer(RolloutBuffer):
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
-        last_values = last_values.clone()  # .cpu().numpy().flatten()
-
         last_gae_lam = 0
+        if policy_sharing:  # TODO: Policy sharing needs to be handled in a cleaner way!
+            last_values = {
+                agent_id: sa_last_values.clone()
+                for agent_id, sa_last_values in last_values.items()
+            }
+        else:
+            last_values = last_values.clone()
+
         for step in reversed(range(self.buffer_size)):
-            if step == self.buffer_size - 1:
-                next_non_terminal = th.logical_not(dones)
-                next_values = last_values
+            if policy_sharing:
+                sa_last_values = last_values[self.agent_ids[step].detach().item()]
             else:
-                next_non_terminal = 1.0 - self.episode_starts[step + 1]
-                next_values = self.values[step + 1]
+                sa_last_values = last_values
+            if step == self.buffer_size - 1 and not policy_sharing:
+                next_non_terminal = th.logical_not(dones)
+                next_values = sa_last_values
+            elif step >= self.buffer_size - len(last_values) and policy_sharing:
+                next_non_terminal = th.logical_not(dones)
+                next_values = sa_last_values
+            else:
+                step_size_to_data = self._find_step_size_to_agent_data(step)
+                next_non_terminal = 1.0 - self.episode_starts[step + step_size_to_data]
+                next_values = self.values[step + step_size_to_data]
+
             delta = (
                 self.rewards[step]
                 + self.gamma * next_values * next_non_terminal
@@ -564,6 +582,13 @@ class VecRolloutBuffer(RolloutBuffer):
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
         # in David Silver Lecture 4: https://www.youtube.com/watch?v=PnHCvfgC_ZA
         self.returns = self.advantages + self.values
+
+    def _find_step_size_to_agent_data(self, step):
+        step_size = 1
+        target_agent_id = self.agent_ids[step].detach().item()
+        while target_agent_id != self.agent_ids[step + step_size].detach().item():
+            step_size += 1
+        return step_size
 
     def _get_samples(
         self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None

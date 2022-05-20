@@ -104,7 +104,7 @@ class MABaseAlgorithm(BaseAlgorithm):
     def update_internal_state_after_step(self, new_obs, dones):
         pass
 
-    def postprocess_rollout(self, sa_new_obs, dones):
+    def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool = False):
         pass
 
     def _update_current_progress_remaining(

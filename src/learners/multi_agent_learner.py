@@ -123,7 +123,9 @@ class MultiAgentCoordinator:
         return True
 
     def update_ma_external_state_after_step(self, new_obs, dones):
-        for _, learner in self.learners.items():
+        for agent_id, learner in self.learners.items():
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
             learner.update_internal_state_after_step(new_obs, dones)
 
     def update_learner_timesteps(self):
@@ -134,7 +136,15 @@ class MultiAgentCoordinator:
 
     def postprocess_ma_rollout(self, new_obs, dones):
         for agent_id, learner in self.learners.items():
-            learner.postprocess_rollout(new_obs[agent_id], dones)
+            if self.config["policy_sharing"] and agent_id > 0:
+                break
+            sa_new_obs = new_obs[agent_id]
+            postprocess_dones = dones
+            if self.config["policy_sharing"]:
+                sa_new_obs = new_obs
+            learner.postprocess_rollout(
+                sa_new_obs, postprocess_dones, self.config["policy_sharing"]
+            )
 
     def add_ma_data_to_replay_buffers(self, actions, additional_actions_data, rewards):
         for agent_id, learner in self.learners.items():
