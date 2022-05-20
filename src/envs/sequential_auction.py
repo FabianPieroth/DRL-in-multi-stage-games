@@ -212,14 +212,14 @@ class SequentialAuction(BaseEnvForVec):
         return mechanism, equilibrium_profile
 
     def _init_bne_strategies(self):
-        return [
-            self.equilibrium_profile(
+        return {
+            agent_id: self.equilibrium_profile(
                 num_agents=self.num_agents,
                 num_units=self.num_rounds_to_play,
-                player_position=i,
+                player_position=agent_id,
             )
-            for i in range(self.num_agents)
-        ]
+            for agent_id in range(self.num_agents)
+        }
 
     def _init_dummy_strategies(self):
         return [
@@ -439,7 +439,8 @@ class SequentialAuction(BaseEnvForVec):
             writer: tensorboard summary writer
             iteration: current training iteration
         """
-        self.log_strategies_vs_bne(learners, writer, iteration, config)
+        self.plot_strategies_vs_bne(learners, writer, iteration, config)
+        self.log_metrics_to_equilibrium(learners)
 
     def get_bne_actions(
         self, valuations: torch.Tensor, stage: int, agent_id: int
@@ -453,7 +454,14 @@ class SequentialAuction(BaseEnvForVec):
             for agent_id, learner in learners.items()
         }
 
-    def log_strategies_vs_bne(
+    @staticmethod
+    def get_equilibrium_actions(stage: int, equilibrium_strategies, observations):
+        return {
+            agent_id: equilibrium_strategy(stage, observations[agent_id][:, 0])
+            for agent_id, equilibrium_strategy in equilibrium_strategies.items()
+        }
+
+    def plot_strategies_vs_bne(
         self, learners, writer, iteration: int, config, num_samples: int = 500
     ):
         """Evaluate and log current strategies."""
@@ -588,41 +596,92 @@ class SequentialAuction(BaseEnvForVec):
         # reset seed
         self.seed(int(time.time()))
 
-    def log_vs_bne(self, logger, num_samples: int = 100):
+    def log_metrics_to_equilibrium(self, learners, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
         # TODO: Currently not working for multi-stage: need cases? @Nils: Still true?
         seed = 69
-
-        # calculate utility in self-play (learned strategies only)
-        actual_utility = 0
         self.seed(seed)
-        states = self.sample_new_states(num_samples)
-        observations = self.get_observations(states)
-        for stage in range(self.num_rounds_to_play):
-            actions_actual = self.strategies[self.player_position](
-                observations, deterministic=True
-            )
-            observations, rewards, _, states = self.compute_step(states, actions_actual)
-        actual_utility += rewards.mean().item()
-        logger.record("eval/utility_actual", actual_utility)
 
-        # calculate the utility that the BNE strategy of the current player
-        # would achieve
-        bne_utility = 0
-        self.seed(seed)
-        states = self.sample_new_states(num_samples)
-        observations = self.get_observations(states)
-        for stage in range(self.num_rounds_to_play):
-            actions_bne = self.strategies_bne[self.player_position](
-                stage, observations[:, 0]
-            )
-            observations, rewards, _, states = self.compute_step(states, actions_bne)
-        bne_utility += rewards.mean().item()
-        logger.record("eval/utility_bne", bne_utility)
+        learned_utilities = {agent_id: 0 for agent_id in learners.keys()}
+        equ_utilities = {agent_id: 0 for agent_id in learners.keys()}
+        distances_l2 = {agent_id: None for agent_id in learners.keys()}
 
-        # calculate distance in action space
-        L2 = tensor_norm(actions_actual, actions_bne)
-        logger.record("eval/action_norm_last_stage", L2)
+        for agent_id in learners.keys():
+            actual_states = self.sample_new_states(num_samples)
+            actual_observations = self.get_observations(actual_states)
+
+            equ_states = self.sample_new_states(num_samples)
+            equ_observations = self.get_observations(equ_states)
+
+            actual_rewards, equ_rewards, sa_l2_distances = self.do_equilibrium_and_actual_rollout(
+                learners, agent_id, actual_states, actual_observations, equ_observations
+            )
+
+            distances_l2[agent_id] = sa_l2_distances
+            equ_utilities[agent_id] += equ_rewards[agent_id].mean().item()
+            learned_utilities[agent_id] += actual_rewards[agent_id].mean().item()
+
+        self._log_metric_dict_to_individual_learners(
+            learners, equ_utilities, "eval/utility_equilibrium"
+        )
+        self._log_metric_dict_to_individual_learners(
+            learners, learned_utilities, "eval/utility_actual"
+        )
+        self._log_l2_distances(learners, distances_l2)
 
         # reset seed
         self.seed(int(time.time()))
+
+    def do_equilibrium_and_actual_rollout(
+        self, learners, agent_id, actual_states, actual_observations, equ_observations
+    ):
+        l2_distances = [None for _ in range(self.num_rounds_to_play)]
+        for stage in range(self.num_rounds_to_play):
+            ma_equilibrium_actions = self.get_equilibrium_actions(
+                stage, self.strategies_bne, equ_observations
+            )
+            ma_deterministic_learned_actions = self.get_ma_learner_predictions(
+                learners, actual_observations, True
+            )
+            mixed_equ_learned_actions = self._get_mix_equ_learned_actions(
+                agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
+            )
+            actual_observations, actual_rewards, _, actual_states = self.compute_step(
+                actual_states, ma_deterministic_learned_actions
+            )
+            equ_observations, equ_rewards, _, actual_states = self.compute_step(
+                actual_states, mixed_equ_learned_actions
+            )
+            l2_distances[stage] = tensor_norm(
+                ma_deterministic_learned_actions[agent_id],
+                ma_equilibrium_actions[agent_id],
+            )
+        return actual_rewards, equ_rewards, l2_distances
+
+    def _log_l2_distances(self, learners, distances_l2):
+        for stage in range(self.num_rounds_to_play):
+            for agent_id, learner in learners.items():
+                learner.logger.record(
+                    "eval/action_equ_L2_distance_stage_" + str(stage),
+                    distances_l2[agent_id][stage],
+                )
+
+    def _get_mix_equ_learned_actions(
+        self, agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
+    ):
+        mixed_equ_learned_actions = {}
+        for agent_idx in ma_deterministic_learned_actions.keys():
+            if agent_idx == agent_id:
+                mixed_equ_learned_actions[agent_idx] = ma_equilibrium_actions[agent_idx]
+            else:
+                mixed_equ_learned_actions[agent_idx] = ma_deterministic_learned_actions[
+                    agent_idx
+                ]
+        return mixed_equ_learned_actions
+
+    @staticmethod
+    def _log_metric_dict_to_individual_learners(
+        learners, metric_dict: Dict[int, float], key_prefix: str = ""
+    ):
+        for agent_id, learner in learners.items():
+            learner.logger.record(key_prefix, metric_dict[agent_id])
