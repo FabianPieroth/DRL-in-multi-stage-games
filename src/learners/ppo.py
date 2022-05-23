@@ -92,8 +92,7 @@ class VecPPO(PPO):
         return actions
 
     def handle_dones(self, dones, infos, sa_rewards, agent_id: int):
-        # change for vectorized capability
-        # TODO: limitation: only constant length games
+        # compute values for episode dones
         if dones.any():
             terminal_obs = infos["terminal_observation"][agent_id]
             with th.no_grad():
@@ -257,7 +256,7 @@ class VecPPO(PPO):
         """
         if dones is None:
             dones = th.tensor([False])
-        if dones.all().detach().item():
+        if dones.any().detach().item():
             self.ep_info_buffer.extend([infos])
 
     def train(self) -> None:

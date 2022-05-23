@@ -39,7 +39,7 @@ def evaluate_policies(
     learners,
     env: MATorchVecEnv,
     device: Union[str, int] = None,
-    n_eval_episodes: int = 10,
+    n_eval_episodes: int = 20,
     deterministic: bool = True,
     render: bool = False,
     callbacks: Optional[Callable[[Dict[str, Any], Dict[str, Any]], None]] = None,
@@ -133,16 +133,16 @@ def evaluate_policies(
             env.render()
 
     mean_episode_lengths = (
-        torch.mean(torch.stack(episode_lengths).float()).detach().item()
+        torch.mean(torch.concat(episode_lengths).float()).detach().item()
     )
     for agent_id, learner in learners.items():
         learner.logger.record(
             "eval/ep_rew_mean",
-            torch.mean(torch.stack(episode_rewards[agent_id])).detach().item(),
+            torch.mean(torch.concat(episode_rewards[agent_id])).detach().item(),
         )
         learner.logger.record(
             "eval/ep_rew_std",
-            torch.std(torch.stack(episode_rewards[agent_id])).detach().item(),
+            torch.std(torch.concat(episode_rewards[agent_id])).detach().item(),
         )
         learner.logger.record("eval/ep_len_mean", mean_episode_lengths)
     return episode_rewards, episode_lengths

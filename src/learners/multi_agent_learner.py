@@ -16,7 +16,6 @@ class MultiAgentCoordinator:
     def __init__(self, config: Dict, env):
         self.config = config
         self.env = env
-        self.policy_sharing = config["policy_sharing"]
 
         self.learners = pl_ut.get_policies(config, env)
         self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
@@ -91,7 +90,7 @@ class MultiAgentCoordinator:
 
             new_obs, rewards, dones, infos = self.env.step(
                 actions_for_env
-            )  # TODO: done for every single agent
+            )  # TODO: dones for every single agent
 
             self.update_learner_timesteps()
 
@@ -122,21 +121,24 @@ class MultiAgentCoordinator:
 
         return True
 
+    def _do_break_for_policy_sharing(self, agent_id: int):
+        return self.config["policy_sharing"] and agent_id > 0
+
     def update_ma_external_state_after_step(self, new_obs, dones):
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner.update_internal_state_after_step(new_obs, dones)
 
     def update_learner_timesteps(self):
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner.num_timesteps += self.env.num_envs
 
     def postprocess_ma_rollout(self, new_obs, dones):
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             sa_new_obs = new_obs[agent_id]
             postprocess_dones = dones
@@ -166,25 +168,25 @@ class MultiAgentCoordinator:
         # TODO check if we need this; the info coming out of VecEnv is not agent specific
         # change for vectorized capability: ignore infos
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner._update_info_buffer(infos, dones)
 
     def prepare_ma_step(self, n_steps):
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner.prepare_step(n_steps, self.env)
 
     def prepare_ma_rollout(self, callbacks):
         for (agent_id, learner), callback in zip(self.learners.items(), callbacks):
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner.prepare_rollout(self.env, callback)
 
     def _update_remaining_progress(self, total_timesteps):
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner._update_current_progress_remaining(
                 learner.num_timesteps, total_timesteps
@@ -193,7 +195,7 @@ class MultiAgentCoordinator:
     def _display_and_log_training_progress(self, iteration, log_interval):
         if log_interval is not None and iteration % log_interval == 0:
             for agent_id, learner in self.learners.items():
-                if self.config["policy_sharing"] and agent_id > 0:
+                if self._do_break_for_policy_sharing(agent_id):
                     break
                 fps = int(
                     (learner.num_timesteps - learner._num_timesteps_at_start)
@@ -206,7 +208,7 @@ class MultiAgentCoordinator:
                     learner.logger.record(
                         "rollout/ep_rew_mean",
                         torch.mean(
-                            torch.stack(
+                            torch.concat(
                                 [
                                     ep_info[agent_id]["sa_episode_returns"]
                                     for ep_info in learner.ep_info_buffer
@@ -219,7 +221,7 @@ class MultiAgentCoordinator:
                     learner.logger.record(
                         "rollout/ep_len_mean",
                         torch.mean(
-                            torch.stack(
+                            torch.concat(
                                 [
                                     ep_info[agent_id]["sa_episode_lengths"]
                                     for ep_info in learner.ep_info_buffer
@@ -253,7 +255,7 @@ class MultiAgentCoordinator:
 
     def train_policies(self):
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 break
             learner.train()
 
@@ -324,7 +326,7 @@ class MultiAgentCoordinator:
             callbacks = [None] * len(self.learners)
 
         for agent_id, learner in self.learners.items():
-            if self.config["policy_sharing"] and agent_id > 0:
+            if self._do_break_for_policy_sharing(agent_id):
                 callbacks = [callbacks[0] for i in range(len(callbacks))]
                 break
             timesteps, callbacks[agent_id] = learner._setup_learn(
