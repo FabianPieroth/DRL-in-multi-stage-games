@@ -1,0 +1,3 @@
+name: "rps_rock"
+action: "ROCK"
+n_rollout_steps: null

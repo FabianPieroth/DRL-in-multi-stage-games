@@ -13,7 +13,7 @@ import torch
 from stable_baselines3.common.env_checker import check_env
 
 from src.envs.rock_paper_scissors import RockPaperScissors
-from src.envs.torch_vec_env import TorchVecEnv
+from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 from src.learners.ppo import VecPPO
 
@@ -34,7 +34,7 @@ def multi_agent_rps_main():
     n_steps = 512
 
     base_env = RockPaperScissors(config, device=device)
-    env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
+    env = MATorchVecEnv(base_env, num_envs=num_envs, device=device)
 
     learners = MultiAgentCoordinator(
         [
@@ -51,7 +51,7 @@ def multi_agent_rps_main():
         ]
     )
 
-    # train the agent
+    # train the agents
     learners.learn(total_timesteps=100_000)
 
     return None

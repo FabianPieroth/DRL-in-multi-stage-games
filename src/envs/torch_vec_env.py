@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, U
 import gym
 import numpy as np
 import torch
+from gym.spaces import Space
+from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.vec_env import VecEnv
 
 VecEnvIndices = Union[None, int, Iterable[int]]
@@ -15,12 +17,39 @@ TorchVecEnvStepReturn = Tuple[
 
 
 class BaseEnvForVec(ABC):
-    """TODO"""
+    """Base Environment used for GPU based environment inference.
+    Inherit from this class when writing a new env. Use MATorchVecEnv
+    to wrap it."""
 
     def __init__(self, config: Dict, device):
         self.device = device
         self.config = config
-        self.num_agents = None
+        self.num_agents = self._get_num_agents()
+        self.observation_spaces = self._init_observation_spaces()
+        self.action_spaces = self._init_action_spaces()
+        self.observation_space = None
+        self.action_space = None
+
+    @abstractmethod
+    def _get_num_agents(self) -> int:
+        """
+        Returns:
+            int: number of agents in env
+        """
+
+    @abstractmethod
+    def _init_observation_spaces(self) -> Dict[int, Space]:
+        """Returns dict with agent - observation space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: observation space
+        """
+
+    @abstractmethod
+    def _init_action_spaces(self) -> Dict[int, Space]:
+        """Returns dict with agent - action space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: action space
+        """
 
     @abstractmethod
     def to(self, device) -> Any:
@@ -34,9 +63,8 @@ class BaseEnvForVec(ABC):
         return self
 
     @abstractmethod
-    def sample_new_states(self, n: int) -> Any:
-        """?
-
+    def sample_new_states(self, n: int) -> torch.Tensor:
+        """
         Args:
             n (int): Number of states to sample.
 
@@ -61,7 +89,7 @@ class BaseEnvForVec(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_observations(self, states) -> Any:
+    def get_observations(self, states) -> torch.Tensor:
         """Takes a number of states and returns the corresponding observations for the agents.
 
         Args:
@@ -83,6 +111,24 @@ class BaseEnvForVec(ABC):
             image:
         """
 
+    def custom_evaluation(
+        self,
+        learners: Dict[int, BaseAlgorithm],
+        env,
+        writer,
+        iteration: int,
+        config: Dict,
+    ):
+        """Method is called during training process and allows environment specific logging.
+
+        Args:
+            learners (Dict[int, BaseAlgorithm]):
+            env (_type_): evaluation env
+            writer: tensorboard summary writer
+            config: Dict of additional data
+        """
+        pass
+
     def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
         """
         Environment-specific seeding is not used at the moment.
@@ -95,7 +141,7 @@ class BaseEnvForVec(ABC):
         torch.manual_seed(seed)
 
 
-class TorchVecEnv(VecEnv):
+class MATorchVecEnv(VecEnv):
     """Vectorized Gym environment base class"""
 
     metadata = {"render.modes": ["console"]}
@@ -120,10 +166,26 @@ class TorchVecEnv(VecEnv):
             "returns": torch.zeros((num_envs,), device=device),
             "lengths": torch.zeros((num_envs,), device=device),
         }
+        self.sa_ep_stats = {
+            agent_id: {
+                "returns": torch.zeros((num_envs,), device=device),
+                "lengths": torch.zeros((num_envs,), device=device),
+            }
+            for agent_id in range(self.model.num_agents)
+        }
         # self.render_n_envs = render_num_envs
 
-        self.observation_space = model.observation_space
-        self.action_space = model.action_space
+        self.observation_spaces = model.observation_spaces
+        self.action_spaces = model.action_spaces
+        self.observation_space = None
+        self.action_space = None
+
+    def set_env_for_current_agent(self, agent_id: int):
+        """Sets the environment to the view of provided agent. 
+        Needed to initialize leaners.
+        """
+        self.observation_space = self.observation_spaces[agent_id]
+        self.action_space = self.action_spaces[agent_id]
 
     def step_async(self, actions: np.ndarray) -> None:
         self.actions = actions
@@ -146,41 +208,68 @@ class TorchVecEnv(VecEnv):
             obses, rewards, dones, next_states = self.model.compute_step(
                 current_states, actions
             )
-
-        self.ep_stats["returns"] += rewards
-        self.ep_stats["lengths"] += torch.ones((self.num_envs,), device=self.device)
-
         self.current_states = next_states
 
         n_dones = dones.sum()
         self.current_states[dones] = self.model.sample_new_states(n_dones)
 
-        # NOTE: not sure if this is needed
+        self.ep_stats["returns"] += torch.sum(
+            torch.stack(tuple(rewards.values())), axis=0
+        )  # global rewards
+        self.ep_stats["lengths"] += torch.ones((self.num_envs,), device=self.device)
         episode_returns = self.ep_stats["returns"][dones]
         episode_lengths = self.ep_stats["lengths"][dones]
+        self.ep_stats["returns"][dones] = 0
+        self.ep_stats["lengths"][dones] = 0
+
         infos = dict(episode_returns=episode_returns, episode_lengths=episode_lengths)
 
-        # NOTE: only support for constant length env
-        if dones.all():
+        for agent_id in range(self.model.num_agents):
+            self.sa_ep_stats[agent_id]["returns"] += rewards[agent_id]
+            self.sa_ep_stats[agent_id]["lengths"] += torch.ones(
+                (self.num_envs,), device=self.device
+            )
+            sa_episode_returns = self.sa_ep_stats[agent_id]["returns"][dones]
+            sa_episode_lengths = self.sa_ep_stats[agent_id]["lengths"][dones]
+            self.sa_ep_stats[agent_id]["returns"][dones] = 0
+            self.sa_ep_stats[agent_id]["lengths"][dones] = 0
+            infos[agent_id] = dict(
+                sa_episode_returns=sa_episode_returns,
+                sa_episode_lengths=sa_episode_lengths,
+            )
+
+        if dones.any():
             infos["terminal_observation"] = self.model.get_observations(
                 self.current_states[dones]
             )
 
-        self.ep_stats["returns"][dones] = 0
-        self.ep_stats["lengths"][dones] = 0
+            # Override observations for resetted environments after using them to
+            # set "terminal_observation"
+            newly_sampled_obses = self.model.get_observations(
+                self.current_states[dones]
+            )
+            for agent_id in range(self.model.num_agents):
+                obses[agent_id][dones] = newly_sampled_obses[agent_id]
 
-        # Override observations for resetted environments after using them to
-        # set "terminal_observation"
-        obses[dones] = self.model.get_observations(self.current_states[dones])
+        return (
+            self.clone_tensor_dict(obses),
+            self.clone_tensor_dict(rewards),
+            dones.clone(),
+            infos,
+        )
 
-        return obses.clone(), rewards.clone(), dones.clone(), infos
+    @staticmethod
+    def clone_tensor_dict(
+        dict_to_clone: Dict[Any, torch.tensor]
+    ) -> Dict[Any, torch.tensor]:
+        return {key: value.clone() for key, value in dict_to_clone.items()}
 
     def step(self, actions: np.ndarray):
         """
         Step the environments with the given action
 
         :param actions: the action
-        :return: observation, reward, done, information
+        :return: observations, reward, done, information
         """
         self.step_async(actions)
         return self.step_wait()
