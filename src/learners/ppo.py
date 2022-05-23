@@ -126,7 +126,7 @@ class VecPPO(PPO):
                     for agent_id, sa_obs in sa_new_obs.items()
                 }
             else:
-                values = self.policy.predict_values(sa_new_obs).squeeze()
+                values = {0: self.policy.predict_values(sa_new_obs).squeeze()}
 
         self.rollout_buffer.compute_returns_and_advantage(
             last_values=values, dones=dones, policy_sharing=policy_sharing
@@ -544,24 +544,19 @@ class VecRolloutBuffer(RolloutBuffer):
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
-        last_gae_lam = 0
-        if policy_sharing:  # TODO: Policy sharing needs to be handled in a cleaner way!
-            last_values = {
-                agent_id: sa_last_values.clone()
-                for agent_id, sa_last_values in last_values.items()
-            }
-        else:
-            last_values = last_values.clone()
+        agent_id = 0
+
+        last_values = {
+            agent_idx: sa_last_values.clone()
+            for agent_idx, sa_last_values in last_values.items()
+        }
+        last_gae_lam = {agent_idx: 0 for agent_idx in last_values.keys()}
 
         for step in reversed(range(self.buffer_size)):
             if policy_sharing:
-                sa_last_values = last_values[self.agent_ids[step].detach().item()]
-            else:
-                sa_last_values = last_values
-            if step == self.buffer_size - 1 and not policy_sharing:
-                next_non_terminal = th.logical_not(dones)
-                next_values = sa_last_values
-            elif step >= self.buffer_size - len(last_values) and policy_sharing:
+                agent_id = self.agent_ids[step].detach().item()
+            sa_last_values = last_values[agent_id]
+            if step >= self.buffer_size - len(last_values):
                 next_non_terminal = th.logical_not(dones)
                 next_values = sa_last_values
             else:
@@ -574,10 +569,14 @@ class VecRolloutBuffer(RolloutBuffer):
                 + self.gamma * next_values * next_non_terminal
                 - self.values[step]
             )
-            last_gae_lam = (
-                delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
+            last_gae_lam[agent_id] = (
+                delta
+                + self.gamma
+                * self.gae_lambda
+                * next_non_terminal
+                * last_gae_lam[agent_id]
             )
-            self.advantages[step] = last_gae_lam
+            self.advantages[step] = last_gae_lam[agent_id]
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
         # in David Silver Lecture 4: https://www.youtube.com/watch?v=PnHCvfgC_ZA
         self.returns = self.advantages + self.values
