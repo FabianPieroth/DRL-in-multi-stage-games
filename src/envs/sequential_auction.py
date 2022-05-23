@@ -275,9 +275,6 @@ class SequentialAuction(BaseEnvForVec):
             1 if self.collapse_symmetric_opponents else self.num_agents - 1
         )
 
-        # backward induction: simulate previous stages
-        self.earliest_stage = None
-
     def to(self, device) -> Any:
         """Set device"""
         self.device = device
@@ -326,33 +323,6 @@ class SequentialAuction(BaseEnvForVec):
 
         # dummy prices
         states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
-
-        # simulate earlier stages:
-        if self.earliest_stage is not None:
-            # set all payments to zero that are in the past
-            states[
-                :,
-                :,
-                self.payments_start_index : self.payments_start_index
-                + self.earliest_stage,
-            ] = 0  # zero payments
-            # only the first players are left
-            for player_position in range(
-                self.num_rounds_to_play - self.earliest_stage + 1, self.num_agents
-            ):
-                index_shift = (
-                    player_position + self.earliest_stage - self.num_rounds_to_play - 1
-                )
-                states[
-                    :, player_position, self.allocations_start_index + index_shift
-                ] = 1  # allocations
-                states[
-                    :, player_position, self.payments_start_index + index_shift
-                ] = states[
-                    :, player_position, 0
-                ]  # payments
-                # TODO: Other choice? Or even actually drop eliminated players from participating?
-            states = states[:, np.random.permutation(self.num_agents), :]
 
         return states
 
@@ -562,9 +532,6 @@ class SequentialAuction(BaseEnvForVec):
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
-        _earliest_stage = self.earliest_stage
-        self.earliest_stage = None
-
         self.seed(seed)
         states = self.sample_new_states(num_samples)
 
@@ -676,8 +643,6 @@ class SequentialAuction(BaseEnvForVec):
         writer.add_figure("images", fig, step)
         plt.close()
 
-        self.earliest_stage = _earliest_stage
-
         # reset seed
         self.seed(int(time.time()))
 
@@ -686,9 +651,6 @@ class SequentialAuction(BaseEnvForVec):
         # TODO: Currently not working for multi-stage: need cases?
         seed = 69
         self.seed(seed)
-
-        _earliest_stage = self.earliest_stage
-        self.earliest_stage = None
 
         # calculate utility in self-play (learned strategies only) and the
         # utility that the BNE strategy of the current player would achieve
@@ -735,8 +697,6 @@ class SequentialAuction(BaseEnvForVec):
 
         logger.record("eval/utility_actual", actual_utility)
         logger.record("eval/utility_bne", bne_utility)
-
-        self.earliest_stage = _earliest_stage
 
         # reset seed
         self.seed(int(time.time()))

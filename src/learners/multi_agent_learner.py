@@ -21,13 +21,9 @@ class MultiAgentCoordinator:
         learner_class: VecPPO,
         learner_kwargs: dict = None,
         policy_sharing: bool = True,
-        backward_induction_learning: bool = False,
     ):
         self.env = env
         self.policy_sharing = policy_sharing
-
-        # TODO: WIP
-        self.backward_induction_learning = backward_induction_learning
 
         # check for possible symmetries
         if self.policy_sharing:
@@ -123,18 +119,6 @@ class MultiAgentCoordinator:
                 # Set actively learning player
                 learner.env.model.player_position = player_position
                 # TODO should be equivalent to self.env.player_position
-
-                # Backward induction learning
-                if self.backward_induction_learning:
-                    sub_n = total_timesteps // learner.env.model.num_rounds_to_play
-                    stage = (
-                        learner.env.model.num_rounds_to_play
-                        - 1
-                        - learner.num_timesteps // sub_n
-                    )
-                    # stage = int(torch.randint(stage, learner.env.model.num_rounds_to_play, (1,)))
-                    learner.env.model.earliest_stage = stage
-                    print("stage", stage)
 
                 continue_training = learner.collect_rollouts(
                     learner.env,
