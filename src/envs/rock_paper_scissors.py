@@ -19,6 +19,22 @@ class RockPaperScissors(BaseEnvForVec):
         super().__init__(config, device)
         self.state_shape = (self.num_agents, 2)
         self.action_space_sizes = self._init_action_space_sizes()
+        self.variable_num_rounds = self.config["variable_num_rounds"]
+
+    def _get_num_rounds_to_play(self, num: int) -> torch.Tensor:
+        if self.config["variable_num_rounds"]:
+            return torch.randint(
+                low=self.config["num_rounds_to_play"] - 1,
+                high=self.config["num_rounds_to_play"] + 2,
+                size=(num,),
+                device=self.device,
+            )
+        else:
+            return (
+                torch.ones((num,), device=self.device)
+                * self.config["num_rounds_to_play"]
+            )
+        pass
 
     def _get_num_agents(self) -> int:
         return self.config["num_agents"]
@@ -48,7 +64,7 @@ class RockPaperScissors(BaseEnvForVec):
         """
         shape_to_sample = (n,) + self.state_shape
         states = torch.zeros(shape_to_sample, device=self.device)
-        states[:, :, -1] = self.config["num_rounds_to_play"]
+        states[:, :, -1] = self._get_num_rounds_to_play(n)[:, None]
         return states
 
     def compute_step(self, cur_states, actions: Dict[int, torch.Tensor]):
