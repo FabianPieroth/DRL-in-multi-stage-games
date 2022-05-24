@@ -22,6 +22,9 @@ class MultiAgentCoordinator:
         self.learners = pl_ut.get_policies(config, env)
         self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
 
+        # TODO Nils: This is needed, unfortunately, for `collapse_symmetric_opponents`
+        self.env.model.learners = self.learners
+
         # Keep track of running length as Mertikopoulos suggests to detect
         # oscillations
         self.running_length = [0] * len(self.learners)
