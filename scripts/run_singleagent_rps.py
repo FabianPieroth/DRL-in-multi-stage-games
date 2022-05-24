@@ -13,7 +13,7 @@ import torch
 from stable_baselines3.common.env_checker import check_env
 
 from src.envs.rock_paper_scissors import RockPaperScissorsSingleAgent
-from src.envs.torch_vec_env import TorchVecEnv
+from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.ppo import VecPPO
 
 
@@ -37,7 +37,7 @@ def single_agent_rps_main():
     eval_times = [None] * len(num_envs_list)
     for i, num_envs in enumerate(num_envs_list):
 
-        env = TorchVecEnv(base_env, num_envs=num_envs, device=device)
+        env = MATorchVecEnv(base_env, num_envs=num_envs, device=device)
         model = VecPPO(
             policy="MlpPolicy",
             env=env,

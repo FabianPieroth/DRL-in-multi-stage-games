@@ -185,47 +185,79 @@ class SequentialAuction(BaseEnvForVec):
 
     DUMMY_PRICE_KEY = -1
 
-    def __init__(
-        self,
-        config: Dict,
-        payments: str,
-        device: str = "cpu",
-        player_position: int = 0,
-        reduced_observation_space: bool = False,
-    ):
+    def __init__(self, config: Dict, device: str = "cpu"):
+        self.num_rounds_to_play = config["num_rounds_to_play"]
         super().__init__(config, device)
-        self.rl_env_config = config
-        self.num_rounds_to_play = self.rl_env_config["num_rounds_to_play"]
 
-        self.num_agents = self.rl_env_config["num_agents"]
+        self.mechanism, self.equilibrium_profile = (
+            self._init_mechanism_and_equilibrium_profile()
+        )
 
-        # list of indices which maps `player_position` to its strategy index
-        self.policy_symmetries = [0] * self.num_agents
+        # NOTE: unit-demand only atm
+        self.valuation_size = self.config["valuation_size"]
+        self.action_size = self.config["action_size"]
+        self.strategies = self._init_dummy_strategies()
 
-        # set up mechanism
-        if payments == "first":
-            self.mechanism: Mechanism = FirstPriceAuction()
-            self.equilibrium_profile = equilibrium_fpsb_symmetric_uniform
-        elif payments in ["second", "vcg", "vickery"]:
-            self.mechanism: Mechanism = VickreyAuction()
-            self.equilibrium_profile = truthful
+        # If the opponents are all symmetric, we may just sample from one
+        # opponent with the max order statistic corresponding to the same
+        # competition as the original opponents
+        self.collapse_symmetric_opponents = self.config["collapse_symmetric_opponents"]
+        if self.collapse_symmetric_opponents:
+            raise NotImplementedError(
+                "When using `collapse_symmetric_opponents` only the agent with id 0 can learn against a static env. Incompatible with current version of policy sharing / MA coordinator."
+            )
+            self.num_agents = 1
+
+        self.strategies_bne = self._init_bne_strategies()
+
+    def _init_mechanism_and_equilibrium_profile(self):
+        if self.config["mechanism_type"] == "first":
+            mechanism: Mechanism = FirstPriceAuction()
+            equilibrium_profile = equilibrium_fpsb_symmetric_uniform
+        elif self.config["mechanism_type"] in ["second", "vcg", "vickery"]:
+            mechanism: Mechanism = VickreyAuction()
+            equilibrium_profile = truthful
         else:
             raise NotImplementedError("Payment rule unknown.")
+        return mechanism, equilibrium_profile
 
+    def _init_bne_strategies(self):
+        return {
+            agent_id: self.equilibrium_profile(
+                num_agents=self.num_agents,
+                num_units=self.num_rounds_to_play,
+                player_position=agent_id,
+            )
+            for agent_id in range(self.num_agents)
+        }
+
+    def _init_dummy_strategies(self):
+        return [
+            lambda obs, deterministic=True: torch.zeros(
+                (obs.shape[0], self.config["action_size"]), device=obs.device
+            )
+            for _ in range(self.num_agents)
+        ]
+
+    def _get_num_agents(self) -> int:
+        return self.config["num_agents"]
+
+    def _init_observation_spaces(self):
+        """Returns dict with agent - observation space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: observation space
+        """
         # unit-demand
         self.valuation_size = 1
         self.action_size = 1
 
         # set up observation space
         # NOTE: does not support non unit-demand
-        self.reduced_observation_space = reduced_observation_space
+        self.reduced_observation_space = self.config["reduced_observation_space"]
         if self.reduced_observation_space:
-            # observations: valuation, allocations (up to last stage)
-            raise NotImplementedError(
-                "Currently wrongly disregards previous alloations."
-            )
-            low = [0.0] + [0.0] * (self.num_rounds_to_play - 1)
-            high = [1.0] + [1.0] * (self.num_rounds_to_play - 1)
+            # observations: valuation, stage, allocation (up to now)
+            low = [0.0] * 3
+            high = [1.0, self.num_rounds_to_play, 1.0]
         else:
             # observations: valuation, allocation (including in which stage
             # obtained), previous prices (including in which stage payed)
@@ -239,35 +271,21 @@ class SequentialAuction(BaseEnvForVec):
                 + [1.0] * self.num_rounds_to_play
                 + [np.inf] * (self.num_rounds_to_play * 2)
             )
-        self.observation_space = spaces.Box(low=np.array(low), high=np.array(high))
+        return {
+            agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
+            for agent_id in range(self.num_agents)
+        }
 
-        # actions
-        self.action_space = spaces.Box(
-            low=np.array([0] * self.action_size),
-            high=np.array([np.inf] * self.action_size),
+    def _init_action_spaces(self):
+        """Returns dict with agent - action space pairs.
+        Returns:
+            Dict[int, Space]: agent_id: action space
+        """
+        sa_action_space = spaces.Box(
+            low=np.float32([0] * self.config["action_size"]),
+            high=np.float32([np.inf] * self.config["action_size"]),
         )
-
-        # positions
-        self.player_position = player_position
-
-        # dummy strategies: these can be overwritten by strategies that are
-        # learned over time in repeated self-play.
-        self.strategies = [
-            lambda obs, deterministic=True: torch.zeros(
-                (obs.shape[0], self.action_size), device=obs.device
-            )
-            for _ in range(self.num_agents)
-        ]
-
-        # setup analytical BNE
-        self.strategies_bne = [
-            self.equilibrium_profile(
-                num_agents=self.num_agents,
-                num_units=self.num_rounds_to_play,
-                player_position=i,
-            )
-            for i in range(self.num_agents)
-        ]
+        return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
 
     def to(self, device) -> Any:
         """Set device"""
@@ -275,18 +293,18 @@ class SequentialAuction(BaseEnvForVec):
         return self
 
     def sample_new_states(self, n: int) -> Any:
-        """Create new initial states consiting of
+        """Create new initial states consisting of
             * one valuation per agent
             * num_rounds_to_play * allocation per agent
             * prices of all stages (-1 for future stages TODO?)
                 -> implicitly tells agents which the current round is
 
-        :param n: Batch size of how many auction games are played in parallel.        
+        :param n: Batch size of how many auction games are played in parallel.
         :return: The new states, in shape=(n, num_agents*2 + num_rounds_to_play),
             where ...
         `current_round` and `num_rounds_to_play`.
         """
-        # TODO: perhaps it's easier to split state into multiple tensors?
+        # TODO: perhaps it's easier to split state into multiple tensors? @Nils: is this still relevant?
         # -> needs special treatment in `torch_vec_env`
         self.valuations_start_index = 0
         self.allocations_start_index = self.valuation_size
@@ -299,8 +317,15 @@ class SequentialAuction(BaseEnvForVec):
             device=self.device,
         )
 
-        # ipv symmetric unifrom priors
+        # ipv symmetric uniform priors
         states[:, :, : self.valuation_size].uniform_(0, 1)
+
+        if self.collapse_symmetric_opponents:
+            m = torch.distributions.Beta(
+                torch.tensor([self.num_agents - 1], device=self.device),
+                torch.tensor([1.0], device=self.device),
+            )
+            states[:, 1, : self.valuation_size] = m.sample((n,))
 
         # dummy prices
         states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
@@ -319,17 +344,7 @@ class SequentialAuction(BaseEnvForVec):
         :return updated_states:
         """
         # append opponents' actions
-        action_profile = actions.view(-1, 1, self.action_size).repeat(
-            1, self.num_agents, 1
-        )
-        for opponent_position, opponent_strategy in enumerate(self.strategies):
-            if opponent_position != self.player_position:
-                opponent_obs = self.get_observations(
-                    cur_states, player_position=opponent_position
-                )
-                action_profile[:, opponent_position, :] = opponent_strategy(
-                    opponent_obs, deterministic=True
-                ).view(-1, self.action_size)
+        action_profile = torch.stack(tuple(actions.values()), dim=1)
 
         # run auction round
         allocations, payments = self.mechanism.run(action_profile)
@@ -338,14 +353,7 @@ class SequentialAuction(BaseEnvForVec):
         new_states = cur_states.detach().clone()
 
         # get current stage
-        try:
-            stage = (
-                cur_states[0, 0, self.payments_start_index :]
-                .tolist()
-                .index(SequentialAuction.DUMMY_PRICE_KEY)
-            )
-        except ValueError as _:  # last round
-            stage = self.num_rounds_to_play - 1
+        stage = self._state2stage(cur_states)
 
         # update payments
         new_states[:, :, self.payments_start_index + stage] = payments
@@ -358,6 +366,29 @@ class SequentialAuction(BaseEnvForVec):
             + stage * self.valuation_size : self.allocations_start_index
             + (stage + 1) * self.valuation_size,
         ] = allocations
+
+        if self.collapse_symmetric_opponents:
+            # the only thing the current player knows is that the opponent
+            # faced in the next round is weaker
+            highest_opponent = new_states[:, 1, : self.valuation_size]
+            m = torch.distributions.Beta(
+                torch.tensor([max(1, self.num_agents - 2 - stage)], device=self.device),
+                torch.tensor([1.0], device=self.device),
+            )
+            batch_size = cur_states.shape[0]
+            new_states[:, 1, : self.valuation_size] = highest_opponent * m.sample(
+                (batch_size,)
+            )
+
+            # force opponent's allocation to zero again st it competes in next
+            # stage
+            new_states[
+                :,
+                1,
+                self.allocations_start_index
+                + stage * self.valuation_size : self.allocations_start_index
+                + (stage + 1) * self.valuation_size,
+            ] = 0
 
         # reached last stage?
         if stage >= self.num_rounds_to_play - 1:
@@ -377,49 +408,43 @@ class SequentialAuction(BaseEnvForVec):
 
         TODO: do we want intermediate rewards or not?
         """
+
+        return {
+            agent_id: self._compute_sa_rewards(states, stage, agent_id)
+            for agent_id in range(self.num_agents)
+        }
+
+    def _compute_sa_rewards(self, states: torch.Tensor, stage: int, agent_id: int):
         valuations = states[
             :,
-            self.player_position,
+            agent_id,
             self.valuations_start_index : self.valuations_start_index
             + self.valuation_size,
-        ].clone()
+        ]
         # only consider this stage's allocation
         allocations = states[
             :,
-            self.player_position,
+            agent_id,
             self.allocations_start_index
             + stage * self.valuation_size : self.allocations_start_index
             + (stage + 1) * self.valuation_size,
         ]
         payments = states[
             :,
-            self.player_position,
+            agent_id,
             self.payments_start_index + stage : self.payments_start_index + (stage + 1),
         ]
 
-        # set value to zero if we already own the unit
-        # NOTE: unit-demand hardcoded
-        if stage > 0:
-            # sum over allocations of all previous stages
-            onwer_mask = (
-                states[
-                    :,
-                    self.player_position,
-                    self.allocations_start_index : self.allocations_start_index
-                    + stage * self.valuation_size,
-                ].sum(axis=1)
-                > 0
-            )
-            valuations[onwer_mask] = 0
+        # set valuation to zero if we already own the unit
+        has_won_already = self._has_won_already(states, stage)[agent_id]
 
         # quasi-linear utility
         rewards = valuations * allocations - payments
+        rewards[has_won_already] = -payments[has_won_already]
 
         return rewards.view(-1)
 
-    def get_observations(
-        self, states: torch.Tensor, player_position: int = None
-    ) -> torch.Tensor:
+    def get_observations(self, states: torch.Tensor) -> torch.Tensor:
         """Return the observations at the player at `player_position`.
 
         :param states: The current states of shape (num_env, num_agents,
@@ -429,26 +454,110 @@ class SequentialAuction(BaseEnvForVec):
         :returns observations: Observations of shape (num_env, obs_private_dim
             + obs_public_dim), where the private observations consist of the
             valuation and a vector of allocations and payments (for each stage)
-            and the public observation consits of published prices.
+            and the public observation consists of published prices.
         """
-        if player_position is None:
-            player_position = self.player_position
-
-        # obs consits of: own valuations, own allocations, own payments and
+        # obs consists of: own valuations, own allocations, own payments and
         # published (here = highest payments)
-        obs_private = states[:, player_position, :]
 
         if self.reduced_observation_space:
-            return obs_private[:, : -self.num_rounds_to_play - 1]
+            stage = self._state2stage(states)
+            won = self._has_won_already(states, stage)
+            batch_size = states.shape[0]
+            observation_dict = {}
+            for agent_id in range(self.num_agents):
+                observation_dict[agent_id] = torch.zeros(
+                    (batch_size, 3), device=states.device
+                )
+                observation_dict[agent_id][
+                    :,
+                    self.valuations_start_index : self.valuations_start_index
+                    + self.valuation_size,
+                ] = states[
+                    :,
+                    agent_id,
+                    self.valuations_start_index : self.valuations_start_index
+                    + self.valuation_size,
+                ]
+                observation_dict[agent_id][:, 1] = stage
+                observation_dict[agent_id][:, 2] = won[agent_id]
 
-        obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
-
-        return torch.concat((obs_private, obs_public), axis=1)
+        else:
+            obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
+            observation_dict = {
+                agent_id: torch.concat((states[:, agent_id, :], obs_public), axis=1)
+                for agent_id in range(self.num_agents)
+            }
+        return observation_dict
 
     def render(self, state):
         return state
 
-    def log_plotting(self, writer, step: int, num_samples: int = 500):
+    def _state2stage(self, cur_states):
+        """Get the current stage from the state."""
+        if cur_states.shape[0] == 0:  # empty batch
+            return -1
+        try:
+            # NOTE: only works for fixed length / each batch at same stage
+            stage = (
+                cur_states[0, 0, self.payments_start_index :]
+                .tolist()
+                .index(SequentialAuction.DUMMY_PRICE_KEY)
+            )
+        except ValueError as _:  # last round
+            stage = self.num_rounds_to_play - 1
+        return stage
+
+    def _has_won_already(self, state: torch.Tensor, stage: int):
+        """Check if the current player already has won in previous stages of the auction."""
+        # NOTE: unit-demand hardcoded
+
+        low = self.allocations_start_index
+        high = self.allocations_start_index + stage
+        return {
+            agent_id: state[:, agent_id, low:high].sum(axis=-1) > 0
+            for agent_id in range(self.num_agents)
+        }
+
+    def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
+        """Method is called during training process and allows environment specific logging.
+
+        Args:
+            learners (Dict[int, BaseAlgorithm]):
+            env (_type_): evaluation env
+            writer: tensorboard summary writer
+            iteration: current training iteration
+        """
+        self.plot_strategies_vs_bne(learners, writer, iteration, config)
+        self.log_metrics_to_equilibrium(learners)
+
+    def get_bne_actions(
+        self, valuations: torch.Tensor, stage: int, won: torch.Tensor, agent_id: int
+    ) -> torch.Tensor:
+        return self.strategies_bne[agent_id](stage, valuations, won)
+
+    @staticmethod
+    def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
+        return {
+            agent_id: learner.predict(observations[agent_id], deterministic)[0]
+            for agent_id, learner in learners.items()
+        }
+
+    @staticmethod
+    def get_equilibrium_actions(
+        stage: int, equilibrium_strategies, observations, has_won_already
+    ):
+        return {
+            agent_id: equilibrium_strategy(
+                stage=stage,
+                valuation=observations[agent_id][:, 0],
+                won=has_won_already[agent_id],
+            )
+            for agent_id, equilibrium_strategy in equilibrium_strategies.items()
+        }
+
+    def plot_strategies_vs_bne(
+        self, learners, writer, iteration: int, config, num_samples: int = 500
+    ):
         """Evaluate and log current strategies."""
         seed = 69
 
@@ -459,7 +568,7 @@ class SequentialAuction(BaseEnvForVec):
             sharey=True,
             figsize=(5 * self.num_rounds_to_play, 5),
         )
-        fig.suptitle(f"Iteration {step}", fontsize="x-large")
+        fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
@@ -468,81 +577,99 @@ class SequentialAuction(BaseEnvForVec):
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
-            for player_position in range(self.num_agents):
-                self.player_position = player_position
-                observations = self.get_observations(states)
-                order = observations[:, 0].sort(axis=0)[1]
+            observations = self.get_observations(states)
+            ma_deterministic_actions = self.get_ma_learner_predictions(
+                learners, observations, True
+            )
+            ma_mixed_actions = self.get_ma_learner_predictions(
+                learners, observations, False
+            )
+            for agent_id, _ in learners.items():
+                agent_obs = observations[agent_id]
+                increasing_order = agent_obs[:, 0].sort(axis=0)[1]
+
+                # sort
+                agent_obs = agent_obs[increasing_order]
+
+                has_won_already = self._has_won_already(
+                    states[increasing_order], stage
+                )[agent_id]
 
                 # get actual actions
-                actions = self.strategies[player_position](
-                    observations, deterministic=True
-                )
-                actions_mixed = self.strategies[player_position](
-                    observations, deterministic=False
-                )
+                deterministic_actions = ma_deterministic_actions[agent_id][
+                    increasing_order
+                ]
+                mixed_actions = ma_mixed_actions[agent_id][increasing_order]
 
                 # get BNE actions
-                actions_bne = self.strategies_bne[self.player_position](
-                    stage, observations[:, 0]
+                actions_bne = self.get_bne_actions(
+                    valuations=agent_obs[:, 0],
+                    stage=stage,
+                    won=has_won_already,
+                    agent_id=agent_id,
                 )
 
                 # covert to numpy
-                observations = observations[order, 0].detach().cpu().view(-1).numpy()
-                actions_array = actions.view(-1, 1)[order, ...].detach().cpu().numpy()
-                actions_mixed = (
-                    actions_mixed.view(-1)[order, ...].detach().cpu().numpy()
-                )
-                actions_bne = actions_bne.view(-1, 1)[order, ...].detach().cpu().numpy()
+                agent_obs = agent_obs[:, 0].detach().cpu().view(-1).numpy()
+                actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
+                mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
+                actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
+                has_won_already = has_won_already.cpu().numpy()
+
+                if isinstance(config["algorithms"], str):
+                    algo_name = config["algorithms"]
+                else:
+                    algo_name = config["algorithms"][agent_id]
 
                 # plotting
-                if stage == 0:
-                    drawing, = ax.plot(
-                        observations,
-                        actions_array,
-                        linestyle="dotted",
-                        marker="o",
-                        markevery=32,
-                        label=f"bidder {player_position} PPO",
-                    )
-                else:
-                    has_won_already = (
-                        (states[order, player_position, 1 : stage + 1].sum(axis=-1) > 0)
-                        .cpu()
-                        .numpy()
-                    )
-                    drawing, = ax.plot(
-                        observations[~has_won_already],
-                        actions_array[~has_won_already],
-                        linestyle="dotted",
-                        marker="o",
-                        markevery=32,
-                        label=f"bidder {player_position} PPO",
-                    )
-                    ax.plot(
-                        observations[has_won_already],
-                        actions_array[has_won_already],
-                        linestyle="dotted",
-                        marker="x",
-                        markevery=32,
-                        label=f"bidder {player_position} PPO (won)",
-                        color=drawing.get_color(),
-                    )
-                ax.plot(
-                    observations,
-                    actions_mixed,
-                    ".",
-                    alpha=0.2,
-                    color=drawing.get_color(),
+                drawing, = ax.plot(
+                    agent_obs[~has_won_already],
+                    actions_array[~has_won_already],
+                    linestyle="dotted",
+                    marker="o",
+                    markevery=32,
+                    label=f"bidder {agent_id} PPO",
                 )
                 ax.plot(
-                    observations,
-                    actions_bne,
+                    agent_obs[~has_won_already],
+                    actions_bne[~has_won_already],
                     linestyle="--",
                     marker="*",
                     markevery=32,
                     color=drawing.get_color(),
-                    label=f"bidder {player_position} BNE",
+                    label=f"bidder {agent_id} BNE",
                 )
+                ax.plot(
+                    agent_obs, mixed_actions, ".", alpha=0.2, color=drawing.get_color()
+                )
+                if stage > 0:
+                    ax.plot(
+                        agent_obs[~has_won_already],
+                        actions_array[~has_won_already],
+                        linestyle="dotted",
+                        marker="o",
+                        markevery=32,
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id} PPO",
+                    )
+                    ax.plot(
+                        agent_obs[has_won_already],
+                        actions_array[has_won_already],
+                        linestyle="dotted",
+                        marker="x",
+                        markevery=32,
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id} PPO (won)",
+                    )
+                    ax.plot(
+                        agent_obs[has_won_already],
+                        actions_bne[has_won_already],
+                        linestyle="--",
+                        marker="*",
+                        markevery=32,
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id} BNE",
+                    )
             lin = np.linspace(0, 1, 2)
             ax.plot(lin, lin, "--", color="grey")
             ax.set_xlabel("valuation $v$")
@@ -552,53 +679,113 @@ class SequentialAuction(BaseEnvForVec):
             ax.set_ylim([-0.05, 1.05])
 
             # apply actions to get to next stage
-            _, _, _, states = self.compute_step(states, actions)
+            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
 
         handles, labels = ax.get_legend_handles_labels()
         axs[0].legend(handles, labels, ncol=2)
         plt.tight_layout()
-        plt.savefig(f"{writer.log_dir}/plot_{step}.png")
-        writer.add_figure("images", fig, step)
+        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
+        writer.add_figure("images", fig, iteration)
         plt.close()
 
         # reset seed
         self.seed(int(time.time()))
 
-    def log_vs_bne(self, logger, num_samples: int = 100):
+    def log_metrics_to_equilibrium(self, learners, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
-        # TODO: Currently not working for multi-stage: need cases?
         seed = 69
-
-        # calculate utility in self-play (learned strategies only)
-        actual_utility = 0
         self.seed(seed)
-        states = self.sample_new_states(num_samples)
-        observations = self.get_observations(states)
-        for stage in range(self.num_rounds_to_play):
-            actions_actual = self.strategies[self.player_position](
-                observations, deterministic=True
-            )
-            observations, rewards, _, states = self.compute_step(states, actions_actual)
-        actual_utility += rewards.mean().item()
-        logger.record("eval/utility_actual", actual_utility)
 
-        # calculate the utility that the BNE strategy of the current player
-        # would achieve
-        bne_utility = 0
-        self.seed(seed)
         states = self.sample_new_states(num_samples)
-        observations = self.get_observations(states)
-        for stage in range(self.num_rounds_to_play):
-            actions_bne = self.strategies_bne[self.player_position](
-                stage, observations[:, 0]
-            )
-            observations, rewards, _, states = self.compute_step(states, actions_bne)
-        bne_utility += rewards.mean().item()
-        logger.record("eval/utility_bne", bne_utility)
 
-        # calculate distance in action space
-        L2 = tensor_norm(actions_actual, actions_bne)
-        logger.record("eval/action_norm_last_stage", L2)
+        learned_utilities, equ_utilities, l2_distances = self.do_equilibrium_and_actual_rollout(
+            learners, states
+        )
+
+        self._log_metric_dict_to_individual_learners(
+            learners, equ_utilities, "eval/utility_equilibrium"
+        )
+        self._log_metric_dict_to_individual_learners(
+            learners, learned_utilities, "eval/utility_actual"
+        )
+        self._log_l2_distances(learners, l2_distances)
 
         # reset seed
         self.seed(int(time.time()))
+
+    def do_equilibrium_and_actual_rollout(self, learners, actual_states):
+        """Staring from state `states` we want to compute
+            1. the action space L2 loss
+            2. the rewards in actual play and in BNE
+        Note that we need to keep track of counterfactual BNE states as these
+        may be different from the states under actual play.
+        """
+        actual_observations = self.get_observations(actual_states)
+
+        equ_states = actual_states.clone()
+        equ_observations = self.get_observations(equ_states)
+
+        l2_distances = {i: [None] * self.num_rounds_to_play for i in learners.keys()}
+        actual_rewards_total = {i: 0 for i in learners.keys()}
+        equ_rewards_total = {i: 0 for i in learners.keys()}
+
+        for stage in range(self.num_rounds_to_play):
+
+            actual_has_won_already = self._has_won_already(actual_states, stage)
+            equ_actions_in_actual_play = self.get_equilibrium_actions(
+                stage, self.strategies_bne, actual_observations, actual_has_won_already
+            )
+
+            equ_has_won_already = self._has_won_already(equ_states, stage)
+            equ_actions_in_equ = self.get_equilibrium_actions(
+                stage, self.strategies_bne, equ_observations, equ_has_won_already
+            )
+
+            actual_actions = self.get_ma_learner_predictions(
+                learners, actual_observations, True
+            )
+
+            actual_observations, actual_rewards, _, actual_states = self.compute_step(
+                actual_states, actual_actions
+            )
+            equ_observations, equ_rewards, _, equ_states = self.compute_step(
+                equ_states, equ_actions_in_equ
+            )
+
+            for agent_id in learners.keys():
+                l2_distances[agent_id][stage] = tensor_norm(
+                    actual_actions[agent_id], equ_actions_in_actual_play[agent_id]
+                )
+
+                actual_rewards_total[agent_id] += actual_rewards[agent_id].mean().item()
+                equ_rewards_total[agent_id] += equ_rewards[agent_id].mean().item()
+
+        return actual_rewards_total, equ_rewards_total, l2_distances
+
+    def _log_l2_distances(self, learners, distances_l2):
+        for stage in range(self.num_rounds_to_play):
+            for agent_id, learner in learners.items():
+                learner.logger.record(
+                    "eval/action_equ_L2_distance_stage_" + str(stage),
+                    distances_l2[agent_id][stage],
+                )
+
+    def _get_mix_equ_learned_actions(
+        self, agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
+    ):
+        mixed_equ_learned_actions = {}
+        for agent_idx in ma_deterministic_learned_actions.keys():
+            if agent_idx == agent_id:
+                mixed_equ_learned_actions[agent_idx] = ma_equilibrium_actions[agent_idx]
+            else:
+                mixed_equ_learned_actions[agent_idx] = ma_deterministic_learned_actions[
+                    agent_idx
+                ]
+        return mixed_equ_learned_actions
+
+    @staticmethod
+    def _log_metric_dict_to_individual_learners(
+        learners, metric_dict: Dict[int, float], key_prefix: str = ""
+    ):
+        for agent_id, learner in learners.items():
+            learner.logger.record(key_prefix, metric_dict[agent_id])
