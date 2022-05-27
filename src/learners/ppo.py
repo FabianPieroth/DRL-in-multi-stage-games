@@ -111,9 +111,10 @@ class VecPPO(PPO):
         agent_id: int,
         policy_sharing: bool,
     ):
-        self.num_timesteps += self.env.num_envs
+        if not (policy_sharing and agent_id > 0):
+            self.num_timesteps += self.env.num_envs
 
-        self._update_info_buffer(infos, dones)
+            self._update_info_buffer(infos, dones)
 
         sa_actions = self.prepare_actions_for_buffer(sa_actions)
 
@@ -123,10 +124,16 @@ class VecPPO(PPO):
             sa_actions, sa_rewards, sa_additional_actions_data, agent_id
         )
 
-        self.update_internal_state_after_step(new_obs, dones)
+        if policy_sharing:
+            if (agent_id + 1) == self.env.model.num_agents:
+                self.update_internal_state_after_step(new_obs, dones)
+            else:
+                pass
+        else:
+            self.update_internal_state_after_step(new_obs, dones)
+
         if self.rollout_buffer.full:
             sa_new_obs = new_obs[agent_id]
-            num_timesteps = self.num_timesteps
             if policy_sharing:
                 assert (
                     agent_id + 1
@@ -134,10 +141,9 @@ class VecPPO(PPO):
                     "Rollout-buffer is assumed to be equally filled by all agents!"
                 )
                 sa_new_obs = new_obs
-                num_timesteps = num_timesteps / self.env.model.num_agents
             self.postprocess_rollout(sa_new_obs, dones, policy_sharing)
             self._update_current_progress_remaining(
-                num_timesteps, self._total_timesteps
+                self.num_timesteps, self._total_timesteps
             )
             self.train()
 
