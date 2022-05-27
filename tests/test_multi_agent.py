@@ -24,6 +24,7 @@ def run_limited_learning(config):
         n_eval_episodes=1,
         tb_log_name="MultiAgent",
     )
+    hydra.core.global_hydra.GlobalHydra().clear()
 
 
 def test_rockpaperscissors():
@@ -58,6 +59,11 @@ def test_sequential_auctions(
     config = io_ut.get_and_store_config()
     config["total_training_steps"] = 1
 
+    rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
+        "configs"
+    ]["rl_envs"]
+    config["rl_envs"] = rl_envs
+
     config["rl_envs"]["mechanism_type"] = mechanism_type
     config["rl_envs"]["num_agents"] = num_agents
     config["rl_envs"]["num_rounds_to_play"] = num_agents - 1
@@ -65,6 +71,3 @@ def test_sequential_auctions(
     config["rl_envs"]["collapse_symmetric_opponents"] = collapse_symmetric_opponents
 
     run_limited_learning(config)
-
-    # clear hydra for what ever reason...
-    hydra.core.global_hydra.GlobalHydra().clear()
