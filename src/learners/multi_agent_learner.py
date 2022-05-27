@@ -56,6 +56,28 @@ class MultiAgentCoordinator:
             )
         return adapted_actions_dict
 
+    def ingest_ma_data_into_learners(
+        self,
+        actions,
+        rewards,
+        additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        policy_sharing,
+    ):
+        for agent_id, learner in self.learners.items():
+            learner.ingest_data_to_learner(
+                actions[agent_id],
+                rewards[agent_id],
+                additional_actions_data[agent_id],
+                dones,
+                infos,
+                new_obs,
+                agent_id,
+                policy_sharing,
+            )
+
     def collect_ma_rollouts(self, callbacks, n_rollout_steps):
         """
         Collect experiences using the current policies and fill each agents ``RolloutBuffer``.
@@ -66,7 +88,7 @@ class MultiAgentCoordinator:
         :param callbacks: Callbacks that will be called at each step
             (and at the beginning and end of the rollout)
         :param rollout_buffers: Buffers to fill with rollouts
-        :param n_steps: Number of experiences to collect per environment
+        :param n_rollout_steps: Number of experiences to collect per environment
         :return: True if function returned with at least `n_rollout_steps`
             collected, False if callback terminated rollout prematurely.
         """
@@ -82,7 +104,17 @@ class MultiAgentCoordinator:
                 actions_for_env
             )  # TODO: dones for every single agent
 
-            self.update_learner_timesteps()
+            self.ingest_ma_data_into_learners(
+                actions,
+                rewards,
+                additional_actions_data,
+                dones,
+                infos,
+                new_obs,
+                self.config["policy_sharing"],
+            )
+
+            # self.update_learner_timesteps()
 
             # Give access to local variables
             for callback in callbacks:
@@ -90,24 +122,24 @@ class MultiAgentCoordinator:
                 if callback.on_step() is False:
                     return False
 
-            self.update_ma_info_buffer(infos, dones)
+            # self.update_ma_info_buffer(infos, dones)
 
             n_steps += 1
 
-            actions = self.prepare_ma_actions_for_buffer(actions)
+            # actions = self.prepare_ma_actions_for_buffer(actions)
 
-            rewards = self.handle_ma_dones(rewards, dones, infos)
+            # rewards = self.handle_ma_dones(rewards, dones, infos)
 
-            self.add_ma_data_to_replay_buffers(
-                actions, additional_actions_data, rewards
-            )
+            # self.add_ma_data_to_replay_buffers(
+            #    actions, additional_actions_data, rewards
+            # )
 
-            self.update_ma_external_state_after_step(new_obs, dones)
+            # self.update_ma_external_state_after_step(new_obs, dones)
 
-        self.postprocess_ma_rollout(new_obs, dones)
+        # self.postprocess_ma_rollout(new_obs, dones)
 
-        for callback in callbacks:
-            callback.on_rollout_end()
+        # for callback in callbacks:
+        #   callback.on_rollout_end()
 
         return True
 
@@ -299,13 +331,13 @@ class MultiAgentCoordinator:
             if continue_training is False:
                 break
 
-            self._update_remaining_progress(total_timesteps)
+            # self._update_remaining_progress(total_timesteps)
 
             self._display_and_log_training_progress(iteration, log_interval)
 
             self._evaluate_policies(iteration, eval_freq, n_eval_episodes, callbacks)
 
-            self.train_policies()
+            # self.train_policies()
 
             iteration += 1
 

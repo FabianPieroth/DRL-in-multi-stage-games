@@ -100,6 +100,47 @@ class VecPPO(PPO):
             sa_rewards[dones] += self.gamma * terminal_value
         return sa_rewards
 
+    def ingest_data_to_learner(
+        self,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        agent_id: int,
+        policy_sharing: bool,
+    ):
+        self.num_timesteps += self.env.num_envs
+
+        self._update_info_buffer(infos, dones)
+
+        sa_actions = self.prepare_actions_for_buffer(sa_actions)
+
+        sa_rewards = self.handle_dones(dones, infos, sa_rewards, agent_id)
+
+        self.add_data_to_replay_buffer(
+            sa_actions, sa_rewards, sa_additional_actions_data, agent_id
+        )
+
+        self.update_internal_state_after_step(new_obs, dones)
+        if self.rollout_buffer.full:
+            sa_new_obs = new_obs[agent_id]
+            num_timesteps = self.num_timesteps
+            if policy_sharing:
+                assert (
+                    agent_id + 1
+                ) == self.env.model.num_agents, (
+                    "Rollout-buffer is assumed to be equally filled by all agents!"
+                )
+                sa_new_obs = new_obs
+                num_timesteps = num_timesteps / self.env.model.num_agents
+            self.postprocess_rollout(sa_new_obs, dones, policy_sharing)
+            self._update_current_progress_remaining(
+                num_timesteps, self._total_timesteps
+            )
+            self.train()
+
     def add_data_to_replay_buffer(
         self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
     ):
