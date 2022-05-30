@@ -29,10 +29,18 @@ class MultiAgentCoordinator:
         # Keep track of running length as Mertikopoulos suggests to detect
         # oscillations
         self.running_length = [0] * len(self.learners)
-        self.current_parameters = {
-            k: parameters_to_vector([_ for _ in l.policy.parameters()])
-            for k, l in self.learners.items()
-        }
+        self.current_parameters = self._get_policy_parameters(self.learners)
+
+    def _get_policy_parameters(self, learners):
+        param_dict = {}
+        for agent_id, learner in learners.items():
+            if learner.policy is not None:
+                param_dict[agent_id] = parameters_to_vector(
+                    [_ for _ in learner.policy.parameters()]
+                )
+            else:
+                param_dict[agent_id] = torch.zeros(1, device=self.config["device"])
+        return param_dict
 
     def get_ma_action(self):
         actions_for_env = {}
@@ -137,10 +145,7 @@ class MultiAgentCoordinator:
 
         # Log running length
         prev_parameters = self.current_parameters
-        self.current_parameters = {
-            k: parameters_to_vector([_ for _ in l.policy.parameters()])
-            for k, l in self.learners.items()
-        }
+        self.current_parameters = self._get_policy_parameters(self.learners)
         for i, learner in self.learners.items():
             self.running_length[i] += tensor_norm(
                 self.current_parameters[i], prev_parameters[i]
