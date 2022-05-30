@@ -11,7 +11,7 @@ from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 
 def run_limited_learning(config):
-    """Runs multi agent learning for `adapted_config`."""
+    """Runs multi agent learning for `config`."""
     config = copy.deepcopy(config)
 
     env = env_ut.get_env(config)
@@ -27,7 +27,8 @@ def run_limited_learning(config):
     hydra.core.global_hydra.GlobalHydra().clear()
 
 
-def test_rockpaperscissors():
+def test_learning_rockpaperscissors():
+    """Runs multi agent learning in RPS."""
     config = io_ut.get_and_store_config()
     config["total_training_steps"] = 1
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
@@ -53,9 +54,10 @@ ids, testdata = zip(
     testdata,
     ids=ids,
 )
-def test_sequential_auctions(
+def test_learning_sequential_auctions(
     mechanism_type, num_agents, reduced_observation_space, collapse_symmetric_opponents
 ):
+    """Runs multi agent learning in sequential auctions for specified parameters."""
     config = io_ut.get_and_store_config()
     config["total_training_steps"] = 1
 
