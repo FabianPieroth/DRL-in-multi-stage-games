@@ -18,6 +18,7 @@ class MultiAgentCoordinator:
     def __init__(self, config: Dict, env):
         self.config = config
         self.env = env
+        self.env_n_step = 0
 
         self.learners = pl_ut.get_policies(config, env)
         self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
@@ -65,6 +66,7 @@ class MultiAgentCoordinator:
         infos,
         new_obs,
         policy_sharing,
+        callbacks,
     ):
         for agent_id, learner in self.learners.items():
             learner.ingest_data_to_learner(
@@ -76,6 +78,7 @@ class MultiAgentCoordinator:
                 new_obs,
                 agent_id,
                 policy_sharing,
+                callbacks[agent_id],
             )
 
     def collect_ma_rollouts(self, callbacks, n_rollout_steps):
@@ -93,10 +96,10 @@ class MultiAgentCoordinator:
             collected, False if callback terminated rollout prematurely.
         """
         n_steps = 0
-        self.prepare_ma_rollout(callbacks)
+        # self.prepare_ma_rollout(callbacks)
 
         while n_steps < n_rollout_steps:
-            self.prepare_ma_step(n_steps)
+            # self.prepare_ma_step(n_steps)
 
             actions_for_env, actions, additional_actions_data = self.get_ma_action()
 
@@ -112,9 +115,8 @@ class MultiAgentCoordinator:
                 infos,
                 new_obs,
                 self.config["policy_sharing"],
+                callbacks,
             )
-
-            # self.update_learner_timesteps()
 
             # Give access to local variables
             for callback in callbacks:
@@ -122,24 +124,7 @@ class MultiAgentCoordinator:
                 if callback.on_step() is False:
                     return False
 
-            # self.update_ma_info_buffer(infos, dones)
-
             n_steps += 1
-
-            # actions = self.prepare_ma_actions_for_buffer(actions)
-
-            # rewards = self.handle_ma_dones(rewards, dones, infos)
-
-            # self.add_ma_data_to_replay_buffers(
-            #    actions, additional_actions_data, rewards
-            # )
-
-            # self.update_ma_external_state_after_step(new_obs, dones)
-
-        # self.postprocess_ma_rollout(new_obs, dones)
-
-        # for callback in callbacks:
-        #   callback.on_rollout_end()
 
         return True
 
@@ -296,7 +281,7 @@ class MultiAgentCoordinator:
     def learn(
         self,
         total_timesteps: int,
-        n_rollout_steps: int,
+        n_steps_per_iteration: int,
         callbacks: List[MaybeCallback] or MaybeCallback = None,
         log_interval: int = 1,
         eval_freq: int = 20,
@@ -317,34 +302,50 @@ class MultiAgentCoordinator:
             reset_num_timesteps,
         )
 
-        # Training loop
         while (
             min(learner.num_timesteps for learner in self.learners.values())
             < total_timesteps
         ):
-            print(f"Iteration {iteration} starts.")
+            if self._iteration_finished(n_steps_per_iteration):
+                print(f"Iteration {iteration} starts.")
+            actions_for_env, actions, additional_actions_data = self.get_ma_action()
 
-            continue_training = self.collect_ma_rollouts(
-                callbacks, n_rollout_steps=n_rollout_steps
+            new_obs, rewards, dones, infos = self.env.step(
+                actions_for_env
+            )  # TODO: dones for every single agent
+
+            self.env_n_step += 1
+
+            self.ingest_ma_data_into_learners(
+                actions,
+                rewards,
+                additional_actions_data,
+                dones,
+                infos,
+                new_obs,
+                self.config["policy_sharing"],
+                callbacks,
             )
+            # Give access to local variables
+            for callback in callbacks:
+                callback.update_locals(locals())
+                if callback.on_step() is False:
+                    return False
 
-            if continue_training is False:
-                break
-
-            # self._update_remaining_progress(total_timesteps)
-
-            self._display_and_log_training_progress(iteration, log_interval)
-
-            self._evaluate_policies(iteration, eval_freq, n_eval_episodes, callbacks)
-
-            # self.train_policies()
-
-            iteration += 1
+            if self._iteration_finished(n_steps_per_iteration):
+                self._display_and_log_training_progress(iteration, log_interval)
+                self._evaluate_policies(
+                    iteration, eval_freq, n_eval_episodes, callbacks
+                )
+                iteration += 1
 
         for callback in callbacks:
             callback.on_training_end()
 
         return self
+
+    def _iteration_finished(self, n_steps_per_iteration: int):
+        return self.env_n_step % n_steps_per_iteration == 0
 
     def _setup_learners_for_training(
         self,

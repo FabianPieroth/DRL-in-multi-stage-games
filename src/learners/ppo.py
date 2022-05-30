@@ -49,7 +49,7 @@ class VecPPO(PPO):
             self.action_space.low = self.action_space.low.to(device=self.device)
             self.action_space.high = self.action_space.high.to(device=self.device)
 
-    def prepare_rollout(self, env, callback):
+    def prepare_next_rollout(self, env, callback):
         assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
@@ -71,6 +71,7 @@ class VecPPO(PPO):
             self.policy.reset_noise(env.num_envs)
 
     def get_actions_with_data(self, agent_id: int):
+        self.prepare_step(self.rollout_buffer.pos, self.env)
         with th.no_grad():
             # Convert to pytorch tensor or to TensorDict
             obs_tensor = self._last_obs[agent_id]
@@ -110,6 +111,7 @@ class VecPPO(PPO):
         new_obs,
         agent_id: int,
         policy_sharing: bool,
+        callback,
     ):
         if not (policy_sharing and agent_id > 0):
             self.num_timesteps += self.env.num_envs
@@ -146,6 +148,7 @@ class VecPPO(PPO):
                 self.num_timesteps, self._total_timesteps
             )
             self.train()
+            self.prepare_next_rollout(self.env, callback)
 
     def add_data_to_replay_buffer(
         self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
@@ -289,6 +292,8 @@ class VecPPO(PPO):
         callback = self._init_callback(
             callback, eval_env, eval_freq, n_eval_episodes, log_path
         )
+
+        self.prepare_next_rollout(self.env, callback)
 
         return total_timesteps, callback
 

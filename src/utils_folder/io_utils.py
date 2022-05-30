@@ -40,15 +40,17 @@ def store_config(config: DictConfig):
 
 def enrich_config(config: DictConfig):
     config["experiment_log_path"] = get_experiment_log_path(config)
-    config["ma_n_rollout_steps"] = get_ma_n_rollout_steps(config)
+    config["n_steps_per_iteration"] = get_n_steps_per_iteration(config)
     config["total_training_steps"] = get_total_training_steps(config)
 
 
 def get_total_training_steps(config: DictConfig) -> int:
-    return config["ma_n_rollout_steps"] * config["num_envs"] * config["iteration_num"]
+    return (
+        config["n_steps_per_iteration"] * config["num_envs"] * config["iteration_num"]
+    )
 
 
-def get_ma_n_rollout_steps(config: DictConfig) -> int:
+def get_n_steps_per_iteration(config: DictConfig) -> int:
     n_rollout_steps = None
     for agent_id, algo_name in enumerate(config["algorithms"]):
         algo_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
