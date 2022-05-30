@@ -13,7 +13,7 @@ def main():
         ma_learner = MultiAgentCoordinator(adapted_config, env)
         ma_learner.learn(
             total_timesteps=adapted_config["total_training_steps"],
-            n_rollout_steps=adapted_config["ma_n_rollout_steps"],
+            n_steps_per_iteration=adapted_config["n_steps_per_iteration"],
             log_interval=1,
             eval_freq=adapted_config["eval_freq"],
             n_eval_episodes=5,
