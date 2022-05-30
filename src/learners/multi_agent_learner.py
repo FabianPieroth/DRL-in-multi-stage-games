@@ -142,8 +142,9 @@ class MultiAgentCoordinator:
             self.env.model.custom_evaluation(
                 self.learners, self.env, self.writer, iteration + 1, self.config
             )
+        self._log_change_in_parameter_space()
 
-        # Log running length
+    def _log_change_in_parameter_space(self):
         prev_parameters = self.current_parameters
         self.current_parameters = self._get_policy_parameters(self.learners)
         for i, learner in self.learners.items():
