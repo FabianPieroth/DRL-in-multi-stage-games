@@ -4,11 +4,8 @@ stages:
 test:
   stage: test
   script:
-  - source ./sequential-auctions-on-gpu/bin/activate
-  - python -m pytest -rxXs --cov-report term-missing --junitxml=testreport.xml
-
-  artifacts:
-    when: always
-    reports:
-      junit: testreport.xml
-    expire_in: 6 months
+  - pip install virtualenv
+  - virtualenv sequential-auctions-on-gpu
+  - source sequential-auctions-on-gpu/bin/activate
+  - pip install -r requirements.txt
+  - pytest --junitxml=report.xml
