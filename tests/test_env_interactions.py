@@ -1,4 +1,4 @@
-"""This module does testing."""
+"""This module tests a single step for each environment."""
 import hydra
 import pytest
 
