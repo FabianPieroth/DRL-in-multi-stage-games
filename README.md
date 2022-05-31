@@ -1,4 +1,6 @@
-# sequential-auctions-on-gpu
+ [![pipeline status](https://gitlab.lrz.de/ge69hoj/sequential-auction-on-gpu/badges/main/pipeline.svg)](https://gitlab.lrz.de/ge69hoj/sequential-auction-on-gpu/-/commits/main) [![coverage report](https://gitlab.lrz.de/ge69hoj/sequential-auction-on-gpu/badges/main/coverage.svg)](https://gitlab.lrz.de/ge69hoj/sequential-auction-on-gpu/-/commits/main) [![Latest Release](https://gitlab.lrz.de/ge69hoj/sequential-auction-on-gpu/-/badges/release.svg)](https://gitlab.lrz.de/ge69hoj/sequential-auction-on-gpu/-/releases)
+
+# Learning in Sequential Bayesian Games
 
 This project implements sequential auctions as a Mulit-Agent Reinforcement Learning environment.
 It uses the implementation of Alexander Neitz's SimpleSoccer environment as basis.
