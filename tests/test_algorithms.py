@@ -19,11 +19,12 @@ ids, testdata = zip(
 def test_algos_in_rockpaperscissors(algorithms):
     config = io_ut.get_and_store_config()
     config["iteration_num"] = 1
-    io_ut.enrich_config(config)
-    print(config["total_training_steps"])
+    config["num_envs"] = 32
+    config["policy_sharing"] = False
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
         "configs"
     ]["rl_envs"]
     config["rl_envs"] = rl_envs
     config["algorithms"] = algorithms
+    io_ut.enrich_config(config)
     tst_ut.run_limited_learning(config)

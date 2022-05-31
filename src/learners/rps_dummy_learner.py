@@ -84,4 +84,4 @@ class RPSDummyLearner(MABaseAlgorithm):
         policy_sharing: bool,
         callback,
     ):
-        pass
+        self.num_timesteps += self.env.num_envs

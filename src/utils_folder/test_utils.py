@@ -14,7 +14,7 @@ def run_limited_learning(config):
     ma_learner = MultiAgentCoordinator(config, env)
     ma_learner.learn(
         total_timesteps=config["total_training_steps"],
-        n_rollout_steps=config["ma_n_rollout_steps"],
+        n_steps_per_iteration=config["n_steps_per_iteration"],
         log_interval=None,
         eval_freq=config["eval_freq"],
         n_eval_episodes=1,

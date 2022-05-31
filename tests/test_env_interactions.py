@@ -39,6 +39,7 @@ def test_learning_sequential_auctions(
     """Runs multi agent learning in sequential auctions for specified parameters."""
     config = io_ut.get_and_store_config()
     config["total_training_steps"] = 1
+    config["policy_sharing"] = True
 
     rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
         "configs"
