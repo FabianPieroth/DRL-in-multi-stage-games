@@ -743,10 +743,8 @@ class SequentialAuction(BaseEnvForVec):
         seed = 69
         self.seed(seed)
 
-        states = self.sample_new_states(num_samples)
-
         learned_utilities, equ_utilities, l2_distances = self.do_equilibrium_and_actual_rollout(
-            learners, states
+            learners, num_samples
         )
 
         self._log_metric_dict_to_individual_learners(
@@ -760,13 +758,14 @@ class SequentialAuction(BaseEnvForVec):
         # reset seed
         self.seed(int(time.time()))
 
-    def do_equilibrium_and_actual_rollout(self, learners, actual_states):
+    def do_equilibrium_and_actual_rollout(self, learners, num_samples: int):
         """Staring from state `states` we want to compute
             1. the action space L2 loss
             2. the rewards in actual play and in BNE
         Note that we need to keep track of counterfactual BNE states as these
         may be different from the states under actual play.
         """
+        actual_states = self.sample_new_states(num_samples)
         actual_observations = self.get_observations(actual_states)
 
         equ_states = actual_states.clone()
