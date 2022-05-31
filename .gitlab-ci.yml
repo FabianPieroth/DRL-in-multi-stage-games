@@ -14,8 +14,3 @@ test:
   stage: test
   script:
   - pytest --junitxml=report.xml
-  artifacts:
-    when: always
-    reports:
-      junit: testreport.xml
-    expire_in: 6 months
