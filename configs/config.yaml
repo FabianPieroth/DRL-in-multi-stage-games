@@ -1,4 +1,5 @@
-valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest"]
+
+valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest", "simple_soccer"]
 log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
@@ -11,6 +12,6 @@ n_steps_per_iteration: null
 algorithms: "ppo"
 policy_sharing: true
 defaults:
-  - rl_envs: signaling_contest
+  - rl_envs: simple_soccer
   - algorithm_configs: all_algos
   - _self_
