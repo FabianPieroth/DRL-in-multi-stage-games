@@ -1,4 +1,4 @@
-valid_envs: ["rockpaperscissors", "sequential_auction"]
+valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest"]
 log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
@@ -11,6 +11,6 @@ n_steps_per_iteration: null
 algorithms: ["ppo", "ppo", "ppo"]
 policy_sharing: false
 defaults:
-  - rl_envs: sequential_auction
+  - rl_envs: signaling_contest
   - algorithm_configs: all_algos
   - _self_

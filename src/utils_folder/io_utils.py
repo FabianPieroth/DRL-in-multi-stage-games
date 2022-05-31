@@ -83,6 +83,8 @@ def get_env_log_path_extension(config: DictConfig) -> str:
         return ""
     elif config["rl_envs"]["name"] == "sequential_auction":
         return "/" + config["rl_envs"]["mechanism_type"]
+    elif config["rl_envs"]["name"] == "signaling_contest":
+        return "/" + config["rl_envs"]["information_case"]
     else:
         warnings.warn(
             "No env log path extension specified for: " + config["rl_envs"]["name"]
