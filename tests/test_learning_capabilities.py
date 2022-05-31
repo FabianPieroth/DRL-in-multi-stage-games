@@ -1,0 +1,63 @@
+"""Test whether the learners are getting closer to the expected results."""
+import hydra
+import pytest
+import torch
+
+import src.utils_folder.io_utils as io_ut
+import src.utils_folder.test_utils as tst_ut
+
+DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
+
+ids, testdata = zip(
+    *[
+        ["first-price", ("first", False, False, 30, 0.08)],
+        ["second-price", ("second", False, False, 50, 0.13)],
+        ["first-price_policy_sharing", ("first", True, False, 30, 0.08)],
+        ["first-price_collapse_opponents", ("first", True, True, 30, 0.08)],
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "mechanism_type, policy_sharing, collapse_symmetric_opponents, iteration_num, error_bound",
+    testdata,
+    ids=ids,
+)
+def test_learning_in_sequential_auction(
+    mechanism_type,
+    policy_sharing,
+    collapse_symmetric_opponents,
+    iteration_num,
+    error_bound,
+):
+    hydra.core.global_hydra.GlobalHydra().clear()
+    config = io_ut.get_and_store_config()
+    config["device"] = DEVICE
+    config["iteration_num"] = iteration_num
+    config["policy_sharing"] = policy_sharing
+    config["algorithms"] = ["ppo", "ppo", "ppo"]
+    config["num_envs"] = 1024
+    config["algorithm_configs"]["ppo"]["n_rollout_steps"] = 4
+    config["eval_freq"] = iteration_num + 2
+
+    rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
+        "configs"
+    ]["rl_envs"]
+    config["rl_envs"] = rl_envs
+    num_agents = 3
+    config["rl_envs"]["mechanism_type"] = mechanism_type
+    config["rl_envs"]["num_agents"] = num_agents
+    config["rl_envs"]["num_rounds_to_play"] = num_agents - 1
+    config["rl_envs"]["reduced_observation_space"] = True
+    config["rl_envs"]["collapse_symmetric_opponents"] = collapse_symmetric_opponents
+    io_ut.enrich_config(config)
+    ma_learner = tst_ut.run_limited_learning(config)
+    _, _, l2_distances = ma_learner.env.model.do_equilibrium_and_actual_rollout(
+        ma_learner.learners, 2048
+    )
+    average_l2_distance = (
+        torch.mean(torch.tensor(list(l2_distances.values()))).detach().item()
+    )
+    assert (
+        average_l2_distance < error_bound
+    ), "The strategies are unexpectedly far away from equilibrium!"
