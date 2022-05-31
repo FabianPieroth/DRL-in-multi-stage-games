@@ -3,7 +3,8 @@ torch
 matplotlib
 seaborn
 stable-baselines3
-gym
+tensorboard
+gym==0.21
 
 hydra-core
 opencv-python
