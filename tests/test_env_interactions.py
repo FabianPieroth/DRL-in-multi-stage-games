@@ -1,14 +1,18 @@
 """This module tests a single step for each environment."""
 import hydra
 import pytest
+import torch
 
 import src.utils_folder.io_utils as io_ut
 import src.utils_folder.test_utils as tst_ut
+
+DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
 
 def test_learning_rockpaperscissors():
     """Runs multi agent learning in RPS."""
     config = io_ut.get_and_store_config()
+    config["device"] = DEVICE
     config["total_training_steps"] = 1
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
         "configs"

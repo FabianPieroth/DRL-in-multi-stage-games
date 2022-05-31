@@ -15,6 +15,7 @@ def test_sequential_auctions():
     batch_size: int = 2 ** 10  # The higher the lower the error tolerance should be
 
     config = io_ut.get_and_store_config()
+    config["device"] = DEVICE
     config = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
         "configs"
     ]
