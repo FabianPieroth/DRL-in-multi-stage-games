@@ -13,7 +13,7 @@ install_env:
 test:
   stage: test
   script:
-  - source ./sequential-auctions-on-gpu/bin/activate
+  - source sequential-auctions-on-gpu/bin/activate
   - pytest --junitxml=report.xml
   artifacts:
     when: always
