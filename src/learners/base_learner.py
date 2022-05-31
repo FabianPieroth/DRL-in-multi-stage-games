@@ -52,11 +52,19 @@ class MABaseAlgorithm(BaseAlgorithm):
         )
         self.n_steps = None
 
-    def prepare_rollout(self, env, callback):
-        callback.on_rollout_start()
-
-    def prepare_step(self, n_steps, env):
-        pass
+    def ingest_data_to_learner(
+        self,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        agent_id: int,
+        policy_sharing: bool,
+        callback,
+    ):
+        raise NotImplementedError
 
     def predict(
         self,
@@ -82,15 +90,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         """
         raise NotImplementedError()
 
-    def prepare_actions_for_buffer(self, actions):
-        return actions
-
-    def handle_dones(self, dones, infos, rewards, agent_id: int) -> torch.Tensor:
-        return rewards
-
-    def add_data_to_replay_buffer(
-        self, actions, rewards, additional_actions_data, agent_id: int
-    ):
+    def learn(self):
         pass
 
     def _update_info_buffer(
@@ -101,24 +101,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         if dones.all().detach().item():
             self.ep_info_buffer.extend([infos])
 
-    def update_internal_state_after_step(self, new_obs, dones):
-        pass
-
-    def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool = False):
-        pass
-
-    def _update_current_progress_remaining(
-        self, num_timesteps: int, total_timesteps: int
-    ):
-        pass
-
     def _setup_model(self) -> None:
-        pass
-
-    def learn(self, total_timesteps: int) -> "BaseAlgorithm":
-        pass
-
-    def train(self):
         pass
 
 

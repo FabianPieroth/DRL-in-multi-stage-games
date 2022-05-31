@@ -2,14 +2,14 @@ valid_envs: ["rockpaperscissors", "sequential_auction"]
 log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
-device: 3
+device: 1
 num_envs: 4096
 eval_freq: 50
 iteration_num: 500
 total_training_steps: null
-ma_n_rollout_steps: null
+n_steps_per_iteration: null
 algorithms: ["ppo", "ppo", "ppo"]
-policy_sharing: true
+policy_sharing: false
 defaults:
   - rl_envs: sequential_auction
   - algorithm_configs: all_algos

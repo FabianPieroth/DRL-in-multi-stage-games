@@ -49,7 +49,7 @@ class VecPPO(PPO):
             self.action_space.low = self.action_space.low.to(device=self.device)
             self.action_space.high = self.action_space.high.to(device=self.device)
 
-    def prepare_rollout(self, env, callback):
+    def prepare_next_rollout(self, env, callback):
         assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
@@ -71,6 +71,7 @@ class VecPPO(PPO):
             self.policy.reset_noise(env.num_envs)
 
     def get_actions_with_data(self, agent_id: int):
+        self.prepare_step(self.rollout_buffer.pos, self.env)
         with th.no_grad():
             # Convert to pytorch tensor or to TensorDict
             obs_tensor = self._last_obs[agent_id]
@@ -99,6 +100,55 @@ class VecPPO(PPO):
                 terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
             sa_rewards[dones] += self.gamma * terminal_value
         return sa_rewards
+
+    def ingest_data_to_learner(
+        self,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        agent_id: int,
+        policy_sharing: bool,
+        callback,
+    ):
+        if not (policy_sharing and agent_id > 0):
+            self.num_timesteps += self.env.num_envs
+
+            self._update_info_buffer(infos, dones)
+
+        sa_actions = self.prepare_actions_for_buffer(sa_actions)
+
+        sa_rewards = self.handle_dones(dones, infos, sa_rewards, agent_id)
+
+        self.add_data_to_replay_buffer(
+            sa_actions, sa_rewards, sa_additional_actions_data, agent_id
+        )
+
+        if policy_sharing:
+            if (agent_id + 1) == self.env.model.num_agents:
+                self.update_internal_state_after_step(new_obs, dones)
+            else:
+                pass
+        else:
+            self.update_internal_state_after_step(new_obs, dones)
+
+        if self.rollout_buffer.full:
+            sa_new_obs = new_obs[agent_id]
+            if policy_sharing:
+                assert (
+                    agent_id + 1
+                ) == self.env.model.num_agents, (
+                    "Rollout-buffer is assumed to be equally filled by all agents!"
+                )
+                sa_new_obs = new_obs
+            self.postprocess_rollout(sa_new_obs, dones, policy_sharing)
+            self._update_current_progress_remaining(
+                self.num_timesteps, self._total_timesteps
+            )
+            self.train()
+            self.prepare_next_rollout(self.env, callback)
 
     def add_data_to_replay_buffer(
         self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
@@ -242,6 +292,8 @@ class VecPPO(PPO):
         callback = self._init_callback(
             callback, eval_env, eval_freq, n_eval_episodes, log_path
         )
+
+        self.prepare_next_rollout(self.env, callback)
 
         return total_timesteps, callback
 

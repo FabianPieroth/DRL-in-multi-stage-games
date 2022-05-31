@@ -71,3 +71,17 @@ class RPSDummyLearner(MABaseAlgorithm):
         num_envs = observation.shape[0]
         actions = torch.ones([num_envs], dtype=int, device=self.device) * action_to_play
         return actions, state
+
+    def ingest_data_to_learner(
+        self,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        agent_id: int,
+        policy_sharing: bool,
+        callback,
+    ):
+        pass

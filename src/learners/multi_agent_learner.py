@@ -18,6 +18,7 @@ class MultiAgentCoordinator:
     def __init__(self, config: Dict, env):
         self.config = config
         self.env = env
+        self.n_step = 0
 
         self.learners = pl_ut.get_policies(config, env)
         self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
@@ -28,10 +29,18 @@ class MultiAgentCoordinator:
         # Keep track of running length as Mertikopoulos suggests to detect
         # oscillations
         self.running_length = [0] * len(self.learners)
-        self.current_parameters = {
-            k: parameters_to_vector([_ for _ in l.policy.parameters()])
-            for k, l in self.learners.items()
-        }
+        self.current_parameters = self._get_policy_parameters(self.learners)
+
+    def _get_policy_parameters(self, learners):
+        param_dict = {}
+        for agent_id, learner in learners.items():
+            if learner.policy is not None:
+                param_dict[agent_id] = parameters_to_vector(
+                    [_ for _ in learner.policy.parameters()]
+                )
+            else:
+                param_dict[agent_id] = torch.zeros(1, device=self.config["device"])
+        return param_dict
 
     def get_ma_action(self):
         actions_for_env = {}
@@ -46,141 +55,32 @@ class MultiAgentCoordinator:
             additional_actions_data[agent_id] = sa_additional_actions_data
         return actions_for_env, actions, additional_actions_data
 
-    def prepare_ma_actions_for_buffer(self, actions: Dict[int, torch.Tensor]):
-        adapted_actions_dict = {}
-        for (agent_id, sa_actions), learner in zip(
-            actions.items(), self.learners.values()
-        ):
-            adapted_actions_dict[agent_id] = learner.prepare_actions_for_buffer(
-                sa_actions
-            )
-        return adapted_actions_dict
-
-    def collect_ma_rollouts(self, callbacks, n_rollout_steps):
-        """
-        Collect experiences using the current policies and fill each agents ``RolloutBuffer``.
-        The term rollout here refers to the model-free notion and should not
-        be used with the concept of rollout used in model-based RL or planning.
-
-        :param env: The training environment
-        :param callbacks: Callbacks that will be called at each step
-            (and at the beginning and end of the rollout)
-        :param rollout_buffers: Buffers to fill with rollouts
-        :param n_steps: Number of experiences to collect per environment
-        :return: True if function returned with at least `n_rollout_steps`
-            collected, False if callback terminated rollout prematurely.
-        """
-        n_steps = 0
-        self.prepare_ma_rollout(callbacks)
-
-        while n_steps < n_rollout_steps:
-            self.prepare_ma_step(n_steps)
-
-            actions_for_env, actions, additional_actions_data = self.get_ma_action()
-
-            new_obs, rewards, dones, infos = self.env.step(
-                actions_for_env
-            )  # TODO: dones for every single agent
-
-            self.update_learner_timesteps()
-
-            # Give access to local variables
-            for callback in callbacks:
-                callback.update_locals(locals())
-                if callback.on_step() is False:
-                    return False
-
-            self.update_ma_info_buffer(infos, dones)
-
-            n_steps += 1
-
-            actions = self.prepare_ma_actions_for_buffer(actions)
-
-            rewards = self.handle_ma_dones(rewards, dones, infos)
-
-            self.add_ma_data_to_replay_buffers(
-                actions, additional_actions_data, rewards
-            )
-
-            self.update_ma_external_state_after_step(new_obs, dones)
-
-        self.postprocess_ma_rollout(new_obs, dones)
-
-        for callback in callbacks:
-            callback.on_rollout_end()
-
-        return True
-
-    def _do_break_for_policy_sharing(self, agent_id: int):
-        return self.config["policy_sharing"] and agent_id > 0
-
-    def update_ma_external_state_after_step(self, new_obs, dones):
+    def ingest_ma_data_into_learners(
+        self,
+        actions,
+        rewards,
+        additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        policy_sharing,
+        callbacks,
+    ):
         for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner.update_internal_state_after_step(new_obs, dones)
-
-    def update_learner_timesteps(self):
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner.num_timesteps += self.env.num_envs
-
-    def postprocess_ma_rollout(self, new_obs, dones):
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            sa_new_obs = new_obs[agent_id]
-            postprocess_dones = dones
-            if self.config["policy_sharing"]:
-                sa_new_obs = new_obs
-            learner.postprocess_rollout(
-                sa_new_obs, postprocess_dones, self.config["policy_sharing"]
-            )
-
-    def add_ma_data_to_replay_buffers(self, actions, additional_actions_data, rewards):
-        for agent_id, learner in self.learners.items():
-            learner.add_data_to_replay_buffer(
+            learner.ingest_data_to_learner(
                 actions[agent_id],
                 rewards[agent_id],
                 additional_actions_data[agent_id],
+                dones,
+                infos,
+                new_obs,
                 agent_id,
+                policy_sharing,
+                callbacks[agent_id],
             )
 
-    def handle_ma_dones(self, rewards, dones, infos):
-        for agent_id, learner in self.learners.items():
-            rewards[agent_id] = learner.handle_dones(
-                dones, infos, rewards[agent_id], agent_id
-            )
-        return rewards
-
-    def update_ma_info_buffer(self, infos, dones):
-        # TODO check if we need this; the info coming out of VecEnv is not agent specific
-        # change for vectorized capability: ignore infos
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner._update_info_buffer(infos, dones)
-
-    def prepare_ma_step(self, n_steps):
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner.prepare_step(n_steps, self.env)
-
-    def prepare_ma_rollout(self, callbacks):
-        for (agent_id, learner), callback in zip(self.learners.items(), callbacks):
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner.prepare_rollout(self.env, callback)
-
-    def _update_remaining_progress(self, total_timesteps):
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner._update_current_progress_remaining(
-                learner.num_timesteps, total_timesteps
-            )
+    def _do_break_for_policy_sharing(self, agent_id: int):
+        return self.config["policy_sharing"] and agent_id > 0
 
     def _display_and_log_training_progress(self, iteration, log_interval):
         if log_interval is not None and iteration % log_interval == 0:
@@ -242,29 +142,21 @@ class MultiAgentCoordinator:
             self.env.model.custom_evaluation(
                 self.learners, self.env, self.writer, iteration + 1, self.config
             )
+        self._log_change_in_parameter_space()
 
-        # Log running length
+    def _log_change_in_parameter_space(self):
         prev_parameters = self.current_parameters
-        self.current_parameters = {
-            k: parameters_to_vector([_ for _ in l.policy.parameters()])
-            for k, l in self.learners.items()
-        }
+        self.current_parameters = self._get_policy_parameters(self.learners)
         for i, learner in self.learners.items():
             self.running_length[i] += tensor_norm(
                 self.current_parameters[i], prev_parameters[i]
             )
             learner.logger.record("train/running_length", self.running_length[i])
 
-    def train_policies(self):
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            learner.train()
-
     def learn(
         self,
         total_timesteps: int,
-        n_rollout_steps: int,
+        n_steps_per_iteration: int,
         callbacks: List[MaybeCallback] or MaybeCallback = None,
         log_interval: int = 1,
         eval_freq: int = 20,
@@ -285,34 +177,50 @@ class MultiAgentCoordinator:
             reset_num_timesteps,
         )
 
-        # Training loop
         while (
             min(learner.num_timesteps for learner in self.learners.values())
             < total_timesteps
         ):
-            print(f"Iteration {iteration} starts.")
+            if self._iteration_finished(n_steps_per_iteration):
+                print(f"Iteration {iteration} starts.")
+            actions_for_env, actions, additional_actions_data = self.get_ma_action()
 
-            continue_training = self.collect_ma_rollouts(
-                callbacks, n_rollout_steps=n_rollout_steps
+            new_obs, rewards, dones, infos = self.env.step(
+                actions_for_env
+            )  # TODO: dones for every single agent
+
+            self.n_step += 1
+
+            self.ingest_ma_data_into_learners(
+                actions,
+                rewards,
+                additional_actions_data,
+                dones,
+                infos,
+                new_obs,
+                self.config["policy_sharing"],
+                callbacks,
             )
+            # Give access to local variables
+            for callback in callbacks:
+                callback.update_locals(locals())
+                if callback.on_step() is False:
+                    return False
 
-            if continue_training is False:
-                break
-
-            self._update_remaining_progress(total_timesteps)
-
-            self._display_and_log_training_progress(iteration, log_interval)
-
-            self._evaluate_policies(iteration, eval_freq, n_eval_episodes, callbacks)
-
-            self.train_policies()
-
-            iteration += 1
+            if self._iteration_finished(n_steps_per_iteration):
+                self._display_and_log_training_progress(iteration, log_interval)
+                self._evaluate_policies(
+                    iteration, eval_freq, n_eval_episodes, callbacks
+                )
+                iteration += 1
 
         for callback in callbacks:
             callback.on_training_end()
 
         return self
+
+    def _iteration_finished(self, n_steps_per_iteration: int):
+        return self.n_step % n_steps_per_iteration == 0
 
     def _setup_learners_for_training(
         self,
