@@ -1,5 +1,13 @@
 stages:
+  - install_env
   - test
+
+install_env:
+  stage: install_env
+  script:
+  - virtualenv sequential-auctions-on-gpu
+  - source ./sequential-auctions-on-gpu/bin/activate
+  - pip install -r requirements.txt
 
 test:
   stage: test
