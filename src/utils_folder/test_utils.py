@@ -21,3 +21,4 @@ def run_limited_learning(config):
         tb_log_name="MultiAgent",
     )
     hydra.core.global_hydra.GlobalHydra().clear()
+    return ma_learner
