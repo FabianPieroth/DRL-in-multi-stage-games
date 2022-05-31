@@ -1,30 +1,9 @@
 """This module does testing."""
-import copy
-from itertools import product
-
 import hydra
 import pytest
 
-import src.utils_folder.env_utils as env_ut
 import src.utils_folder.io_utils as io_ut
-from src.learners.multi_agent_learner import MultiAgentCoordinator
-
-
-def run_limited_learning(config):
-    """Runs multi agent learning for `config`."""
-    config = copy.deepcopy(config)
-
-    env = env_ut.get_env(config)
-    ma_learner = MultiAgentCoordinator(config, env)
-    ma_learner.learn(
-        total_timesteps=config["total_training_steps"],
-        n_rollout_steps=config["ma_n_rollout_steps"],
-        log_interval=None,
-        eval_freq=config["eval_freq"],
-        n_eval_episodes=1,
-        tb_log_name="MultiAgent",
-    )
-    hydra.core.global_hydra.GlobalHydra().clear()
+import src.utils_folder.test_utils as tst_ut
 
 
 def test_learning_rockpaperscissors():
@@ -35,7 +14,7 @@ def test_learning_rockpaperscissors():
         "configs"
     ]["rl_envs"]
     config["rl_envs"] = rl_envs
-    run_limited_learning(config)
+    tst_ut.run_limited_learning(config)
 
 
 ids, testdata = zip(
@@ -72,4 +51,4 @@ def test_learning_sequential_auctions(
     config["rl_envs"]["reduced_observation_space"] = reduced_observation_space
     config["rl_envs"]["collapse_symmetric_opponents"] = collapse_symmetric_opponents
 
-    run_limited_learning(config)
+    tst_ut.run_limited_learning(config)
