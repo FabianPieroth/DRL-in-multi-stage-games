@@ -11,4 +11,5 @@ pre-commit
 black
 isort
 pytest
+pytest-cov
 imageio

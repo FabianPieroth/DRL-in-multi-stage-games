@@ -1,0 +1,14 @@
+stages:
+  - test
+
+test:
+  stage: test
+  script:
+  - source ./sequential-auctions-on-gpu/bin/activate
+  - python -m pytest -rxXs --cov-report term-missing --junitxml=testreport.xml
+
+  artifacts:
+    when: always
+    reports:
+      junit: testreport.xml
+    expire_in: 6 months
