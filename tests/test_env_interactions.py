@@ -17,6 +17,8 @@ def test_learning_rockpaperscissors():
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
         "configs"
     ]["rl_envs"]
+    rl_envs["num_agents"] = 3
+    config["algorithms"] = ["ppo", "ppo", "ppo"]
     config["rl_envs"] = rl_envs
     tst_ut.run_limited_learning(config)
 
