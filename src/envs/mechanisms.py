@@ -1,15 +1,7 @@
-import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple
+from typing import Tuple, Union
 
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
-from gym import spaces
-
-from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
-from src.envs.torch_vec_env import BaseEnvForVec
-from src.learners.utils import batched_index_select, tensor_norm
 
 
 class Mechanism(ABC):
@@ -168,5 +160,131 @@ class VickreyAuction(Mechanism):
 
         return (
             allocations,
+            payments,
+        )  # payments: batches x players, allocation: batch x players x items
+
+
+class AllPayAuction(Mechanism):
+    def __init__(self, device: Union[str, int]):
+        self.device = device
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) All-Pay Auctions.
+
+        This function is meant for single-item auctions.
+        If a bid tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (*batch_sizes, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (*batch_sizes x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (*batch_sizes x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() >= 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        *batch_dims, player_dim, item_dim = range(bids.dim())
+        *batch_sizes, n_players, n_items = bids.shape
+
+        # allocate return variables
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
+
+        # Assign item to the bidder with the highest bid, in case of a tie assign it to the first one
+        _, winning_bidders = bids.max(dim=player_dim, keepdim=True)
+
+        allocations.scatter_(player_dim, winning_bidders, 1)
+        allocations.masked_fill_(mask=bids == 0, value=0)
+
+        payments = bids.reshape(*batch_sizes, n_players)  # pay as bid
+
+        return (
+            allocations,
+            payments,
+        )  # payments: batches x players, allocation: batch x players x items
+
+
+class TullockContest(Mechanism):
+    """Tullock Contest"""
+
+    def __init__(
+        self, impact_function, device: Union[str, int], use_valuation: bool = True
+    ):
+        self.device = device
+
+        self.impact_fun = impact_function
+        self.use_valuation = use_valuation
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Tullock Contests.
+
+        This function is meant for single-item contests.
+        If a effort tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+
+        Note that if multiple contestants submit the highest effort, we choose the first one. 
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of efforts with dimensions (*batch_sizes, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (*batch_sizes x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (*batch_sizes x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+        assert (
+            bids.dim() >= 3
+        ), "Effort tensor must be at least 3d (*batch_dims x players x items)"
+        assert (bids >= 0).all().item(), "All efforts must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions
+        *batch_dims, player_dim, item_dim = range(
+            bids.dim()
+        )  # pylint: disable=unused-variable
+        *batch_sizes, n_players, n_items = bids.shape
+
+        # allocate return variables
+        payments = bids.reshape(*batch_sizes, n_players)  # pay as bid
+
+        # transform bids according to impact function
+        bids = self.impact_fun(bids)
+
+        # Calculate winning probabilities
+        winning_probs = bids / bids.sum(dim=-2, keepdim=True)
+        winning_probs[winning_probs.isnan()] = (
+            1 / n_players
+        )  # equal chances if all contestants exert zero effotr
+
+        if not self.use_valuation:
+            winning_probs = winning_probs.reshape(*batch_sizes, n_players, n_items)
+
+        return (
+            winning_probs,
             payments,
         )  # payments: batches x players, allocation: batch x players x items

@@ -4,7 +4,6 @@ Simple sequential auction game following Krishna.
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
 import time
-from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
@@ -13,63 +12,36 @@ import torch
 from gym import spaces
 
 from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
+from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec
-from src.learners.utils import batched_index_select, tensor_norm
+from src.learners.utils import tensor_norm
 
 
 class SignalingContest(BaseEnvForVec):
-    """Sequential first price sealed bid auction.
-
-    In each stage there is a single item sold.
+    """Two Stage Contest with different information sets.
     """
 
     DUMMY_PRICE_KEY = -1
 
     def __init__(self, config: Dict, device: str = "cpu"):
-        self.num_rounds_to_play = config["num_rounds_to_play"]
-
-        # If the opponents are all symmetric, we may just sample from one
-        # opponent with the max order statistic corresponding to the same
-        # competition as the original opponents
-        self.collapse_symmetric_opponents = config["collapse_symmetric_opponents"]
-        self.num_opponents = config["num_agents"] - 1
-
-        # `num_actual_agents` may be larger than `num_agents` when we use
-        # `collapse_symmetric_opponents`: Then `num_agents` will be lowered to
-        # correspond the sole learner.
-        self.num_actual_agents = config["num_agents"]
-        if self.collapse_symmetric_opponents:
-            self.num_opponents = 1
-
+        self.valuation_size = config["valuation_size"]
+        self.action_size = config["action_size"]
+        self.prior_low, self.prior_high = config["prior_bounds"]
         super().__init__(config, device)
 
-        self.mechanism, self.equilibrium_profile = (
-            self._init_mechanism_and_equilibrium_profile()
-        )
+        self.all_pay_mechanism = self._init_all_pay_mechanism()
+        self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
 
-        # NOTE: unit-demand only atm
-        self.valuation_size = self.config["valuation_size"]
-        self.action_size = self.config["action_size"]
-        self.strategies = self._init_dummy_strategies()
+        # self.equilibrium_strategies = self._init_equilibrium_strategies()
 
-        if self.collapse_symmetric_opponents:
-            # Overwrite: external usage of this `BaseEnvForVec` should only
-            # interact via a single learner.
-            self.num_agents = 1
-        self.strategies_bne = self._init_bne_strategies()
+    def _init_all_pay_mechanism(self):
+        return AllPayAuction(self.device)
 
-    def _init_mechanism_and_equilibrium_profile(self):
-        if self.config["mechanism_type"] == "first":
-            mechanism: Mechanism = FirstPriceAuction()
-            equilibrium_profile = equilibrium_fpsb_symmetric_uniform
-        elif self.config["mechanism_type"] in ["second", "vcg", "vickery"]:
-            mechanism: Mechanism = VickreyAuction()
-            equilibrium_profile = truthful
-        else:
-            raise NotImplementedError("Payment rule unknown.")
-        return mechanism, equilibrium_profile
+    def _init_tullock_contest_mechanism(self):
+        impact_fun = lambda x: x ** self.config["impact_factor"]
+        return TullockContest(impact_fun, self.device, self.config["use_valuation"])
 
-    def _init_bne_strategies(self):
+    def _init_equilibrium_strategies(self):
         return {
             agent_id: self.equilibrium_profile(
                 num_agents=self.num_actual_agents,
@@ -79,46 +51,22 @@ class SignalingContest(BaseEnvForVec):
             for agent_id in range(self.num_agents)
         }
 
-    def _init_dummy_strategies(self):
-        return [
-            lambda obs, deterministic=True: torch.zeros(
-                (obs.shape[0], self.config["action_size"]), device=obs.device
-            )
-            for _ in range(self.num_agents)
-        ]
-
     def _get_num_agents(self) -> int:
+        assert (
+            self.config["num_agents"] & 2 == 0
+        ), "The contest demands currently an even number of agents!"
         return self.config["num_agents"]
 
     def _init_observation_spaces(self):
         """Returns dict with agent - observation space pairs.
         Returns:
             Dict[int, Space]: agent_id: observation space
+                - valuation
+                - win/loss/not-played first round
+                - bid/valuation of winning opponent
         """
-        # unit-demand
-        self.valuation_size = 1
-        self.action_size = 1
-
-        # set up observation space
-        # NOTE: does not support non unit-demand
-        self.reduced_observation_space = self.config["reduced_observation_space"]
-        if self.reduced_observation_space:
-            # observations: valuation, stage, allocation (up to now)
-            low = [0.0] * 3
-            high = [1.0, self.num_rounds_to_play, 1.0]
-        else:
-            # observations: valuation, allocation (including in which stage
-            # obtained), previous prices (including in which stage payed)
-            low = (
-                [0.0]
-                + [0.0] * self.num_rounds_to_play
-                + [-1.0] * (self.num_rounds_to_play * 2)
-            )
-            high = (
-                [1.0]
-                + [1.0] * self.num_rounds_to_play
-                + [np.inf] * (self.num_rounds_to_play * 2)
-            )
+        low = [self.prior_low] + [-1.0] + [-1.0]
+        high = [self.prior_high] + [1.0] + [np.inf]
         return {
             agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
             for agent_id in range(self.num_agents)
@@ -152,35 +100,23 @@ class SignalingContest(BaseEnvForVec):
             where ...
         `current_round` and `num_rounds_to_play`.
         """
-        # TODO: perhaps it's easier to split state into multiple tensors? @Nils: is this still relevant?
-        # -> needs special treatment in `torch_vec_env`
         self.valuations_start_index = 0
-        self.allocations_start_index = self.valuation_size
-        self.payments_start_index = (
-            self.valuation_size + self.valuation_size * self.num_rounds_to_play
-        )
-        # NOTE: We keep track of all (incl. zero) payments for reward calculations
+        self.group_split_index = int(self.num_agents / 2)
+        self.allocation_index = self.valuation_size
+        self.payments_start_index = self.valuation_size + self.allocation_index
         states = torch.zeros(
-            (
-                n,
-                self.num_opponents + 1,
-                self.payments_start_index + self.num_rounds_to_play,
-            ),
+            (n, self.num_agents, self.valuation_size + 1 + self.action_size),
             device=self.device,
         )
 
         # ipv symmetric uniform priors
         states[:, :, : self.valuation_size].uniform_(0, 1)
 
-        if self.collapse_symmetric_opponents:
-            m = torch.distributions.Beta(
-                torch.tensor([self.num_actual_agents - 1], device=self.device),
-                torch.tensor([1.0], device=self.device),
-            )
-            states[:, 1, : self.valuation_size] = m.sample((n,))
+        # No rounds played until now
+        states[:, :, self.valuation_size] = -1.0
 
         # dummy prices
-        states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
+        states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY
 
         return states
 
@@ -197,123 +133,182 @@ class SignalingContest(BaseEnvForVec):
         :return episode-done markers:
         :return updated_states:
         """
-
-        # create opponent action
-        if self.collapse_symmetric_opponents:
-            opponent_obs = self.get_observations(cur_states, for_single_learner=False)[
-                1
-            ]
-            opponent_actions = self.learners[0].policy.forward(opponent_obs)[0]
-            actions[1] = opponent_actions
-
-        # append opponents' actions
         action_profile = torch.stack(tuple(actions.values()), dim=1)
-
-        # run auction round
-        allocations, payments = self.mechanism.run(action_profile)
-
-        # states are for all agents, obs and rewards for `player_position` only
         new_states = cur_states.detach().clone()
+        cur_stage = self._state2stage(cur_states)
 
-        # get current stage
-        stage = self._state2stage(cur_states)
-
-        # update payments
-        new_states[:, :, self.payments_start_index + stage] = payments
-
-        # update allocations
-        new_states[
-            :,
-            :,
-            self.allocations_start_index
-            + stage * self.valuation_size : self.allocations_start_index
-            + (stage + 1) * self.valuation_size,
-        ] = allocations
-
-        if self.collapse_symmetric_opponents:
-            # the only thing the current player knows is that the opponent
-            # faced in the next round is weaker
-            highest_opponent = new_states[:, 1, : self.valuation_size]
-            m = torch.distributions.Beta(
-                torch.tensor(
-                    [max(1, self.num_actual_agents - 2 - stage)], device=self.device
-                ),
-                torch.tensor([1.0], device=self.device),
+        if cur_stage == 1:
+            winning_info, allocations, payments = self._get_first_round_info(
+                cur_states, action_profile
             )
-            batch_size = cur_states.shape[0]
-            new_states[:, 1, : self.valuation_size] = highest_opponent * m.sample(
-                (batch_size,)
+            # store winning_info to new_states
+            new_states[:, :, self.valuation_size :] = winning_info
+            dones = torch.zeros((cur_states.shape[0]), device=cur_states.device).bool()
+        elif cur_stage == 2:
+            allocations_prev_round = cur_states[
+                :, :, self.allocation_index : self.allocation_index + 1
+            ]
+            aggregated_allocations = torch.sum(allocations_prev_round.squeeze(), axis=1)
+            allocations = torch.zeros(
+                (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
+                device=self.device,
+            )
+            payments = torch.zeros(
+                (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
+                device=self.device,
             )
 
-            # force opponent's allocation to zero again st it competes in next
-            # stage
-            new_states[
-                :,
-                1,
-                self.allocations_start_index
-                + stage * self.valuation_size : self.allocations_start_index
-                + (stage + 1) * self.valuation_size,
-            ] = 0
+            # Case 1: No winner in first round
+            payments[aggregated_allocations == 0] = action_profile[
+                aggregated_allocations == 0
+            ]
 
-        # reached last stage?
-        if stage >= self.num_rounds_to_play - 1:
+            # Case 2: One winner in first round
+            allocations[aggregated_allocations == 1] = allocations_prev_round[
+                aggregated_allocations == 1
+            ]
+            payments[aggregated_allocations == 1] = action_profile[
+                aggregated_allocations == 1
+            ]
+
+            # Case 3: Two winners in first round
+            first_round_winner_indices = self._get_first_round_two_winner_indices(
+                allocations_prev_round, aggregated_allocations
+            )
+            first_round_winner_bids = torch.gather(
+                action_profile[aggregated_allocations == 2],
+                dim=1,
+                index=first_round_winner_indices,
+            )
+            sec_round_winning_probs, sec_round_payments = self.tullock_contest_mechanism.run(
+                first_round_winner_bids
+            )
+            if self.config["sample_tullock_allocations"]:
+                raise NotImplementedError("Enable sampling for winning allocations!")
+            else:
+                sec_round_allocations = sec_round_winning_probs
+            allocations[aggregated_allocations == 2] = allocations[
+                aggregated_allocations == 2
+            ].scatter_(1, first_round_winner_indices, sec_round_allocations)
+            payments[aggregated_allocations == 2] = action_profile[
+                aggregated_allocations == 2
+            ]
+            payments[aggregated_allocations == 2] = payments[
+                aggregated_allocations == 2
+            ].scatter_(
+                1, first_round_winner_indices, sec_round_payments.unsqueeze(-1)
+            )  # May be redundant!
             dones = torch.ones((cur_states.shape[0]), device=cur_states.device).bool()
         else:
-            dones = torch.zeros((cur_states.shape[0]), device=cur_states.device).bool()
+            raise ValueError("The setting only considers two stages at the moment!")
 
-        observations = self.get_observations(
-            new_states, for_single_learner=for_single_learner
-        )
+        rewards = self._compute_rewards(new_states, allocations, payments, cur_stage)
 
-        rewards = self._compute_rewards(new_states, stage)
+        observations = self.get_observations(new_states)
 
         return observations, rewards, dones, new_states
 
-    def _compute_rewards(self, states: torch.Tensor, stage: int) -> torch.Tensor:
-        """Computes the rewards for the played auction games for the player at
-        `self.player_position`.
+    def _get_first_round_two_winner_indices(
+        self, allocations_prev_round, aggregated_allocations
+    ):
+        allocations_with_two_winners = allocations_prev_round[
+            aggregated_allocations == 2
+        ]
+        first_rou_winner_indices = (allocations_with_two_winners).nonzero(
+            as_tuple=True
+        )[1]
+        first_rou_winner_indices = torch.reshape(
+            first_rou_winner_indices, ((allocations_with_two_winners).shape[0], 2)
+        ).unsqueeze(-1)
+        return first_rou_winner_indices
 
-        TODO: do we want intermediate rewards or not?
-        """
+    def _get_first_round_info(self, cur_states, action_profile):
+        w_info_A, allocations_A, payments_A = self._get_info_from_all_pay_auction(
+            cur_states, 0, self.group_split_index, action_profile
+        )
+        w_info_B, allocations_B, payments_B = self._get_info_from_all_pay_auction(
+            cur_states, self.group_split_index, self.num_agents, action_profile
+        )
+        return (
+            torch.concat([w_info_A, w_info_B], axis=1),
+            torch.concat([allocations_A, allocations_B], axis=1),
+            torch.concat([payments_A, payments_B], axis=1),
+        )
 
+    def _get_info_from_all_pay_auction(
+        self, cur_states, low_split_index, high_split_index, action_profile
+    ):
+        sliced_action_profile = action_profile[:, low_split_index:high_split_index, :]
+        allocations, payments = self.all_pay_mechanism.run(sliced_action_profile)
+        winning_info = self._get_winning_information(
+            allocations,
+            sliced_action_profile,
+            cur_states[:, low_split_index:high_split_index, :],
+        )
+        return winning_info, allocations, payments
+
+    def _split_actions_into_first_round_groups(
+        self, action_profile: torch.Tensor
+    ) -> Tuple[torch.Tensor]:
+        action_profile_A = action_profile[:, : self.group_split_index, :]
+        action_profile_B = action_profile[:, self.group_split_index :, :]
+        return action_profile_A, action_profile_B
+
+    def _get_winning_information(
+        self,
+        allocations: torch.Tensor,
+        bids: torch.Tensor,
+        rel_cur_states: torch.Tensor,
+    ) -> torch.Tensor:
+        winning_info = torch.zeros(
+            (rel_cur_states.shape[0], rel_cur_states.shape[1], 1 + self.valuation_size),
+            device=rel_cur_states.device,
+        )
+        winner_mask_ind_agent = (allocations == 1.0).squeeze()
+        winner_mask_env = torch.any(winner_mask_ind_agent, axis=1)
+        winning_info[:, :, 0] = winner_mask_ind_agent
+        if self.config["information_case"] == "true_valuations":
+            winning_info[:, :, 1][winner_mask_env] = rel_cur_states[
+                :, :, : self.valuation_size
+            ][winner_mask_ind_agent]
+        elif self.config["information_case"] == "winning_bids":
+            winning_info[:, :, 1][winner_mask_env] = bids[winner_mask_ind_agent]
+        else:
+            raise ValueError("No valid information case provided!")
+        return winning_info
+
+    def _compute_rewards(
+        self,
+        states: torch.Tensor,
+        allocations: torch.Tensor,
+        payments: torch.Tensor,
+        stage: int,
+    ) -> torch.Tensor:
         return {
-            agent_id: self._compute_sa_rewards(states, stage, agent_id)
+            agent_id: self._compute_sa_rewards(
+                states, allocations, payments, stage, agent_id
+            )
             for agent_id in range(self.num_agents)
         }
 
-    def _compute_sa_rewards(self, states: torch.Tensor, stage: int, agent_id: int):
-        valuations = states[
-            :,
-            agent_id,
-            self.valuations_start_index : self.valuations_start_index
-            + self.valuation_size,
-        ]
-        # only consider this stage's allocation
-        allocations = states[
-            :,
-            agent_id,
-            self.allocations_start_index
-            + stage * self.valuation_size : self.allocations_start_index
-            + (stage + 1) * self.valuation_size,
-        ]
-        payments = states[
-            :,
-            agent_id,
-            self.payments_start_index + stage : self.payments_start_index + (stage + 1),
-        ]
+    def _compute_sa_rewards(
+        self,
+        states: torch.Tensor,
+        allocations: torch.Tensor,
+        payments: torch.Tensor,
+        stage: int,
+        agent_id: int,
+    ):
+        sa_payments = payments[:, agent_id].squeeze()
+        if stage == 1:
+            rewards = -sa_payments
+        else:
+            sa_valuations = states[:, agent_id, : self.valuation_size].squeeze()
+            sa_allocations = allocations[:, agent_id, :].squeeze()
+            rewards = sa_valuations * sa_allocations - sa_payments
+        return rewards
 
-        # set valuation to zero if we already own the unit
-        has_won_already = self._has_won_already(states, stage)[agent_id]
-
-        # quasi-linear utility
-        rewards = valuations * allocations - payments
-        rewards[has_won_already] = -payments[has_won_already]
-
-        return rewards.view(-1)
-
-    def get_observations(
-        self, states: torch.Tensor, for_single_learner: bool = True
-    ) -> torch.Tensor:
+    def get_observations(self, states: torch.Tensor) -> torch.Tensor:
         """Return the observations at the player at `player_position`.
 
         :param states: The current states of shape (num_env, num_agents,
@@ -321,43 +316,18 @@ class SignalingContest(BaseEnvForVec):
         :param player_position: Needed when called for one of the static
             (non-learning) strategies.
         :returns observations: Observations of shape (num_env, obs_private_dim
-            + obs_public_dim), where the private observations consist of the
-            valuation and a vector of allocations and payments (for each stage)
-            and the public observation consists of published prices.
+            + obs_public_dim)
         """
-        # obs consists of: own valuations, own allocations, own payments and
-        # published (here = highest payments)
-
-        num_agents = self.num_agents if for_single_learner else self.num_opponents + 1
-
-        if self.reduced_observation_space:
-            stage = self._state2stage(states)
-            won = self._has_won_already(states, stage)
-            batch_size = states.shape[0]
-            observation_dict = {}
-            for agent_id in range(num_agents):
-                observation_dict[agent_id] = torch.zeros(
-                    (batch_size, 3), device=states.device
-                )
-                observation_dict[agent_id][
-                    :,
-                    self.valuations_start_index : self.valuations_start_index
-                    + self.valuation_size,
-                ] = states[
-                    :,
-                    agent_id,
-                    self.valuations_start_index : self.valuations_start_index
-                    + self.valuation_size,
-                ]
-                observation_dict[agent_id][:, 1] = stage
-                observation_dict[agent_id][:, 2] = won[agent_id]
-
-        else:
-            obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
-            observation_dict = {
-                agent_id: torch.concat((states[:, agent_id, :], obs_public), axis=1)
-                for agent_id in range(num_agents)
-            }
+        batch_size = states.shape[0]
+        observation_dict = {}
+        for agent_id in range(self.num_agents):
+            observation_size = (
+                self.valuation_size + self.action_size + self.allocation_index
+            )
+            observation_dict[agent_id] = torch.zeros(
+                (batch_size, observation_size), device=states.device
+            )
+            observation_dict[agent_id] = states[:, agent_id, :]
         return observation_dict
 
     def render(self, state):
@@ -366,24 +336,19 @@ class SignalingContest(BaseEnvForVec):
     def _state2stage(self, cur_states):
         """Get the current stage from the state."""
         if cur_states.shape[0] == 0:  # empty batch
-            return -1
-        try:
-            # NOTE: only works for fixed length / each batch at same stage
-            stage = (
-                cur_states[0, 0, self.payments_start_index :]
-                .tolist()
-                .index(SequentialAuction.DUMMY_PRICE_KEY)
-            )
-        except ValueError as _:  # last round
-            stage = self.num_rounds_to_play - 1
+            stage = -1
+        elif cur_states[0, 0, self.allocation_index].detach().item() == -1.0:
+            stage = 1
+        else:
+            stage = 2
         return stage
 
     def _has_won_already(self, state: torch.Tensor, stage: int):
         """Check if the current player already has won in previous stages of the auction."""
         # NOTE: unit-demand hardcoded
 
-        low = self.allocations_start_index
-        high = self.allocations_start_index + stage
+        low = self.allocation_index
+        high = self.allocation_index + stage
         return {
             agent_id: state[:, agent_id, low:high].sum(axis=-1) > 0
             for agent_id in range(self.num_opponents + 1)
@@ -398,15 +363,16 @@ class SignalingContest(BaseEnvForVec):
             writer: tensorboard summary writer
             iteration: current training iteration
         """
-        self.plot_strategies_vs_bne(learners, writer, iteration, config)
-        self.log_metrics_to_equilibrium(learners)
+        pass
+        # self.plot_strategies_vs_bne(learners, writer, iteration, config)
+        # self.log_metrics_to_equilibrium(learners)
 
     def get_bne_actions(
         self, valuations: torch.Tensor, stage: int, won: torch.Tensor, agent_id: int
     ) -> torch.Tensor:
         if self.collapse_symmetric_opponents:
             agent_id = 0  # we only consider a single BNE strategy then
-        return self.strategies_bne[agent_id](stage, valuations, won)
+        return self.equilibrium_strategies[agent_id](stage, valuations, won)
 
     @staticmethod
     def get_ma_learner_predictions(
@@ -619,12 +585,18 @@ class SignalingContest(BaseEnvForVec):
 
             actual_has_won_already = self._has_won_already(actual_states, stage)
             equ_actions_in_actual_play = self.get_equilibrium_actions(
-                stage, self.strategies_bne, actual_observations, actual_has_won_already
+                stage,
+                self.equilibrium_strategies,
+                actual_observations,
+                actual_has_won_already,
             )
 
             equ_has_won_already = self._has_won_already(equ_states, stage)
             equ_actions_in_equ = self.get_equilibrium_actions(
-                stage, self.strategies_bne, equ_observations, equ_has_won_already
+                stage,
+                self.equilibrium_strategies,
+                equ_observations,
+                equ_has_won_already,
             )
 
             actual_actions = self.get_ma_learner_predictions(

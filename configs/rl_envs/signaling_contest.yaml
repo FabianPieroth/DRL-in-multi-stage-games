@@ -1,11 +1,10 @@
 name: "signaling_contest"
 all_information_cases: ["true_valuations", "winning_bids"]
 information_case: "true_valuations"
-num_agents: 3
-num_rounds_to_play: 2
+sample_tullock_allocations: false
+prior_bounds: [1, 2]
+num_agents: 4
 action_size: 1
 valuation_size: 1
-available_mechanism_types: ["first", "second"]
-mechanism_type: "first"
-reduced_observation_space: true
-collapse_symmetric_opponents: false
+impact_factor: 1.0
+use_valuation: True

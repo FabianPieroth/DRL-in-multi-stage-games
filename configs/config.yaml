@@ -8,7 +8,7 @@ eval_freq: 50
 iteration_num: 500
 total_training_steps: null
 n_steps_per_iteration: null
-algorithms: ["ppo", "ppo", "ppo"]
+algorithms: ["ppo", "ppo", "ppo", "ppo"]
 policy_sharing: false
 defaults:
   - rl_envs: signaling_contest
