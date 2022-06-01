@@ -153,21 +153,11 @@ class SignalingContest(BaseEnvForVec):
                 (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
                 device=self.device,
             )
-            payments = torch.zeros(
-                (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
-                device=self.device,
-            )
 
-            # Case 1: No winner in first round
-            payments[aggregated_allocations == 0] = action_profile[
-                aggregated_allocations == 0
-            ]
+            payments = action_profile
 
             # Case 2: One winner in first round
             allocations[aggregated_allocations == 1] = allocations_prev_round[
-                aggregated_allocations == 1
-            ]
-            payments[aggregated_allocations == 1] = action_profile[
                 aggregated_allocations == 1
             ]
 
@@ -180,7 +170,7 @@ class SignalingContest(BaseEnvForVec):
                 dim=1,
                 index=first_round_winner_indices,
             )
-            sec_round_winning_probs, sec_round_payments = self.tullock_contest_mechanism.run(
+            sec_round_winning_probs, _ = self.tullock_contest_mechanism.run(
                 first_round_winner_bids
             )
             if self.config["sample_tullock_allocations"]:
@@ -190,14 +180,6 @@ class SignalingContest(BaseEnvForVec):
             allocations[aggregated_allocations == 2] = allocations[
                 aggregated_allocations == 2
             ].scatter_(1, first_round_winner_indices, sec_round_allocations)
-            payments[aggregated_allocations == 2] = action_profile[
-                aggregated_allocations == 2
-            ]
-            payments[aggregated_allocations == 2] = payments[
-                aggregated_allocations == 2
-            ].scatter_(
-                1, first_round_winner_indices, sec_round_payments.unsqueeze(-1)
-            )  # May be redundant!
             dones = torch.ones((cur_states.shape[0]), device=cur_states.device).bool()
         else:
             raise ValueError("The setting only considers two stages at the moment!")
@@ -342,17 +324,6 @@ class SignalingContest(BaseEnvForVec):
         else:
             stage = 2
         return stage
-
-    def _has_won_already(self, state: torch.Tensor, stage: int):
-        """Check if the current player already has won in previous stages of the auction."""
-        # NOTE: unit-demand hardcoded
-
-        low = self.allocation_index
-        high = self.allocation_index + stage
-        return {
-            agent_id: state[:, agent_id, low:high].sum(axis=-1) > 0
-            for agent_id in range(self.num_opponents + 1)
-        }
 
     def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
         """Method is called during training process and allows environment specific logging.
