@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from gym import spaces
 
-from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
+from src.envs.equilibria import no_signaling_equilibrium, signaling_equilibrium
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec
 from src.learners.utils import tensor_norm
@@ -32,7 +32,7 @@ class SignalingContest(BaseEnvForVec):
         self.all_pay_mechanism = self._init_all_pay_mechanism()
         self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
 
-        # self.equilibrium_strategies = self._init_equilibrium_strategies()
+        self.equilibrium_strategies = self._init_equilibrium_strategies()
 
     def _init_all_pay_mechanism(self):
         return AllPayAuction(self.device)
@@ -42,14 +42,25 @@ class SignalingContest(BaseEnvForVec):
         return TullockContest(impact_fun, self.device, self.config["use_valuation"])
 
     def _init_equilibrium_strategies(self):
+        equilibrium_profile = self._get_equilibrium_profile(
+            self.config["information_case"]
+        )
         return {
-            agent_id: self.equilibrium_profile(
-                num_agents=self.num_actual_agents,
-                num_units=self.num_rounds_to_play,
-                player_position=agent_id,
+            agent_id: equilibrium_profile(
+                num_agents=self.num_agents,
+                prior_low=self.prior_low,
+                prior_high=self.prior_high,
             )
             for agent_id in range(self.num_agents)
         }
+
+    def _get_equilibrium_profile(self, information_case: str):
+        if information_case == "true_valuations":
+            return no_signaling_equilibrium
+        elif information_case == "winning_bids":
+            return signaling_equilibrium
+        else:
+            raise ValueError("No valid information case provided!")
 
     def _get_num_agents(self) -> int:
         assert (
@@ -371,12 +382,17 @@ class SignalingContest(BaseEnvForVec):
         self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
         # self.log_metrics_to_equilibrium(learners)
 
-    def get_bne_actions(
-        self, valuations: torch.Tensor, stage: int, won: torch.Tensor, agent_id: int
+    def get_sa_equilibrium_actions(
+        self,
+        round: int,
+        valuations: torch.Tensor,
+        signal_info: torch.Tensor,
+        lost: torch.Tensor,
+        agent_id: int,
     ) -> torch.Tensor:
-        if self.collapse_symmetric_opponents:
-            agent_id = 0  # we only consider a single BNE strategy then
-        return self.equilibrium_strategies[agent_id](stage, valuations, won)
+        return self.equilibrium_strategies[agent_id](
+            round, valuations, signal_info, lost
+        )
 
     @staticmethod
     def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
@@ -385,18 +401,15 @@ class SignalingContest(BaseEnvForVec):
             for agent_id, obs in observations.items()
         }
 
-    @staticmethod
-    def get_equilibrium_actions(
-        stage: int, equilibrium_strategies, observations, has_won_already
+    def get_sa_equilibrium_actions(
+        self, agent_id, sa_valuations, sa_signal_info, round, sa_lost
     ):
-        return {
-            agent_id: equilibrium_strategy(
-                stage=stage,
-                valuation=observations[agent_id][:, 0],
-                won=has_won_already[agent_id],
-            )
-            for agent_id, equilibrium_strategy in equilibrium_strategies.items()
-        }
+        return self.equilibrium_strategies[agent_id](
+            round=round,
+            valuations=sa_valuations,
+            signal_info=sa_signal_info,
+            lost=sa_lost,
+        )
 
     def plot_strategies_vs_equilibrium(
         self, learners, writer, iteration: int, config, num_samples: int = 500
@@ -449,26 +462,21 @@ class SignalingContest(BaseEnvForVec):
                     agent_id
                 ]
 
-                # get actual actions
                 deterministic_actions = ma_deterministic_actions[agent_id][
                     increasing_order
                 ]
                 mixed_actions = ma_mixed_actions[agent_id][increasing_order]
 
-                # get BNE actions
-                """actions_bne = self.get_bne_actions(
-                    valuations=agent_obs[:, 0],
-                    stage=stage,
-                    won=has_won_already,
-                    agent_id=agent_id,
-                )"""
+                """actions_equilibrium = self.equilibrium_strategies[agent_id](
+                round=round, valuations=agent_obs[:, 0], signal_info=agent_obs[:, 2], lost=has_lost_already
+            )"""
 
-                # covert to numpy
+                # convert to numpy
                 agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 opponent_info = agent_obs[:, 2].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
-                # actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
+                # actions_equilibrium = actions_equilibrium.view(-1, 1).detach().cpu().numpy()
                 has_lost_already = has_lost_already.cpu().numpy()
 
                 if isinstance(config["algorithms"], str):
@@ -548,6 +556,9 @@ class SignalingContest(BaseEnvForVec):
             label=f"bidder {agent_id} " + algo_name + " (lost)",
             s=6,
         )
+
+        self._plot_second_stage_equ_strategy_surface(ax, agent_id, 100)
+
         """ax.plot(
                         agent_obs[~has_lost_already],
                         actions_array[~has_lost_already],
@@ -575,6 +586,16 @@ class SignalingContest(BaseEnvForVec):
         ax.set_xlabel("valuation $v$", fontsize=12)
         ax.set_ylabel(y_label, fontsize=12)
         ax.set_zlabel("bid $b$", fontsize=12)
+
+    def _plot_second_stage_equ_strategy_surface(self, ax, agent_id, plot_precision):
+        val_xs = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
+        info_ys = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
+        val_x, info_y = torch.meshgrid(val_xs, info_ys, indexing="xy")
+        bid_z = self.equilibrium_strategies[agent_id](
+            round=2, valuations=val_x, signal_info=info_y, lost=None
+        )
+        bid_z = bid_z.reshape(plot_precision, plot_precision)
+        ax.plot_surface(val_x.numpy(), info_y.numpy(), bid_z.numpy(), alpha=0.2)
 
     def _plot_first_round_strategy(
         self,
@@ -658,7 +679,7 @@ class SignalingContest(BaseEnvForVec):
         for stage in range(self.num_rounds_to_play):
 
             actual_has_won_already = self._has_won_already(actual_states, stage)
-            equ_actions_in_actual_play = self.get_equilibrium_actions(
+            equ_actions_in_actual_play = self.get_sa_equilibrium_actions(
                 stage,
                 self.equilibrium_strategies,
                 actual_observations,
@@ -666,7 +687,7 @@ class SignalingContest(BaseEnvForVec):
             )
 
             equ_has_won_already = self._has_won_already(equ_states, stage)
-            equ_actions_in_equ = self.get_equilibrium_actions(
+            equ_actions_in_equ = self.get_sa_equilibrium_actions(
                 stage,
                 self.equilibrium_strategies,
                 equ_observations,
