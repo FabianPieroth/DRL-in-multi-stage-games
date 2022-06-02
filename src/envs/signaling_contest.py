@@ -414,7 +414,8 @@ class SignalingContest(BaseEnvForVec):
             (30, 120),
             (30, 45),
         ]
-        ax_second_round_colors = ["red", "blue", "purple", "yellow", "grey"]
+        cmap = plt.get_cmap("gnuplot")
+        ax_second_round_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
         plt.rcParams["figure.figsize"] = (8, 5.5)
         fig = plt.figure(
             figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
