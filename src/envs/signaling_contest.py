@@ -153,7 +153,6 @@ class SignalingContest(BaseEnvForVec):
                 (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
                 device=self.device,
             )
-
             payments = action_profile
 
             # Case 2: One winner in first round
@@ -211,7 +210,9 @@ class SignalingContest(BaseEnvForVec):
         w_info_B, allocations_B, payments_B = self._get_info_from_all_pay_auction(
             cur_states, self.group_split_index, self.num_agents, action_profile
         )
-        wining_info = self._merge_group_winning_infos(w_info_A, w_info_B)
+        wining_info = self._merge_group_winning_infos(
+            w_info_A, allocations_A, w_info_B, allocations_B
+        )
         return (
             wining_info,
             torch.concat([allocations_A, allocations_B], axis=1),
@@ -219,40 +220,26 @@ class SignalingContest(BaseEnvForVec):
         )
 
     def _merge_group_winning_infos(
-        self, w_info_A: torch.Tensor, w_info_B: torch.Tensor
+        self,
+        w_info_A: torch.Tensor,
+        allocations_A: torch.Tensor,
+        w_info_B: torch.Tensor,
+        allocations_B: torch.Tensor,
     ) -> torch.Tensor:
         """Write opponent val/bid into info.
 
         Args:
-            w_info_A (torch.Tensor): [num_envs, num_agents_group_A, allocation + (own) val/bid]
-            w_info_B (torch.Tensor): [num_envs, num_agents_group_B, allocation + (own) val/bid]
+            w_info_A (torch.Tensor): [num_envs, num_agents_group_A, (own) val/bid]
+            allocations_A (torch.Tensor): [num_envs, num_agents_group_A, allocations]
+            w_info_B (torch.Tensor): [num_envs, num_agents_group_A, (own) val/bid]
+            allocations_B (torch.Tensor): [num_envs, num_agents_group_B, allocations]
 
         Returns:
             torch.Tensor: [num_envs, num_agents, allocation + opponent val/bid]
         """
-        winning_info = torch.zeros(
-            (
-                w_info_A.shape[0],
-                w_info_A.shape[1] + w_info_B.shape[1],
-                w_info_A.shape[2],
-            ),
-            device=w_info_A.device,
-        )
-        winning_info[:, self.group_split_index :, self.valuation_size :] = w_info_A[
-            :, :, self.valuation_size :
-        ]
-        winning_info[:, : self.group_split_index, : self.valuation_size] = w_info_A[
-            :, :, : self.valuation_size
-        ]
-
-        winning_info[:, : self.group_split_index, self.valuation_size :] = w_info_B[
-            :, :, self.valuation_size :
-        ]
-        winning_info[:, self.group_split_index :, : self.valuation_size] = w_info_B[
-            :, :, : self.valuation_size
-        ]
-
-        return winning_info
+        data_group_A = torch.concat([allocations_A, w_info_B], axis=2)
+        data_group_B = torch.concat([allocations_B, w_info_A], axis=2)
+        return torch.concat([data_group_A, data_group_B], axis=1)
 
     def _get_info_from_all_pay_auction(
         self, cur_states, low_split_index, high_split_index, action_profile
@@ -261,12 +248,12 @@ class SignalingContest(BaseEnvForVec):
         group_allocations, group_payments = self.all_pay_mechanism.run(
             sliced_action_profile
         )
-        winning_info = self._get_winning_information(
+        winner_info = self._get_winning_information(
             group_allocations,
             sliced_action_profile,
             cur_states[:, low_split_index:high_split_index, :],
         )
-        return winning_info, group_allocations, group_payments
+        return winner_info, group_allocations, group_payments
 
     def _split_actions_into_first_round_groups(
         self, action_profile: torch.Tensor
@@ -281,24 +268,21 @@ class SignalingContest(BaseEnvForVec):
         bids: torch.Tensor,
         rel_cur_states: torch.Tensor,
     ) -> torch.Tensor:
-        winning_info = torch.zeros(
-            (rel_cur_states.shape[0], rel_cur_states.shape[1], 1 + self.valuation_size),
+        winner_info = torch.zeros(
+            (rel_cur_states.shape[0], rel_cur_states.shape[1], self.valuation_size),
             device=rel_cur_states.device,
         )
         winner_mask_ind_agent = (allocations == 1.0).squeeze()
         winner_mask_env = torch.any(winner_mask_ind_agent, axis=1)
-        winning_info[:, :, 0] = winner_mask_ind_agent
         if self.config["information_case"] == "true_valuations":
-            winning_info[:, :, self.valuation_size :].squeeze()[
-                winner_mask_env
-            ] = rel_cur_states[:, :, : self.valuation_size][winner_mask_ind_agent]
+            winner_info.squeeze()[winner_mask_env] = rel_cur_states[
+                :, :, : self.valuation_size
+            ][winner_mask_ind_agent]
         elif self.config["information_case"] == "winning_bids":
-            winning_info[:, :, self.valuation_size :].squeeze()[winner_mask_env] = bids[
-                winner_mask_ind_agent
-            ]
+            winner_info.squeeze()[winner_mask_env] = bids[winner_mask_ind_agent]
         else:
             raise ValueError("No valid information case provided!")
-        return winning_info
+        return winner_info
 
     def _compute_rewards(
         self,
