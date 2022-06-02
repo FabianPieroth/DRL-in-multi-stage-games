@@ -1,4 +1,4 @@
 name: "all_algos"
 defaults:
-  - ppo: ppo_for_rps
+  - ppo: ppo_for_signaling_contest
   - rps_single_action: rps_rock
