@@ -366,6 +366,14 @@ class SignalingContest(BaseEnvForVec):
             stage = 2
         return stage
 
+    def _has_lost_already(self, state: torch.Tensor):
+        """Check if player already has lost in previous round."""
+        # NOTE: unit-demand hardcoded
+        return {
+            agent_id: state[:, 0, self.allocation_index] == 0
+            for agent_id in range(state.shape[1])
+        }
+
     def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
         """Method is called during training process and allows environment specific logging.
 
@@ -376,7 +384,7 @@ class SignalingContest(BaseEnvForVec):
             iteration: current training iteration
         """
         pass
-        # self.plot_strategies_vs_bne(learners, writer, iteration, config)
+        self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
         # self.log_metrics_to_equilibrium(learners)
 
     def get_bne_actions(
@@ -387,23 +395,11 @@ class SignalingContest(BaseEnvForVec):
         return self.equilibrium_strategies[agent_id](stage, valuations, won)
 
     @staticmethod
-    def get_ma_learner_predictions(
-        learners,
-        observations,
-        deterministic: bool = True,
-        for_single_learner: bool = True,
-    ):
-        if for_single_learner:
-            predictions = {
-                agent_id: learner.predict(observations[agent_id], deterministic)[0]
-                for agent_id, learner in learners.items()
-            }
-        else:
-            predictions = {
-                agent_id: learners[0].predict(obs, deterministic)[0]
-                for agent_id, obs in observations.items()
-            }
-        return predictions
+    def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
+        return {
+            agent_id: learners[0].predict(obs, deterministic)[0]
+            for agent_id, obs in observations.items()
+        }
 
     @staticmethod
     def get_equilibrium_actions(
@@ -418,45 +414,37 @@ class SignalingContest(BaseEnvForVec):
             for agent_id, equilibrium_strategy in equilibrium_strategies.items()
         }
 
-    def plot_strategies_vs_bne(
+    def plot_strategies_vs_equilibrium(
         self, learners, writer, iteration: int, config, num_samples: int = 500
     ):
         """Evaluate and log current strategies."""
         seed = 69
+        self.seed(seed)
 
         plt.style.use("ggplot")
-        fig, axs = plt.subplots(
-            nrows=1,
-            ncols=self.num_rounds_to_play,
-            sharey=True,
-            figsize=(5 * self.num_rounds_to_play, 5),
-        )
+        fig, axs = plt.subplots(nrows=1, ncols=2, sharey=True, figsize=(5 * 2, 5))
         fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
-        if self.num_rounds_to_play == 1:
-            axs = [axs]
-
-        self.seed(seed)
         states = self.sample_new_states(num_samples)
 
-        for stage, ax in zip(range(self.num_rounds_to_play), axs):
+        for stage, ax in zip(range(2), axs):
             ax.set_title(f"Stage {stage + 1}")
-            observations = self.get_observations(states, for_single_learner=False)
+            observations = self.get_observations(states)
             ma_deterministic_actions = self.get_ma_learner_predictions(
-                learners, observations, True, for_single_learner=False
+                learners, observations, True
             )
             ma_mixed_actions = self.get_ma_learner_predictions(
-                learners, observations, False, for_single_learner=False
+                learners, observations, False
             )
-            for agent_id in range(self.num_opponents + 1):
+            for agent_id in range(self.num_agents):
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
                 # sort
                 agent_obs = agent_obs[increasing_order]
 
-                has_won_already = self._has_won_already(
-                    states[increasing_order], stage
-                )[agent_id]
+                has_lost_already = self._has_lost_already(states[increasing_order])[
+                    agent_id
+                ]
 
                 # get actual actions
                 deterministic_actions = ma_deterministic_actions[agent_id][
@@ -465,19 +453,19 @@ class SignalingContest(BaseEnvForVec):
                 mixed_actions = ma_mixed_actions[agent_id][increasing_order]
 
                 # get BNE actions
-                actions_bne = self.get_bne_actions(
+                """actions_bne = self.get_bne_actions(
                     valuations=agent_obs[:, 0],
                     stage=stage,
                     won=has_won_already,
                     agent_id=agent_id,
-                )
+                )"""
 
                 # covert to numpy
                 agent_obs = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
-                actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
-                has_won_already = has_won_already.cpu().numpy()
+                # actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
+                has_lost_already = has_lost_already.cpu().numpy()
 
                 if isinstance(config["algorithms"], str):
                     algo_name = config["algorithms"]
@@ -486,53 +474,57 @@ class SignalingContest(BaseEnvForVec):
 
                 # plotting
                 drawing, = ax.plot(
-                    agent_obs[~has_won_already],
-                    actions_array[~has_won_already],
+                    agent_obs[~has_lost_already],
+                    actions_array[~has_lost_already],
                     linestyle="dotted",
                     marker="o",
                     markevery=32,
-                    label=f"bidder {agent_id} PPO",
+                    label=f"bidder {agent_id} " + algo_name,
                 )
-                ax.plot(
-                    agent_obs[~has_won_already],
-                    actions_bne[~has_won_already],
+                """ax.plot(
+                    agent_obs[~has_lost_already],
+                    actions_bne[~has_lost_already],
                     linestyle="--",
                     marker="*",
                     markevery=32,
                     color=drawing.get_color(),
                     label=f"bidder {agent_id} BNE",
-                )
+                )"""
                 ax.plot(
-                    agent_obs, mixed_actions, ".", alpha=0.2, color=drawing.get_color()
+                    agent_obs[~has_lost_already],
+                    mixed_actions[~has_lost_already],
+                    ".",
+                    alpha=0.2,
+                    color=drawing.get_color(),
                 )
                 if stage > 0:
-                    ax.plot(
-                        agent_obs[~has_won_already],
-                        actions_array[~has_won_already],
+                    """ax.plot(
+                        agent_obs[~has_lost_already],
+                        actions_array[~has_lost_already],
                         linestyle="dotted",
                         marker="o",
                         markevery=32,
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id} PPO",
-                    )
+                        label=f"bidder {agent_id} " + algo_name,
+                    )"""
                     ax.plot(
-                        agent_obs[has_won_already],
-                        actions_array[has_won_already],
+                        agent_obs[has_lost_already],
+                        actions_array[has_lost_already],
                         linestyle="dotted",
                         marker="x",
                         markevery=32,
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id} PPO (won)",
+                        label=f"bidder {agent_id} " + algo_name + " (lost)",
                     )
-                    ax.plot(
-                        agent_obs[has_won_already],
-                        actions_bne[has_won_already],
+                    """ax.plot(
+                        agent_obs[has_lost_already],
+                        actions_bne[has_lost_already],
                         linestyle="--",
                         marker="*",
                         markevery=32,
                         color=drawing.get_color(),
                         label=f"bidder {agent_id} BNE",
-                    )
+                    )"""
             lin = np.linspace(0, 1, 2)
             ax.plot(lin, lin, "--", color="grey")
             ax.set_xlabel("valuation $v$")
@@ -542,9 +534,7 @@ class SignalingContest(BaseEnvForVec):
             ax.set_ylim([-0.05, 1.05])
 
             # apply actions to get to next stage
-            _, _, _, states = self.compute_step(
-                states, ma_deterministic_actions, for_single_learner=False
-            )
+            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
 
         handles, labels = ax.get_legend_handles_labels()
         axs[0].legend(handles, labels, ncol=2)
