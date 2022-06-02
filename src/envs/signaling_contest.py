@@ -430,6 +430,7 @@ class SignalingContest(BaseEnvForVec):
             (30, 120),
             (30, 45),
         ]
+        ax_second_round_colors = ["red", "blue", "purple", "yellow", "grey"]
         plt.rcParams["figure.figsize"] = (8, 5.5)
         fig = plt.figure(
             figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
@@ -491,7 +492,7 @@ class SignalingContest(BaseEnvForVec):
                     algo_name = config["algorithms"][agent_id]
 
                 if round == 1:
-                    drawing = self._plot_first_round_strategy(
+                    self._plot_first_round_strategy(
                         ax_first_round,
                         agent_id,
                         has_lost_already,
@@ -514,7 +515,7 @@ class SignalingContest(BaseEnvForVec):
                             opponent_info,
                             actions_array,
                             algo_name,
-                            drawing,
+                            ax_second_round_colors[agent_id],
                         )
 
             # apply actions to get to next stage
@@ -541,23 +542,24 @@ class SignalingContest(BaseEnvForVec):
         opponent_info,
         actions_array,
         algo_name,
-        drawing,
+        color,
     ):
         ax.set_title("Second round")
         ax.scatter(
             agent_vals[~has_lost_already],
             opponent_info[~has_lost_already],
             actions_array[~has_lost_already],
-            marker="o",
+            marker=".",
+            color=color,
             label=f"bidder {agent_id} " + algo_name,
-            s=6,
+            s=8,
         )
         ax.scatter(
             agent_vals[has_lost_already],
             opponent_info[has_lost_already],
             actions_array[has_lost_already],
-            marker="x",
-            color=drawing.get_color(),
+            marker="1",
+            color=color,
             label=f"bidder {agent_id} " + algo_name + " (lost)",
             s=6,
         )
@@ -630,7 +632,6 @@ class SignalingContest(BaseEnvForVec):
         ax.set_ylabel("bid $b$")
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
         ax.set_ylim([-0.05, self.prior_high + 0.05])
-        return drawing
 
     def log_metrics_to_equilibrium(self, learners, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
