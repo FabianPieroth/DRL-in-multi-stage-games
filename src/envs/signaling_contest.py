@@ -436,7 +436,7 @@ class SignalingContest(BaseEnvForVec):
             ma_mixed_actions = self.get_ma_learner_predictions(
                 learners, observations, False
             )
-            for agent_id in range(1):
+            for agent_id in range(self.num_agents):
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
