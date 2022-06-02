@@ -422,9 +422,25 @@ class SignalingContest(BaseEnvForVec):
         self.seed(seed)
 
         plt.style.use("ggplot")
-        fig = plt.figure(figsize=plt.figaspect(2.0))
-        ax_first_round = fig.add_subplot(2, 1, 1)
-        ax_second_round = fig.add_subplot(2, 1, 2, projection="3d")
+        total_num_second_round_plots = 5
+        ax_second_round_rotations = [
+            (30, -60),
+            (10, -100),
+            (-10, 80),
+            (30, 120),
+            (30, 45),
+        ]
+        plt.rcParams["figure.figsize"] = (8, 5.5)
+        fig = plt.figure(
+            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
+        )
+        ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
+        ax_second_round_list = [
+            fig.add_subplot(
+                1 + total_num_second_round_plots, 1, 2 + plot_id, projection="3d"
+            )
+            for plot_id in range(total_num_second_round_plots)
+        ]
         fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
         states = self.sample_new_states(num_samples)
 
@@ -473,57 +489,79 @@ class SignalingContest(BaseEnvForVec):
                     algo_name = config["algorithms"]
                 else:
                     algo_name = config["algorithms"][agent_id]
+
                 if round == 1:
-                    ax_first_round.set_title("First round")
-                    drawing, = ax_first_round.plot(
-                        agent_vals[~has_lost_already],
-                        actions_array[~has_lost_already],
-                        linestyle="dotted",
-                        marker="o",
-                        markevery=32,
-                        label=f"bidder {agent_id} " + algo_name,
+                    drawing = self._plot_first_round_strategy(
+                        ax_first_round,
+                        agent_id,
+                        has_lost_already,
+                        mixed_actions,
+                        agent_vals,
+                        actions_array,
+                        algo_name,
                     )
-                    """ax.plot(
-                        agent_obs[~has_lost_already],
-                        actions_bne[~has_lost_already],
-                        linestyle="--",
-                        marker="*",
-                        markevery=32,
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} BNE",
-                    )"""
-                    ax_first_round.plot(
-                        agent_vals[~has_lost_already],
-                        mixed_actions[~has_lost_already],
-                        ".",
-                        alpha=0.2,
-                        color=drawing.get_color(),
-                    )
-                    lin = np.linspace(0, self.prior_high, 2)
-                    ax_first_round.plot(lin, lin, "--", color="grey")
-                    ax_first_round.set_xlabel("valuation $v$")
-                    ax_first_round.set_ylabel("bid $b$")
-                    ax_first_round.set_xlim(
-                        [self.prior_low - 0.1, self.prior_high + 0.1]
-                    )
-                    ax_first_round.set_ylim([-0.05, self.prior_high + 0.05])
                 elif round == 2:
-                    ax_second_round.scatter(
-                        agent_vals[~has_lost_already],
-                        opponent_info[~has_lost_already],
-                        actions_array[~has_lost_already],
-                        marker="o",
-                        label=f"bidder {agent_id} " + algo_name,
-                    )
-                    ax_second_round.scatter(
-                        agent_vals[has_lost_already],
-                        opponent_info[has_lost_already],
-                        actions_array[has_lost_already],
-                        marker="x",
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} " + algo_name + " (lost)",
-                    )
-                    """ax.plot(
+                    for ax_second_round, rotation in zip(
+                        ax_second_round_list, ax_second_round_rotations
+                    ):
+                        ax_second_round.view_init(rotation[0], rotation[1])
+                        ax_second_round.dist = 13
+                        self._plot_second_round_strategy(
+                            ax_second_round,
+                            agent_id,
+                            has_lost_already,
+                            agent_vals,
+                            opponent_info,
+                            actions_array,
+                            algo_name,
+                            drawing,
+                        )
+
+            # apply actions to get to next stage
+            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
+
+        handles, labels = ax_first_round.get_legend_handles_labels()
+        ax_first_round.legend(handles, labels, ncol=2, prop={"size": 6})
+        handles, labels = ax_second_round_list[0].get_legend_handles_labels()
+        ax_second_round_list[0].legend(handles, labels, ncol=2, prop={"size": 3})
+        plt.tight_layout()
+        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
+        writer.add_figure("images", fig, iteration)
+        plt.close()
+
+        # reset seed
+        self.seed(int(time.time()))
+
+    def _plot_second_round_strategy(
+        self,
+        ax,
+        agent_id,
+        has_lost_already,
+        agent_vals,
+        opponent_info,
+        actions_array,
+        algo_name,
+        drawing,
+    ):
+        ax.set_title("Second round")
+        ax.scatter(
+            agent_vals[~has_lost_already],
+            opponent_info[~has_lost_already],
+            actions_array[~has_lost_already],
+            marker="o",
+            label=f"bidder {agent_id} " + algo_name,
+            s=6,
+        )
+        ax.scatter(
+            agent_vals[has_lost_already],
+            opponent_info[has_lost_already],
+            actions_array[has_lost_already],
+            marker="x",
+            color=drawing.get_color(),
+            label=f"bidder {agent_id} " + algo_name + " (lost)",
+            s=6,
+        )
+        """ax.plot(
                         agent_obs[~has_lost_already],
                         actions_array[~has_lost_already],
                         linestyle="dotted",
@@ -541,30 +579,58 @@ class SignalingContest(BaseEnvForVec):
                         color=drawing.get_color(),
                         label=f"bidder {agent_id} BNE",
                     )"""
-                    if self.config["information_case"] == "true_valuations":
-                        y_label = "opponent valuation"
-                    elif self.config["information_case"] == "winning_bids":
-                        y_label = "opponent bid"
-                    else:
-                        raise ValueError
-                    ax_second_round.set_xlabel("valuation $v$")
-                    ax_second_round.set_ylabel(y_label)
-                    ax_second_round.set_zlabel("bid $b$")
+        if self.config["information_case"] == "true_valuations":
+            y_label = "opponent $v$"
+        elif self.config["information_case"] == "winning_bids":
+            y_label = "opponent $b$"
+        else:
+            raise ValueError
+        ax.set_xlabel("valuation $v$", fontsize=12)
+        ax.set_ylabel(y_label, fontsize=12)
+        ax.set_zlabel("bid $b$", fontsize=12)
 
-            # apply actions to get to next stage
-            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
-
-        handles, labels = ax_first_round.get_legend_handles_labels()
-        ax_first_round.legend(handles, labels, ncol=2)
-        handles, labels = ax_second_round.get_legend_handles_labels()
-        ax_second_round.legend(handles, labels, ncol=2)
-        plt.tight_layout()
-        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
-        writer.add_figure("images", fig, iteration)
-        plt.close()
-
-        # reset seed
-        self.seed(int(time.time()))
+    def _plot_first_round_strategy(
+        self,
+        ax,
+        agent_id,
+        has_lost_already,
+        mixed_actions,
+        agent_vals,
+        actions_array,
+        algo_name,
+    ):
+        ax.set_title("First round")
+        drawing, = ax.plot(
+            agent_vals[~has_lost_already],
+            actions_array[~has_lost_already],
+            linestyle="dotted",
+            marker="o",
+            markevery=32,
+            label=f"bidder {agent_id} " + algo_name,
+        )
+        """ax.plot(
+                        agent_obs[~has_lost_already],
+                        actions_bne[~has_lost_already],
+                        linestyle="--",
+                        marker="*",
+                        markevery=32,
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id} BNE",
+                    )"""
+        ax.plot(
+            agent_vals[~has_lost_already],
+            mixed_actions[~has_lost_already],
+            ".",
+            alpha=0.2,
+            color=drawing.get_color(),
+        )
+        lin = np.linspace(0, self.prior_high, 2)
+        ax.plot(lin, lin, "--", color="grey")
+        ax.set_xlabel("valuation $v$")
+        ax.set_ylabel("bid $b$")
+        ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
+        ax.set_ylim([-0.05, self.prior_high + 0.05])
+        return drawing
 
     def log_metrics_to_equilibrium(self, learners, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
