@@ -8,3 +8,4 @@ action_size: 1
 valuation_size: 1
 impact_factor: 1.0
 use_valuation: True
+plot_only_one_agent: True
