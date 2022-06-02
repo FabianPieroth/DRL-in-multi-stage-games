@@ -2,7 +2,7 @@ name: "signaling_contest"
 all_information_cases: ["true_valuations", "winning_bids"]
 information_case: "true_valuations"
 sample_tullock_allocations: false
-prior_bounds: [1, 2]
+prior_bounds: [0.1, 1.1]
 num_agents: 4
 action_size: 1
 valuation_size: 1

@@ -110,7 +110,7 @@ class SignalingContest(BaseEnvForVec):
         )
 
         # ipv symmetric uniform priors
-        states[:, :, : self.valuation_size].uniform_(0, 1)
+        states[:, :, : self.valuation_size].uniform_(self.prior_low, self.prior_high)
 
         # No rounds played until now
         states[:, :, self.valuation_size] = -1.0
@@ -422,12 +422,13 @@ class SignalingContest(BaseEnvForVec):
         self.seed(seed)
 
         plt.style.use("ggplot")
-        fig, axs = plt.subplots(nrows=1, ncols=2, sharey=True, figsize=(5 * 2, 5))
+        fig = plt.figure(figsize=plt.figaspect(2.0))
+        ax_first_round = fig.add_subplot(2, 1, 1)
+        ax_second_round = fig.add_subplot(2, 1, 2, projection="3d")
         fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
         states = self.sample_new_states(num_samples)
 
-        for stage, ax in zip(range(2), axs):
-            ax.set_title(f"Stage {stage + 1}")
+        for round in range(1, 3):
             observations = self.get_observations(states)
             ma_deterministic_actions = self.get_ma_learner_predictions(
                 learners, observations, True
@@ -435,7 +436,7 @@ class SignalingContest(BaseEnvForVec):
             ma_mixed_actions = self.get_ma_learner_predictions(
                 learners, observations, False
             )
-            for agent_id in range(self.num_agents):
+            for agent_id in range(1):
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
@@ -461,7 +462,8 @@ class SignalingContest(BaseEnvForVec):
                 )"""
 
                 # covert to numpy
-                agent_obs = agent_obs[:, 0].detach().cpu().view(-1).numpy()
+                agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
+                opponent_info = agent_obs[:, 2].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
                 # actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
@@ -471,33 +473,56 @@ class SignalingContest(BaseEnvForVec):
                     algo_name = config["algorithms"]
                 else:
                     algo_name = config["algorithms"][agent_id]
-
-                # plotting
-                drawing, = ax.plot(
-                    agent_obs[~has_lost_already],
-                    actions_array[~has_lost_already],
-                    linestyle="dotted",
-                    marker="o",
-                    markevery=32,
-                    label=f"bidder {agent_id} " + algo_name,
-                )
-                """ax.plot(
-                    agent_obs[~has_lost_already],
-                    actions_bne[~has_lost_already],
-                    linestyle="--",
-                    marker="*",
-                    markevery=32,
-                    color=drawing.get_color(),
-                    label=f"bidder {agent_id} BNE",
-                )"""
-                ax.plot(
-                    agent_obs[~has_lost_already],
-                    mixed_actions[~has_lost_already],
-                    ".",
-                    alpha=0.2,
-                    color=drawing.get_color(),
-                )
-                if stage > 0:
+                if round == 1:
+                    ax_first_round.set_title("First round")
+                    drawing, = ax_first_round.plot(
+                        agent_vals[~has_lost_already],
+                        actions_array[~has_lost_already],
+                        linestyle="dotted",
+                        marker="o",
+                        markevery=32,
+                        label=f"bidder {agent_id} " + algo_name,
+                    )
+                    """ax.plot(
+                        agent_obs[~has_lost_already],
+                        actions_bne[~has_lost_already],
+                        linestyle="--",
+                        marker="*",
+                        markevery=32,
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id} BNE",
+                    )"""
+                    ax_first_round.plot(
+                        agent_vals[~has_lost_already],
+                        mixed_actions[~has_lost_already],
+                        ".",
+                        alpha=0.2,
+                        color=drawing.get_color(),
+                    )
+                    lin = np.linspace(0, self.prior_high, 2)
+                    ax_first_round.plot(lin, lin, "--", color="grey")
+                    ax_first_round.set_xlabel("valuation $v$")
+                    ax_first_round.set_ylabel("bid $b$")
+                    ax_first_round.set_xlim(
+                        [self.prior_low - 0.1, self.prior_high + 0.1]
+                    )
+                    ax_first_round.set_ylim([-0.05, self.prior_high + 0.05])
+                elif round == 2:
+                    ax_second_round.scatter(
+                        agent_vals[~has_lost_already],
+                        opponent_info[~has_lost_already],
+                        actions_array[~has_lost_already],
+                        marker="o",
+                        label=f"bidder {agent_id} " + algo_name,
+                    )
+                    ax_second_round.scatter(
+                        agent_vals[has_lost_already],
+                        opponent_info[has_lost_already],
+                        actions_array[has_lost_already],
+                        marker="x",
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id} " + algo_name + " (lost)",
+                    )
                     """ax.plot(
                         agent_obs[~has_lost_already],
                         actions_array[~has_lost_already],
@@ -506,18 +531,9 @@ class SignalingContest(BaseEnvForVec):
                         markevery=32,
                         color=drawing.get_color(),
                         label=f"bidder {agent_id} " + algo_name,
-                    )"""
-                    ax.plot(
-                        agent_obs[has_lost_already],
-                        actions_array[has_lost_already],
-                        linestyle="dotted",
-                        marker="x",
-                        markevery=32,
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} " + algo_name + " (lost)",
                     )
-                    """ax.plot(
-                        agent_obs[has_lost_already],
+                    ax.plot(
+                        agent_vals[has_lost_already],
                         actions_bne[has_lost_already],
                         linestyle="--",
                         marker="*",
@@ -525,19 +541,23 @@ class SignalingContest(BaseEnvForVec):
                         color=drawing.get_color(),
                         label=f"bidder {agent_id} BNE",
                     )"""
-            lin = np.linspace(0, 1, 2)
-            ax.plot(lin, lin, "--", color="grey")
-            ax.set_xlabel("valuation $v$")
-            if stage == 0:
-                ax.set_ylabel("bid $b$")
-            ax.set_xlim([0, 1])
-            ax.set_ylim([-0.05, 1.05])
+                    if self.config["information_case"] == "true_valuations":
+                        y_label = "opponent valuation"
+                    elif self.config["information_case"] == "winning_bids":
+                        y_label = "opponent bid"
+                    else:
+                        raise ValueError
+                    ax_second_round.set_xlabel("valuation $v$")
+                    ax_second_round.set_ylabel(y_label)
+                    ax_second_round.set_zlabel("bid $b$")
 
             # apply actions to get to next stage
             _, _, _, states = self.compute_step(states, ma_deterministic_actions)
 
-        handles, labels = ax.get_legend_handles_labels()
-        axs[0].legend(handles, labels, ncol=2)
+        handles, labels = ax_first_round.get_legend_handles_labels()
+        ax_first_round.legend(handles, labels, ncol=2)
+        handles, labels = ax_second_round.get_legend_handles_labels()
+        ax_second_round.legend(handles, labels, ncol=2)
         plt.tight_layout()
         plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
         writer.add_figure("images", fig, iteration)
