@@ -4,6 +4,7 @@ Simple sequential auction game following Krishna.
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
 import time
+import warnings
 from typing import Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
@@ -58,9 +59,31 @@ class SignalingContest(BaseEnvForVec):
         if information_case == "true_valuations":
             return no_signaling_equilibrium
         elif information_case == "winning_bids":
+            self._is_equilibrium_ensured_to_exist()
             return signaling_equilibrium
         else:
             raise ValueError("No valid information case provided!")
+
+    def _is_equilibrium_ensured_to_exist(self):
+        if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
+            warnings.warn(
+                "The sufficient conditions for a separating equilibrium do not hold! An equilibrium is not ensured to exist!"
+            )
+
+    def is_support_ratio_bounded(self) -> bool:
+        ratio_support = self.prior_high / self.prior_low
+        return 1.0 < ratio_support and ratio_support < 4.0 ** (1 / 3)
+
+    def does_min_density_bound_hold(self) -> bool:
+        min_density = 1.0 / (self.prior_high - self.prior_low)
+        ratio_support = self.prior_high / self.prior_low
+        density_factor = (self.num_agents / 2 - 1) * min_density * self.prior_low
+        ratio_factor = max(
+            (ratio_support - 1) * ratio_support ** 4 / 2,
+            (ratio_support ** 2 - ratio_support)
+            / (8.0 - 4.0 * ratio_support ** (3 / 2)),
+        )
+        return ratio_factor < density_factor
 
     def _get_num_agents(self) -> int:
         assert (
