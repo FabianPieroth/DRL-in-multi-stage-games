@@ -87,7 +87,7 @@ class SignalingContest(BaseEnvForVec):
 
     def _get_num_agents(self) -> int:
         assert (
-            self.config["num_agents"] & 2 == 0
+            self.config["num_agents"] % 2 == 0
         ), "The contest demands currently an even number of agents!"
         return self.config["num_agents"]
 
