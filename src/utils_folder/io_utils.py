@@ -5,6 +5,8 @@ import warnings
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+import src.utils_folder.policy_utils as pl_ut
+
 
 def save_omegaconf_to_yaml(file: DictConfig, filename: str, path: str = "./"):
     full_path = path + filename + ".yaml"
@@ -52,7 +54,8 @@ def get_total_training_steps(config: DictConfig) -> int:
 
 def get_n_steps_per_iteration(config: DictConfig) -> int:
     n_rollout_steps = None
-    for agent_id, algo_name in enumerate(config["algorithms"]):
+    for agent_id in range(config["rl_envs"]["num_agents"]):
+        algo_name = pl_ut.get_algo_name(agent_id, config)
         algo_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
         if algo_rollout_steps is not None and n_rollout_steps is None:
             n_rollout_steps = algo_rollout_steps

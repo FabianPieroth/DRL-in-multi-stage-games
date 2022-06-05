@@ -22,7 +22,7 @@ def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
 def get_policy_for_agent(
     agent_id: int, config: Dict, env: MATorchVecEnv
 ) -> BaseAlgorithm:
-    algo_name = get_algo_name(agent_id, config, env)
+    algo_name = get_algo_name(agent_id, config)
     env.set_env_for_current_agent(agent_id)
     if algo_name == "ppo":
         ppo_config = config["algorithm_configs"]["ppo"]
@@ -56,8 +56,8 @@ def get_policy_for_agent(
         )
 
 
-def get_algo_name(agent_id: int, config: Dict, env: MATorchVecEnv):
-    if config["policy_sharing"] and isinstance(config["algorithms"], str):
+def get_algo_name(agent_id: int, config: Dict):
+    if isinstance(config["algorithms"], str):
         return config["algorithms"]
     elif config["policy_sharing"] and all_equal(config["algorithms"]):
         return config["algorithms"][0]
@@ -67,7 +67,7 @@ def get_algo_name(agent_id: int, config: Dict, env: MATorchVecEnv):
         )
     elif (
         not config["policy_sharing"]
-        and len(config["algorithms"]) != env.model.num_agents
+        and len(config["algorithms"]) != config["rl_envs"]["num_agents"]
     ):
         raise ValueError(
             "One needs to specify a policy for every agent or use policy sharing!"
