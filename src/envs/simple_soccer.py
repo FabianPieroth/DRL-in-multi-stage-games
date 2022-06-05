@@ -94,19 +94,9 @@ class SoccerStates:
 class SimpleSoccer(BaseEnvForVec):
     BALL_IDX = 0
 
-    def __init__(self, config, device, opponent_policy, n_players_per_team=3):
-        super.__init__(config, device)
-        self.opponent_policy = opponent_policy
-        self.observation_space = spaces.Box(
-            -10.0, 10.0, shape=(5 * 2 * n_players_per_team + 5,)
-        )
-        self.device = device
-
-        # For each player: movement, dash [no/yes], kick [no/soft/strong]
-        self.action_space = spaces.MultiDiscrete([9, 2, 3] * n_players_per_team)
-        self.action_space_nvec = torch.tensor(
-            self.action_space.nvec, device=self.device
-        )
+    def __init__(self, config, device):
+        super().__init__(config, device)
+        self._n_players_per_team = int(self.num_agents / 2)
 
         self.player_velocity = 3.5
         diag_vel = math.sqrt(0.5) * self.player_velocity
@@ -131,7 +121,6 @@ class SimpleSoccer(BaseEnvForVec):
 
         self.player_radius = 0.75
         self.ball_radius = 0.25
-        self._n_players_per_team = n_players_per_team
         ball = ObjectSpec(radius=self.ball_radius, mass=0.3, color=(1, 1, 1))
         controlled_players = []
         opponents = []
@@ -196,32 +185,28 @@ class SimpleSoccer(BaseEnvForVec):
         Returns:
             int: number of agents in env
         """
+        assert (
+            self.config["num_agents"] % 2 == 0
+        ), "Currently, the total number of agents needs to be even!"
+        return self.config["num_agents"]
 
     def _init_observation_spaces(self) -> Dict[int, Space]:
-        """Returns dict with agent - observation space pairs.
-        Returns:
-            Dict[int, Space]: agent_id: observation space
-        """
+        return {
+            agent_id: spaces.Box(
+                -10.0, 10.0, shape=(5 * 2 * int(self.num_agents / 2) + 5 + 1,)
+            )
+            for agent_id in range(self.num_agents)
+        }
 
     def _init_action_spaces(self) -> Dict[int, Space]:
-        """Returns dict with agent - action space pairs.
-        Returns:
-            Dict[int, Space]: agent_id: action space
-        """
-
-        """Takes a number of states and returns the corresponding observations for the agents.
-
-        Args:
-            states (_type_): _description_
-
-        Returns:
-            observations: _description_
-        """
-        raise NotImplementedError
+        # For each player: movement, dash [no/yes], kick [no/soft/strong]
+        return {
+            agent_id: spaces.MultiDiscrete([9, 2, 3])
+            for agent_id in range(self.num_agents)
+        }
 
     def to(self, device):
         self.device = device
-        self.action_space_nvec = self.action_space_nvec.to(device)
         self.action_target_speeds = self.action_target_speeds.to(device)
         self.collision_distance_map = self.collision_distance_map.to(device)
         self._radii = self._radii.to(device)
@@ -560,10 +545,25 @@ class SimpleSoccer(BaseEnvForVec):
             object_states, energies, states.times, states.opponent_states
         )
 
-    def get_observations(self, states: SoccerStates, opponent=False):
-        if opponent:
-            states = self._flip_states(states)
+    def get_observations(self, states: SoccerStates):
+        agent_obs = {}
+        first_team_state_obs = self._get_sa_state_obs(states)
+        second_team_state_obs = self._get_sa_state_obs(self._flip_states(states))
+        for agent_playing_id in range(self._n_players_per_team):
+            playing_id_info = (
+                torch.ones((states.objects.shape[0], 1), device=self.device)
+                * agent_playing_id
+            )
+            agent_obs[agent_playing_id] = torch.concat(
+                [first_team_state_obs, playing_id_info], axis=1
+            )
+            agent_obs[agent_playing_id + self._n_players_per_team] = torch.concat(
+                [second_team_state_obs, playing_id_info], axis=1
+            )
 
+        return agent_obs
+
+    def _get_sa_state_obs(self, states):
         object_states = states.objects
         energies = states.energies
         normalized_energies = energies * 2 - 1.0
@@ -579,7 +579,7 @@ class SimpleSoccer(BaseEnvForVec):
             * 2
             - 1.0
         )
-        return torch.cat(
+        sa_full_obs = torch.cat(
             (
                 full_player_states.flatten(start_dim=-2),
                 ball_states.flatten(start_dim=-3),
@@ -587,6 +587,8 @@ class SimpleSoccer(BaseEnvForVec):
             ),
             dim=-1,
         )
+
+        return sa_full_obs
 
     def _translate_units_to_px(self, x, y):
         return (
