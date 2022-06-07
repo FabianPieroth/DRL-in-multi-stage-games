@@ -1,0 +1,2 @@
+policy: "MlpPolicy"
+n_rollout_steps: 256
