@@ -656,7 +656,7 @@ class SignalingContest(BaseEnvForVec):
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
-        ax.set_ylim([-0.05, self.prior_high / 3.5 + 0.05])
+        ax.set_ylim([-0.05, self.prior_high / 3.0 + 0.05])
 
     def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
         val_xs = torch.linspace(
