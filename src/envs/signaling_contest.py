@@ -493,10 +493,6 @@ class SignalingContest(BaseEnvForVec):
                 ]
                 mixed_actions = ma_mixed_actions[agent_id][increasing_order]
 
-                """actions_equilibrium = self.equilibrium_strategies[agent_id](
-                round=round, valuations=agent_obs[:, 0], signal_info=agent_obs[:, 2], lost=has_lost_already
-            )"""
-
                 # convert to numpy
                 agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 opponent_info = agent_obs[:, 2].detach().cpu().view(-1).numpy()
@@ -642,8 +638,6 @@ class SignalingContest(BaseEnvForVec):
             markevery=32,
             label=f"bidder {agent_id} " + algo_name,
         )
-        self._plot_first_round_equilibrium_strategy(ax, agent_id)
-
         ax.plot(
             agent_vals[~has_lost_already],
             mixed_actions[~has_lost_already],
@@ -651,12 +645,13 @@ class SignalingContest(BaseEnvForVec):
             alpha=0.2,
             color=drawing.get_color(),
         )
+        self._plot_first_round_equilibrium_strategy(ax, agent_id)
         lin = np.linspace(0, self.prior_high, 2)
         ax.plot(lin, lin, "--", color="grey")
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
-        ax.set_ylim([-0.05, self.prior_high / 3.0 + 0.05])
+        # ax.set_ylim([-0.05, self.prior_high / 3.0 + 0.05])
 
     def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
         val_xs = torch.linspace(
