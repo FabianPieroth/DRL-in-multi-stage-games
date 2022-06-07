@@ -1,5 +1,6 @@
 """Collection of known equilibria."""
-from multiprocessing.sharedctypes import Value
+import math
+import warnings
 
 import torch
 
@@ -42,6 +43,10 @@ def no_signaling_equilibrium(num_agents: int, prior_low: float, prior_high: floa
     """Equilibrium strategy for two stage signaling contest. First round all-pay,
     second round tullock contest. True valuations of winner revealed."""
 
+    warnings.warn(
+        "Only 2 agents per group, prior_low=1.0 and prior_high=1.5 is implemented!"
+    )
+
     def bid_function(
         round: int,
         valuations: torch.Tensor,
@@ -49,7 +54,17 @@ def no_signaling_equilibrium(num_agents: int, prior_low: float, prior_high: floa
         lost: torch.Tensor = None,
     ):
         if round == 1:
-            bid = valuations
+            term_1 = 27.0 * torch.log(valuations + 1.5) - 17.0 / 2.0 * valuations
+            term_2 = -43.0 / 4.0 * math.log(2.5)
+            term_3 = 3.5 * torch.pow(valuations, 2) - 2.0 * torch.pow(valuations, 3)
+            term_4 = -4.0 * torch.log(valuations + 1.0) * (torch.pow(valuations, 4) - 1)
+            term_5 = (
+                4.0
+                * torch.log(valuations + 1.5)
+                * (torch.pow(valuations, 4) - 81.0 / 16.0)
+                + 7.0
+            )
+            bid = term_1 + term_2 + term_3 + term_4 + term_5
         elif round == 2:
             bid = (valuations ** 2 * signal_info) / (valuations + signal_info) ** 2
         else:
@@ -69,7 +84,7 @@ def signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
 
     def bid_function(
         round: int,
-        valuation: torch.Tensor,
+        valuations: torch.Tensor,
         signal_info: torch.Tensor,
         lost: torch.Tensor = None,
     ):

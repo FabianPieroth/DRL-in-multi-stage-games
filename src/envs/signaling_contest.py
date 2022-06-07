@@ -583,7 +583,7 @@ class SignalingContest(BaseEnvForVec):
             s=6,
         )
 
-        self._plot_second_stage_equ_strategy_surface(ax, agent_id, 100)
+        self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
 
         """ax.plot(
                         agent_obs[~has_lost_already],
@@ -613,7 +613,7 @@ class SignalingContest(BaseEnvForVec):
         ax.set_ylabel(y_label, fontsize=12)
         ax.set_zlabel("bid $b$", fontsize=12)
 
-    def _plot_second_stage_equ_strategy_surface(self, ax, agent_id, plot_precision):
+    def _plot_second_round_equ_strategy_surface(self, ax, agent_id, plot_precision):
         val_xs = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
         info_ys = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
         val_x, info_y = torch.meshgrid(val_xs, info_ys, indexing="xy")
@@ -642,15 +642,8 @@ class SignalingContest(BaseEnvForVec):
             markevery=32,
             label=f"bidder {agent_id} " + algo_name,
         )
-        """ax.plot(
-                        agent_obs[~has_lost_already],
-                        actions_bne[~has_lost_already],
-                        linestyle="--",
-                        marker="*",
-                        markevery=32,
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} BNE",
-                    )"""
+        self._plot_first_round_equilibrium_strategy(ax, agent_id)
+
         ax.plot(
             agent_vals[~has_lost_already],
             mixed_actions[~has_lost_already],
@@ -663,7 +656,18 @@ class SignalingContest(BaseEnvForVec):
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
-        ax.set_ylim([-0.05, self.prior_high + 0.05])
+        ax.set_ylim([-0.05, self.prior_high / 3.5 + 0.05])
+
+    def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
+        val_xs = torch.linspace(
+            self.prior_low, self.prior_high, steps=100, device=self.device
+        )
+        bid_ys = self.equilibrium_strategies[agent_id](
+            round=1, valuations=val_xs, signal_info=None, lost=None
+        )
+        equ_xs = val_xs.detach().cpu().numpy().squeeze()
+        equ_bid_y = bid_ys.detach().cpu().numpy().squeeze()
+        ax.plot(equ_xs, equ_bid_y, linewidth=1)
 
     def log_metrics_to_equilibrium(self, learners, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
