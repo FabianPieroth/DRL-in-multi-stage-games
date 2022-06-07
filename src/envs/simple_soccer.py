@@ -276,7 +276,7 @@ class SimpleSoccer(BaseEnvForVec):
         )
         return states
 
-    def compute_step(self, cur_states: SoccerStates, actions: torch.Tensor):
+    def compute_step(self, cur_states: SoccerStates, actions: Dict[int, torch.Tensor]):
         """
         Given a state batch and an action batch, returns:
          - observations
@@ -285,42 +285,31 @@ class SimpleSoccer(BaseEnvForVec):
          - updated states
         """
 
+        first_team_actions = torch.concat(
+            [actions[agent_id] for agent_id in range(self._n_players_per_team)], axis=1
+        )
+        second_team_actions = torch.concat(
+            [
+                actions[agent_id + self._n_players_per_team]
+                for agent_id in range(self._n_players_per_team)
+            ],
+            axis=1,
+        )
+
         object_states = cur_states.objects
         energies = cur_states.energies
-
-        # Get opponent's action
-        if False:  #  isinstance(self.opponent_policy, EvalPolicy):
-            flipped_states = self._flip_states(cur_states)
-            opponent_actions = self.opponent_policy.compute_actions(flipped_states)
-            post_opponent_states = None
-        elif self.opponent_policy is not None:
-            opponent_obses = self.get_observations(cur_states, opponent=True)
-            with torch.no_grad():
-                opponent_actions, _, _, post_opponent_states = self.opponent_policy.forward(
-                    opponent_obses,
-                    rnn_state=cur_states.opponent_states,
-                    deterministic=False,
-                )
-        else:
-            opponent_actions = (
-                torch.randint_like(
-                    actions, low=0, high=1_000_000_000, device=self.device
-                )
-                % self.action_space_nvec
-            )
-            post_opponent_states = None
 
         substep_dt = self.dt / self.substeps
         for _ in range(self.substeps):
             # Ralston step RK2
             d_state_1, d_energies_1 = self.compute_state_derivative(
-                object_states, energies, actions, opponent_actions
+                object_states, energies, first_team_actions, second_team_actions
             )
             d_state_2, d_energies_2 = self.compute_state_derivative(
                 object_states + substep_dt * 2.0 / 3 * d_state_1,
                 energies + substep_dt * 2.0 / 3 * d_energies_1,
-                actions,
-                opponent_actions,
+                first_team_actions,
+                second_team_actions,
             )
             object_states = (
                 object_states + substep_dt * (1 * d_state_1 + 3 * d_state_2) / 4
@@ -331,7 +320,7 @@ class SimpleSoccer(BaseEnvForVec):
             objects=object_states,
             energies=energies,
             times=cur_states.times + 1,
-            opponent_states=post_opponent_states,
+            opponent_states=None,
         )
 
         positions_pre = cur_states.objects[..., 0]
@@ -345,12 +334,17 @@ class SimpleSoccer(BaseEnvForVec):
 
         obses = self.get_observations(post_states)
 
-        goal_rewards = potential_post - potential_pre
-
-        rewards = goal_rewards
+        goal_rewards_first_team = potential_post - potential_pre
+        goal_rewards_second_team = -goal_rewards_first_team
+        rewards = {}
+        for agent_id in range(self._n_players_per_team):
+            rewards[agent_id] = goal_rewards_first_team.clone()
+            rewards[
+                agent_id + self._n_players_per_team
+            ] = goal_rewards_second_team.clone()
 
         dones = (
-            (goal_rewards != 0)
+            (goal_rewards_first_team != 0)
             | (
                 positions_post[:, self.BALL_IDX, 1] > self.halffield_height
             )  # Ball over line
