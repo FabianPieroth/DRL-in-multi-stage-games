@@ -1,5 +1,5 @@
 name: "all_algos"
 defaults:
-  - ppo: ppo_for_rps
+  - ppo: ppo_for_soccer
   - reinforce: reinforce
   - rps_single_action: rps_rock
