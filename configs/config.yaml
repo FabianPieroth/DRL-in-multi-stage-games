@@ -10,7 +10,7 @@ iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
 algorithms: "ppo"
-policy_sharing: true
+policy_sharing: false
 defaults:
   - rl_envs: simple_soccer
   - algorithm_configs: all_algos
