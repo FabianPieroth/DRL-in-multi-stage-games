@@ -2,13 +2,13 @@ valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest"]
 log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
-device: 1
+device: 2
 num_envs: 4096
-eval_freq: 50
-iteration_num: 500
+eval_freq: 100
+iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
-algorithms: ["ppo", "ppo", "ppo", "ppo"]
+algorithms: "ppo"
 policy_sharing: false
 defaults:
   - rl_envs: signaling_contest
