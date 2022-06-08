@@ -123,33 +123,24 @@ class SignalingContest(BaseEnvForVec):
         return self
 
     def sample_new_states(self, n: int) -> Any:
-        """Create new initial states consisting of
-            * one valuation per agent
-            * num_rounds_to_play * allocation per agent
-            * prices of all stages (-1 for future stages TODO?)
-                -> implicitly tells agents which the current round is
-
-        :param n: Batch size of how many auction games are played in parallel.
-        :return: The new states, in shape=(n, num_agents*2 + num_rounds_to_play),
-            where ...
-        `current_round` and `num_rounds_to_play`.
+        """Samples number n initial states. 
+        [n, valuation + allocation + winning bids + winning valuations]
         """
-        self.valuations_start_index = 0
         self.group_split_index = int(self.num_agents / 2)
         self.allocation_index = self.valuation_size
         self.payments_start_index = self.valuation_size + self.allocation_index
         states = torch.zeros(
-            (n, self.num_agents, self.valuation_size + 1 + self.action_size),
+            (n, self.num_agents, self.valuation_size + 1 + 2 * self.action_size),
             device=self.device,
         )
 
         # ipv symmetric uniform priors
         states[:, :, : self.valuation_size].uniform_(self.prior_low, self.prior_high)
 
-        # No rounds played until now
+        # No rounds played until now - no allocations
         states[:, :, self.valuation_size] = -1.0
 
-        # dummy prices
+        # dummy prices and winning valuations
         states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY
 
         return states
@@ -301,12 +292,23 @@ class SignalingContest(BaseEnvForVec):
         rel_cur_states: torch.Tensor,
     ) -> torch.Tensor:
         winner_info = torch.zeros(
-            (rel_cur_states.shape[0], rel_cur_states.shape[1], self.valuation_size),
+            (
+                rel_cur_states.shape[0],
+                rel_cur_states.shape[1],
+                self.valuation_size + self.action_size,
+            ),
             device=rel_cur_states.device,
         )
         winner_mask_ind_agent = (allocations == 1.0).squeeze()
         winner_mask_env = torch.any(winner_mask_ind_agent, axis=1)
-        if self.config["information_case"] == "true_valuations":
+
+        winner_info[:, :, 0][winner_mask_env] = (
+            bids[winner_mask_ind_agent].detach().clone()
+        )
+        winner_info[:, :, 1][winner_mask_env] = rel_cur_states[
+            :, :, : self.valuation_size
+        ][winner_mask_ind_agent]
+        """if self.config["information_case"] == "true_valuations":
             winner_info.squeeze()[winner_mask_env] = rel_cur_states[
                 :, :, : self.valuation_size
             ][winner_mask_ind_agent]
@@ -315,7 +317,7 @@ class SignalingContest(BaseEnvForVec):
                 bids[winner_mask_ind_agent].detach().clone()
             )
         else:
-            raise ValueError("No valid information case provided!")
+            raise ValueError("No valid information case provided!")"""
         return winner_info
 
     def _compute_rewards(
@@ -368,8 +370,29 @@ class SignalingContest(BaseEnvForVec):
             observation_dict[agent_id] = torch.zeros(
                 (batch_size, observation_size), device=states.device
             )
-            observation_dict[agent_id] = states[:, agent_id, :]
+            slicing_indices = self._get_obs_slicing_indices()
+            observation_dict[agent_id] = states[:, agent_id, :].index_select(
+                1, slicing_indices
+            )
         return observation_dict
+
+    def _get_obs_slicing_indices(self):
+        if self.config["information_case"] == "true_valuations":
+            slice_indices = [
+                0,
+                self.valuation_size,
+                self.valuation_size + self.allocation_index + self.action_size,
+            ]
+        elif self.config["information_case"] == "winning_bids":
+            slice_indices = [
+                0,
+                self.valuation_size,
+                self.valuation_size + self.allocation_index,
+            ]
+        else:
+            raise ValueError
+        indexing_tensor = torch.Tensor(slice_indices).to(self.device).long()
+        return indexing_tensor
 
     def render(self, state):
         return state
@@ -409,12 +432,12 @@ class SignalingContest(BaseEnvForVec):
         self,
         round: int,
         valuations: torch.Tensor,
-        signal_info: torch.Tensor,
+        opponent_vals: torch.Tensor,
         lost: torch.Tensor,
         agent_id: int,
     ) -> torch.Tensor:
         return self.equilibrium_strategies[agent_id](
-            round, valuations, signal_info, lost
+            round, valuations, opponent_vals, lost
         )
 
     @staticmethod
@@ -423,16 +446,6 @@ class SignalingContest(BaseEnvForVec):
             agent_id: learners[0].predict(obs, deterministic)[0]
             for agent_id, obs in observations.items()
         }
-
-    def get_sa_equilibrium_actions(
-        self, agent_id, sa_valuations, sa_signal_info, round, sa_lost
-    ):
-        return self.equilibrium_strategies[agent_id](
-            round=round,
-            valuations=sa_valuations,
-            signal_info=sa_signal_info,
-            lost=sa_lost,
-        )
 
     def plot_strategies_vs_equilibrium(
         self, learners, writer, iteration: int, config, num_samples: int = 500
@@ -614,7 +627,7 @@ class SignalingContest(BaseEnvForVec):
         info_ys = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
         val_x, info_y = torch.meshgrid(val_xs, info_ys, indexing="xy")
         bid_z = self.equilibrium_strategies[agent_id](
-            round=2, valuations=val_x, signal_info=info_y, lost=None
+            round=2, valuations=val_x, opponent_vals=info_y, lost=None
         )
         bid_z = bid_z.reshape(plot_precision, plot_precision)
         ax.plot_surface(val_x.numpy(), info_y.numpy(), bid_z.numpy(), alpha=0.2)
@@ -658,7 +671,7 @@ class SignalingContest(BaseEnvForVec):
             self.prior_low, self.prior_high, steps=100, device=self.device
         )
         bid_ys = self.equilibrium_strategies[agent_id](
-            round=1, valuations=val_xs, signal_info=None, lost=None
+            round=1, valuations=val_xs, opponent_vals=None, lost=None
         )
         equ_xs = val_xs.detach().cpu().numpy().squeeze()
         equ_bid_y = bid_ys.detach().cpu().numpy().squeeze()
