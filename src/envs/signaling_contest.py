@@ -154,9 +154,7 @@ class SignalingContest(BaseEnvForVec):
 
         return states
 
-    def compute_step(
-        self, cur_states, actions: torch.Tensor, for_single_learner: bool = True
-    ):
+    def compute_step(self, cur_states, actions: torch.Tensor):
         """Compute a step in the game.
 
         :param cur_states: The current states of the games.
@@ -204,7 +202,7 @@ class SignalingContest(BaseEnvForVec):
                 index=first_round_winner_indices,
             )
             sec_round_winning_probs, _ = self.tullock_contest_mechanism.run(
-                first_round_winner_bids
+                first_round_winner_bids.detach().clone()
             )
             if self.config["sample_tullock_allocations"]:
                 raise NotImplementedError("Enable sampling for winning allocations!")
@@ -313,7 +311,9 @@ class SignalingContest(BaseEnvForVec):
                 :, :, : self.valuation_size
             ][winner_mask_ind_agent]
         elif self.config["information_case"] == "winning_bids":
-            winner_info.squeeze()[winner_mask_env] = bids[winner_mask_ind_agent]
+            winner_info.squeeze()[winner_mask_env] = (
+                bids[winner_mask_ind_agent].detach().clone()
+            )
         else:
             raise ValueError("No valid information case provided!")
         return winner_info
