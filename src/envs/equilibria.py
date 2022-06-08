@@ -76,13 +76,13 @@ def no_signaling_equilibrium(num_agents: int, prior_low: float, prior_high: floa
     def bid_function(
         round: int,
         valuations: torch.Tensor,
-        signal_info: torch.Tensor,
+        opponent_vals: torch.Tensor,
         lost: torch.Tensor = None,
     ):
         if round == 1:
             bid = winning_effect_term(valuations)
         elif round == 2:
-            bid = (valuations ** 2 * signal_info) / (valuations + signal_info) ** 2
+            bid = (valuations ** 2 * opponent_vals) / (valuations + opponent_vals) ** 2
         else:
             raise ValueError("Only two stage contest implemented!")
 
@@ -105,13 +105,13 @@ def signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
     def bid_function(
         round: int,
         valuations: torch.Tensor,
-        signal_info: torch.Tensor,
+        opponent_vals: torch.Tensor,
         lost: torch.Tensor = None,
     ):
         if round == 1:
             bid = signaling_effect_term(valuations) + winning_effect_term(valuations)
         elif round == 2:
-            bid = (valuations ** 2 * signal_info) / (valuations + signal_info) ** 2
+            bid = (valuations ** 2 * opponent_vals) / (valuations + opponent_vals) ** 2
         else:
             raise ValueError("Only two stage contest implemented!")
 
