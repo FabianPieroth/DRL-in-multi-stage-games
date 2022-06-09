@@ -8,8 +8,8 @@ eval_freq: 50
 iteration_num: 500
 total_training_steps: null
 n_steps_per_iteration: null
-algorithms: ["ppo", "ppo", "ppo"]
-policy_sharing: false
+algorithms: "ppo"
+policy_sharing: true
 defaults:
   - rl_envs: sequential_auction
   - algorithm_configs: all_algos

@@ -52,16 +52,22 @@ def get_total_training_steps(config: DictConfig) -> int:
 
 def get_n_steps_per_iteration(config: DictConfig) -> int:
     n_rollout_steps = None
-    for agent_id, algo_name in enumerate(config["algorithms"]):
-        algo_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
-        if algo_rollout_steps is not None and n_rollout_steps is None:
-            n_rollout_steps = algo_rollout_steps
-        elif algo_rollout_steps is not None and n_rollout_steps is not None:
-            if algo_rollout_steps != n_rollout_steps:
-                raise ValueError(
-                    "Cannot handle algorithms with different rollout lengths! Check for agent: "
-                    + str(agent_id)
-                )
+    if isinstance(config["algorithms"], str):
+        algo_name = config["algorithms"]
+        n_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
+    else:
+        for agent_id, algo_name in enumerate(config["algorithms"]):
+            algo_rollout_steps = config["algorithm_configs"][algo_name][
+                "n_rollout_steps"
+            ]
+            if algo_rollout_steps is not None and n_rollout_steps is None:
+                n_rollout_steps = algo_rollout_steps
+            elif algo_rollout_steps is not None and n_rollout_steps is not None:
+                if algo_rollout_steps != n_rollout_steps:
+                    raise ValueError(
+                        "Cannot handle algorithms with different rollout lengths! Check for agent: "
+                        + str(agent_id)
+                    )
     if n_rollout_steps is None:
         return config["rl_envs"]["num_agents"]
     return n_rollout_steps
