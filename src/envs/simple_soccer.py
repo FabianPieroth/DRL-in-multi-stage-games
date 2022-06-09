@@ -4,10 +4,12 @@ from collections import namedtuple
 from typing import Dict, Optional, Union
 
 import gizeh
+import moviepy.editor as mpy
 import torch
 from gym import spaces
 from gym.spaces import Space
 
+import src.utils_folder.logging_utils as log_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 ObjectSpec = namedtuple("ObjectSpec", ["radius", "mass", "color"])
@@ -589,6 +591,62 @@ class SimpleSoccer(BaseEnvForVec):
             (x + 0.5 * self.field_width) * self.display_scale,
             (-y + 0.5 * self.field_height) * self.display_scale,
         )
+
+    def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
+        """Method is called during training process and allows environment specific logging.
+
+        Args:
+            learners (Dict[int, BaseAlgorithm]):
+            env (_type_): evaluation env
+            writer: tensorboard summary writer
+            config: Dict of additional data
+        """
+        self._store_eval_videos(learners, env, iteration, config, num_videos=3)
+
+    def _store_eval_videos(self, learners, env, iteration, config, num_videos):
+        filepath = config["experiment_log_path"]  # TODO: handle ind dir
+        for video_iter in range(num_videos):
+            clip = self._get_single_rendered_video(learners, env)
+            filename = (
+                "iteration_" + str(iteration) + "_clip_num_" + str(video_iter) + ".mp4"
+            )
+            clip.write_videofile(filepath + filename)
+
+    def _get_single_rendered_video(self, learners, env):
+        images = []
+        states = self.sample_new_states(1)
+        images.append(env.model.render(states[0]))
+
+        hidden_states = {agent_id: None for agent_id in range(env.model.num_agents)}
+        episode_starts = torch.ones((1,), dtype=bool)
+        dones = torch.zeros((1,), dtype=bool)
+
+        while not dones.detach().item():
+            observations = self.get_observations(states)
+            actions = log_ut.get_eval_ma_actions(
+                learners, observations, hidden_states, episode_starts, True
+            )
+            observations, rewards, dones, states = env.model.compute_step(
+                states, actions
+            )
+            episode_starts = dones
+            images.append(env.model.render(states[0]))
+
+        clip = mpy.ImageSequenceClip(images, fps=int(round(1 / env.model.dt)))
+        return clip
+
+    def get_ma_action(self, learners):
+        actions_for_env = {}
+        actions = {}
+        additional_actions_data = {}
+        for agent_id, learner in learners.items():
+            sa_actions_for_env, sa_actions, sa_additional_actions_data = learner.get_actions_with_data(
+                agent_id
+            )
+            actions_for_env[agent_id] = sa_actions_for_env
+            actions[agent_id] = sa_actions
+            additional_actions_data[agent_id] = sa_additional_actions_data
+        return actions_for_env, actions, additional_actions_data
 
     def render(self, state: SoccerStates):
         time = state.times.cpu().numpy()
