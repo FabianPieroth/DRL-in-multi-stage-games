@@ -39,12 +39,6 @@ class VecBaseBuffer(RolloutBuffer, ABC):
         pass
 
     @abstractmethod
-    def compute_returns(
-        self, last_values: th.Tensor, dones: th.Tensor, policy_sharing: bool = False
-    ) -> None:
-        pass
-
-    @abstractmethod
     def _get_samples(
         self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None
     ) -> SimpleRolloutBufferSamples:
@@ -279,7 +273,7 @@ class VecRolloutBuffer(VecBaseBuffer):
         if self.pos == self.buffer_size:
             self.full = True
 
-    def compute_returns(
+    def compute_returns_and_advantage(
         self, last_values: th.Tensor, dones: th.Tensor, policy_sharing: bool = False
     ) -> None:
         """

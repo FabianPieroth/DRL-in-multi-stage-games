@@ -81,7 +81,7 @@ class VecPPO(SABaseAlgorithm):
             else:
                 values = {0: self.policy.predict_values(sa_new_obs).squeeze()}
 
-        self.rollout_buffer.compute_returns(
+        self.rollout_buffer.compute_returns_and_advantage(
             last_values=values, dones=dones, policy_sharing=policy_sharing
         )
 
