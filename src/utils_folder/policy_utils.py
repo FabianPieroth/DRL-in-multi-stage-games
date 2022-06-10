@@ -3,10 +3,12 @@ from typing import Dict
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from src.envs.rock_paper_scissors import RockPaperScissors
+from src.envs.simple_soccer import SimpleSoccer
 from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.ppo import VecPPO
 from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
+from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolicy
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
@@ -61,6 +63,15 @@ def get_policy_for_agent(
             n_steps=n_rollout_steps,
             batch_size=reinforce_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "soccer_chase_ball" and isinstance(env.model, SimpleSoccer):
+        return ChaseBallPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
             verbose=0,
         )
     else:
