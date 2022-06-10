@@ -6,7 +6,7 @@ import torch
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, Schedule
 
-from src.envs.simple_soccer import SimpleSoccer, SoccerStates
+from src.envs.simple_soccer import SimpleSoccer
 from src.learners.base_learner import MABaseAlgorithm
 from src.learners.simple_soccer_policies.common import extract_data_from_obs
 
@@ -54,56 +54,6 @@ class ChaseBallPolicy(MABaseAlgorithm):
         self.pos_delta_y = -0.5
         self.n_players = self.dummy_env._n_players_per_team
         self.agent_team_id = self.agent_id % self.n_players
-
-    def compute_actions(self, states: SoccerStates):
-        """
-        :param states: Vectorized states
-        :return: Vectorized motion_actions
-        """
-
-        assert len(states.batch_shape) == 1
-        n_players = self.n_players
-        assert states.objects.shape[1] == n_players * 2 + 1
-
-        ball_pos = states.objects[..., 0, :, 0]  # [B, XY]
-        ball_vel = states.objects[..., 0, :, 1]  # [B, XY]
-        ours_pos = states.objects[..., 1 : 1 + n_players, :, 0]  # [B, K, XY]
-        ball_delta_pos = ball_pos[..., None, :] - ours_pos
-
-        ball_distances = (ball_pos[:, None, :] - ours_pos).norm(dim=-1, keepdim=True)
-        projected_ball_pos = (
-            ball_pos[:, None, :] + 1e-1 * ball_vel[:, None, :] * ball_distances
-        )
-
-        target_pos = projected_ball_pos + torch.tensor(
-            [0, self.pos_delta_y], device=self.device
-        )
-
-        target_delta_pos = target_pos - ours_pos
-        ball_angle = torch.atan2(target_delta_pos[..., 1], target_delta_pos[..., 0])
-
-        discrete_angle = (
-            ((ball_angle + self.pi + 2 * self.pi / 16 / 2 * self.pi / 8) % 8)
-            .floor()
-            .to(int)
-        )
-
-        discrete_angle_to_action = torch.tensor(
-            [1, 7, 3, 6, 0, 4, 2, 5, 1], device=self.device
-        )
-        motion_actions = discrete_angle_to_action[discrete_angle]
-
-        kick_actions = ball_delta_pos[..., :, 1] > 0
-
-        action_template = torch.zeros(
-            states.batch_shape + (n_players * 3,), dtype=torch.int64, device=self.device
-        )
-
-        action_template[..., ::3] = motion_actions
-        action_template[..., 1::3] = 1  # everyone dashes
-        action_template[..., 2::3] = 2 * kick_actions
-
-        return action_template
 
     def ingest_data_to_learner(
         self,
