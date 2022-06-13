@@ -333,7 +333,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         policy_sharing: bool,
         callback,
     ):
-        raise NotImplementedError
+        self.num_timesteps += self.env.num_envs
 
     def predict(
         self,

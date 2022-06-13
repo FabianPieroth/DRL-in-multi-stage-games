@@ -63,20 +63,6 @@ class GoalWallPolicy(MABaseAlgorithm):
         self.visualize = False
         self.viz_elems = []
 
-    def ingest_data_to_learner(
-        self,
-        sa_actions,
-        sa_rewards,
-        sa_additional_actions_data,
-        dones,
-        infos,
-        new_obs,
-        agent_id: int,
-        policy_sharing: bool,
-        callback,
-    ):
-        pass
-
     def predict(
         self,
         observation: torch.Tensor,
