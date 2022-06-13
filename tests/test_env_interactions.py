@@ -44,6 +44,7 @@ def test_learning_sequential_auctions(
 ):
     """Runs multi agent learning in sequential auctions for specified parameters."""
     config = io_ut.get_and_store_config()
+    config["device"] = DEVICE
     config["policy_sharing"] = True
 
     rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
@@ -79,6 +80,7 @@ ids_sign_contest, testdata_sign_contest = zip(
 def test_learning_signaling_contest(information_case, num_agents):
     """Runs multi agent learning in sequential auctions for specified parameters."""
     config = io_ut.get_and_store_config()
+    config["device"] = DEVICE
     config["policy_sharing"] = True
     config["algorithms"] = ["ppo" for _ in range(num_agents)]
     rl_envs = hydra.compose("../configs/rl_envs/signaling_contest.yaml")[""][""][""][
