@@ -3,13 +3,13 @@ valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest", "si
 log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
-device: 2
-num_envs: 4096
-eval_freq: 100
-iteration_num: 1000
+device: 1
+num_envs: 8000
+eval_freq: 400
+iteration_num: 3200
 total_training_steps: null
 n_steps_per_iteration: null
-algorithms: "ppo"
+algorithms: ["soccer_goal_wall", "ppo", "ppo", "soccer_goal_wall", "soccer_goal_wall", "soccer_goal_wall"]
 policy_sharing: false
 defaults:
   - rl_envs: simple_soccer
