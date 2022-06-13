@@ -12,7 +12,11 @@ import numpy as np
 import torch
 from gym import spaces
 
-from src.envs.equilibria import no_signaling_equilibrium, signaling_equilibrium
+from src.envs.equilibria import (
+    equilibrium_fpsb_symmetric_uniform,
+    no_signaling_equilibrium,
+    signaling_equilibrium,
+)
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec
 from src.learners.utils import tensor_norm
@@ -35,10 +39,10 @@ class SignalingContest(BaseEnvForVec):
 
         self.equilibrium_strategies = self._init_equilibrium_strategies()
 
-    def _init_all_pay_mechanism(self):
+    def _init_all_pay_mechanism(self) -> Mechanism:
         return AllPayAuction(self.device)
 
-    def _init_tullock_contest_mechanism(self):
+    def _init_tullock_contest_mechanism(self) -> Mechanism:
         impact_fun = lambda x: x ** self.config["impact_factor"]
         return TullockContest(impact_fun, self.device, self.config["use_valuation"])
 
@@ -370,20 +374,25 @@ class SignalingContest(BaseEnvForVec):
             observation_dict[agent_id] = torch.zeros(
                 (batch_size, observation_size), device=states.device
             )
-            slicing_indices = self._get_obs_slicing_indices()
-            observation_dict[agent_id] = states[:, agent_id, :].index_select(
-                1, slicing_indices
+            observation_dict[agent_id] = self._get_obs_info_from_state(
+                agent_id, states, self.config["information_case"]
             )
         return observation_dict
 
-    def _get_obs_slicing_indices(self):
-        if self.config["information_case"] == "true_valuations":
+    def _get_obs_info_from_state(
+        self, agent_id: int, states: torch.Tensor, information_case: str
+    ) -> torch.Tensor:
+        slicing_indices = self._get_obs_slicing_indices(information_case)
+        return states[:, agent_id, :].index_select(1, slicing_indices)
+
+    def _get_obs_slicing_indices(self, information_case: str):
+        if information_case == "true_valuations":
             slice_indices = [
                 0,
                 self.valuation_size,
                 self.valuation_size + self.allocation_index + self.action_size,
             ]
-        elif self.config["information_case"] == "winning_bids":
+        elif information_case == "winning_bids":
             slice_indices = [
                 0,
                 self.valuation_size,
@@ -426,19 +435,23 @@ class SignalingContest(BaseEnvForVec):
         """
         pass
         self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
-        # self.log_metrics_to_equilibrium(learners)
+        self.log_metrics_to_equilibrium(learners)
 
-    def get_sa_equilibrium_actions(
-        self,
-        round: int,
-        valuations: torch.Tensor,
-        opponent_vals: torch.Tensor,
-        lost: torch.Tensor,
-        agent_id: int,
+    def get_ma_equilibrium_actions(
+        self, round: int, states: torch.Tensor
     ) -> torch.Tensor:
-        return self.equilibrium_strategies[agent_id](
-            round, valuations, opponent_vals, lost
-        )
+        equ_actions = {}
+        has_lost_already = self._has_lost_already(states)
+        for agent_id in range(states.shape[1]):
+            agent_true_val_info = self._get_obs_info_from_state(
+                agent_id, states, "true_valuations"
+            )
+            agent_vals = agent_true_val_info[:, 0]
+            opponent_vals = agent_true_val_info[:, 2]
+            equ_actions[agent_id] = self.equilibrium_strategies[agent_id](
+                round, agent_vals, opponent_vals, has_lost_already[agent_id]
+            )
+        return equ_actions
 
     @staticmethod
     def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
@@ -511,7 +524,6 @@ class SignalingContest(BaseEnvForVec):
                 opponent_info = agent_obs[:, 2].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
-                # actions_equilibrium = actions_equilibrium.view(-1, 1).detach().cpu().numpy()
                 has_lost_already = has_lost_already.cpu().numpy()
 
                 if isinstance(config["algorithms"], str):
@@ -704,32 +716,25 @@ class SignalingContest(BaseEnvForVec):
         Note that we need to keep track of counterfactual BNE states as these
         may be different from the states under actual play.
         """
+        num_rounds = 2
         actual_states = self.sample_new_states(num_samples)
         actual_observations = self.get_observations(actual_states)
 
         equ_states = actual_states.clone()
         equ_observations = self.get_observations(equ_states)
 
-        l2_distances = {i: [None] * self.num_rounds_to_play for i in learners.keys()}
+        l2_distances = {i: [None] * num_rounds for i in learners.keys()}
         actual_rewards_total = {i: 0 for i in learners.keys()}
         equ_rewards_total = {i: 0 for i in learners.keys()}
 
-        for stage in range(self.num_rounds_to_play):
+        for round_iter in range(num_rounds):
 
-            actual_has_won_already = self._has_won_already(actual_states, stage)
-            equ_actions_in_actual_play = self.get_sa_equilibrium_actions(
-                stage,
-                self.equilibrium_strategies,
-                actual_observations,
-                actual_has_won_already,
+            equ_actions_in_actual_play = self.get_ma_equilibrium_actions(
+                round_iter + 1, actual_states
             )
 
-            equ_has_won_already = self._has_won_already(equ_states, stage)
-            equ_actions_in_equ = self.get_sa_equilibrium_actions(
-                stage,
-                self.equilibrium_strategies,
-                equ_observations,
-                equ_has_won_already,
+            equ_actions_in_equ = self.get_ma_equilibrium_actions(
+                round_iter + 1, equ_states
             )
 
             actual_actions = self.get_ma_learner_predictions(
@@ -744,7 +749,7 @@ class SignalingContest(BaseEnvForVec):
             )
 
             for agent_id in learners.keys():
-                l2_distances[agent_id][stage] = tensor_norm(
+                l2_distances[agent_id][round_iter] = tensor_norm(
                     actual_actions[agent_id], equ_actions_in_actual_play[agent_id]
                 )
 
@@ -754,11 +759,11 @@ class SignalingContest(BaseEnvForVec):
         return actual_rewards_total, equ_rewards_total, l2_distances
 
     def _log_l2_distances(self, learners, distances_l2):
-        for stage in range(self.num_rounds_to_play):
+        for round_iter in range(2):
             for agent_id, learner in learners.items():
                 learner.logger.record(
-                    "eval/action_equ_L2_distance_stage_" + str(stage),
-                    distances_l2[agent_id][stage],
+                    "eval/action_equ_L2_distance_round_" + str(round_iter + 1),
+                    distances_l2[agent_id][round_iter],
                 )
 
     def _get_mix_equ_learned_actions(
