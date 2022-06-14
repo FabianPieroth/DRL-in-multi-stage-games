@@ -8,6 +8,7 @@ from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.ppo import VecPPO
 from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
+from src.learners.simple_soccer_policies.block_policy import BlockPolicy
 from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolicy
 from src.learners.simple_soccer_policies.goal_wall_policy import GoalWallPolicy
 
@@ -77,6 +78,15 @@ def get_policy_for_agent(
         )
     elif algo_name == "soccer_goal_wall" and isinstance(env.model, SimpleSoccer):
         return GoalWallPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "soccer_block" and isinstance(env.model, SimpleSoccer):
+        return BlockPolicy(
             agent_id,
             config,
             env=env,
