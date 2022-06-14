@@ -34,6 +34,7 @@ def get_policy_for_agent(
             env=env,
             device=config["device"],
             n_steps=n_rollout_steps,
+            gamma=ppo_config["gamma"],
             batch_size=ppo_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
             verbose=0,
