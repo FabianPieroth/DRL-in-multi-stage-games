@@ -676,7 +676,6 @@ class SignalingContest(BaseEnvForVec):
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
-        # ax.set_ylim([-0.05, self.prior_high / 3.0 + 0.05])
 
     def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
         val_xs = torch.linspace(
@@ -721,7 +720,6 @@ class SignalingContest(BaseEnvForVec):
         actual_observations = self.get_observations(actual_states)
 
         equ_states = actual_states.clone()
-        equ_observations = self.get_observations(equ_states)
 
         l2_distances = {i: [None] * num_rounds for i in learners.keys()}
         actual_rewards_total = {i: 0 for i in learners.keys()}
@@ -744,7 +742,7 @@ class SignalingContest(BaseEnvForVec):
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions
             )
-            equ_observations, equ_rewards, _, equ_states = self.compute_step(
+            _, equ_rewards, _, equ_states = self.compute_step(
                 equ_states, equ_actions_in_equ
             )
 
