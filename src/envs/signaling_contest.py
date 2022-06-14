@@ -454,11 +454,20 @@ class SignalingContest(BaseEnvForVec):
         return equ_actions
 
     @staticmethod
-    def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
-        return {
-            agent_id: learners[0].predict(obs, deterministic)[0]
-            for agent_id, obs in observations.items()
-        }
+    def get_ma_learner_predictions(
+        learners,
+        observations,
+        deterministic: bool = True,
+        clip_negativ_bids: bool = False,
+    ):
+        relu = torch.nn.ReLU()
+        action_dict = {}
+        for agent_id, obs in observations.items():
+            sa_action_pred = learners[0].predict(obs, deterministic)[0]
+            if clip_negativ_bids:
+                sa_action_pred = relu(sa_action_pred)
+            action_dict[agent_id] = sa_action_pred
+        return action_dict
 
     def plot_strategies_vs_equilibrium(
         self, learners, writer, iteration: int, config, num_samples: int = 500
@@ -688,7 +697,7 @@ class SignalingContest(BaseEnvForVec):
         equ_bid_y = bid_ys.detach().cpu().numpy().squeeze()
         ax.plot(equ_xs, equ_bid_y, linewidth=1)
 
-    def log_metrics_to_equilibrium(self, learners, num_samples: int = 4096):
+    def log_metrics_to_equilibrium(self, learners, num_samples: int = 2 ** 16):
         """Evaluate learned strategies vs BNE."""
         seed = 69
         self.seed(seed)
@@ -736,7 +745,7 @@ class SignalingContest(BaseEnvForVec):
             )
 
             actual_actions = self.get_ma_learner_predictions(
-                learners, actual_observations, True
+                learners, actual_observations, True, clip_negativ_bids=True
             )
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
