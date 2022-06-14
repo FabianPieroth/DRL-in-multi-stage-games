@@ -8,7 +8,7 @@ from src.envs.sequential_auction import SequentialAuction
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
 
-def test_sequential_auctions():
+def test_sequential_auction_in_bne():
     """Test the `sequential_auction` game environment by playing the BNE
     strategy. Collect the total rewards and compare with expectation.
     """

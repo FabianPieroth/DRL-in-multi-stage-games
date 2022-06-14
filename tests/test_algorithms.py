@@ -11,6 +11,7 @@ DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 ids, testdata = zip(
     *[
         ["all_ppo", ["ppo", "ppo", "ppo"]],
+        ["all_reinforce", ["reinforce", "reinforce", "reinforce"]],
         ["ppo_ppo_dummy", ["ppo", "ppo", "rps_single_action"]],
         ["dummy_ppo_dummy", ["rps_single_action", "ppo", "rps_single_action"]],
         ["all_dummy", ["rps_single_action", "rps_single_action", "rps_single_action"]],

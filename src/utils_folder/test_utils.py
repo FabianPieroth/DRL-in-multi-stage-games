@@ -18,7 +18,6 @@ def run_limited_learning(config):
         log_interval=None,
         eval_freq=config["eval_freq"],
         n_eval_episodes=1,
-        tb_log_name="MultiAgent",
     )
     hydra.core.global_hydra.GlobalHydra().clear()
     return ma_learner

@@ -7,7 +7,6 @@ import gym
 import numpy as np
 import torch as th
 from gym import spaces
-from stable_baselines3 import PPO
 from stable_baselines3.common import utils
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -20,55 +19,15 @@ from stable_baselines3.common.utils import get_schedule_fn
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from torch.nn import functional as F
 
+from src.learners.base_learner import SABaseAlgorithm
+from src.learners.rollout_buffer import VecRolloutBuffer
 from src.learners.utils import explained_variance
 
 
-class VecPPO(PPO):
+class VecPPO(SABaseAlgorithm):
     """
     Extends Stable Baselines 3 PPO to vectorized learning.
     """
-
-    def __init__(self, **kwargs):
-
-        # We want to start off with a much lower variance
-        self.log_std_init = -3.0  # default: 1
-        # TODO: possibly try out pretraining
-
-        super(VecPPO, self).__init__(**kwargs)
-        self._change_space_attributes_to_tensors()
-
-    def _change_space_attributes_to_tensors(self):
-        # convert boundaries to tensors if necessary
-        if isinstance(self.action_space, gym.spaces.Box):
-            if not isinstance(self.action_space.low, th.Tensor):
-                self.action_space.low = th.tensor(self.action_space.low)
-            if not isinstance(self.action_space.high, th.Tensor):
-                self.action_space.high = th.tensor(self.action_space.high)
-
-            # move boundaries to right device
-            self.action_space.low = self.action_space.low.to(device=self.device)
-            self.action_space.high = self.action_space.high.to(device=self.device)
-
-    def prepare_next_rollout(self, env, callback):
-        assert self._last_obs is not None, "No previous observation was provided"
-        # Switch to eval mode (this affects batch norm / dropout)
-        self.policy.set_training_mode(False)
-
-        self.rollout_buffer.reset()
-        # Sample new weights for the state dependent exploration
-        if self.use_sde:
-            self.policy.reset_noise(env.num_envs)
-
-        callback.on_rollout_start()
-
-    def prepare_step(self, n_steps, env):
-        if (
-            self.use_sde
-            and self.sde_sample_freq > 0
-            and n_steps % self.sde_sample_freq == 0
-        ):
-            # Sample a new noise matrix
-            self.policy.reset_noise(env.num_envs)
 
     def get_actions_with_data(self, agent_id: int):
         self.prepare_step(self.rollout_buffer.pos, self.env)
@@ -86,13 +45,10 @@ class VecPPO(PPO):
             )
         return clipped_actions, actions, (values, log_probs)
 
-    def prepare_actions_for_buffer(self, actions):
-        if isinstance(self.action_space, gym.spaces.Discrete):
-            # Reshape in case of discrete action
-            actions = actions.reshape(-1, 1)
-        return actions
-
     def handle_dones(self, dones, infos, sa_rewards, agent_id: int):
+        """
+        Computes predicted values for terminal states.
+        """
         # compute values for episode dones
         if dones.any():
             terminal_obs = infos["terminal_observation"][agent_id]
@@ -100,55 +56,6 @@ class VecPPO(PPO):
                 terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
             sa_rewards[dones] += self.gamma * terminal_value
         return sa_rewards
-
-    def ingest_data_to_learner(
-        self,
-        sa_actions,
-        sa_rewards,
-        sa_additional_actions_data,
-        dones,
-        infos,
-        new_obs,
-        agent_id: int,
-        policy_sharing: bool,
-        callback,
-    ):
-        if not (policy_sharing and agent_id > 0):
-            self.num_timesteps += self.env.num_envs
-
-            self._update_info_buffer(infos, dones)
-
-        sa_actions = self.prepare_actions_for_buffer(sa_actions)
-
-        sa_rewards = self.handle_dones(dones, infos, sa_rewards, agent_id)
-
-        self.add_data_to_replay_buffer(
-            sa_actions, sa_rewards, sa_additional_actions_data, agent_id
-        )
-
-        if policy_sharing:
-            if (agent_id + 1) == self.env.model.num_agents:
-                self.update_internal_state_after_step(new_obs, dones)
-            else:
-                pass
-        else:
-            self.update_internal_state_after_step(new_obs, dones)
-
-        if self.rollout_buffer.full:
-            sa_new_obs = new_obs[agent_id]
-            if policy_sharing:
-                assert (
-                    agent_id + 1
-                ) == self.env.model.num_agents, (
-                    "Rollout-buffer is assumed to be equally filled by all agents!"
-                )
-                sa_new_obs = new_obs
-            self.postprocess_rollout(sa_new_obs, dones, policy_sharing)
-            self._update_current_progress_remaining(
-                self.num_timesteps, self._total_timesteps
-            )
-            self.train()
-            self.prepare_next_rollout(self.env, callback)
 
     def add_data_to_replay_buffer(
         self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
@@ -163,10 +70,6 @@ class VecPPO(PPO):
             sa_log_probs,
             th.ones(1, dtype=int) * agent_id,
         )
-
-    def update_internal_state_after_step(self, new_obs, dones):
-        self._last_obs = new_obs
-        self._last_episode_starts = dones
 
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         with th.no_grad():
@@ -221,95 +124,6 @@ class VecPPO(PPO):
                 )
 
             self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
-
-    def _setup_learn(
-        self,
-        total_timesteps: int,
-        eval_env: Optional[GymEnv],
-        callback: MaybeCallback = None,
-        eval_freq: int = 10000,
-        n_eval_episodes: int = 5,
-        log_path: Optional[str] = None,
-        reset_num_timesteps: bool = True,
-        tb_log_name: str = "run",
-    ) -> Tuple[int, BaseCallback]:
-        """
-        Initialize different variables needed for training.
-
-        :param total_timesteps: The total number of samples (env steps) to train on
-        :param eval_env: Environment to use for evaluation.
-        :param callback: Callback(s) called at every step with state of the algorithm.
-        :param eval_freq: How many steps between evaluations
-        :param n_eval_episodes: How many episodes to play per evaluation
-        :param log_path: Path to a folder where the evaluations will be saved
-        :param reset_num_timesteps: Whether to reset or not the ``num_timesteps`` attribute
-        :param tb_log_name: the name of the run for tensorboard log
-        :return:
-        """
-        self.start_time = time.time()
-
-        if self.ep_info_buffer is None or reset_num_timesteps:
-            # Initialize buffers if they don't exist, or reinitialize if resetting counters
-            self.ep_info_buffer = deque(maxlen=100)
-            self.ep_success_buffer = deque(maxlen=100)
-
-        if self.action_noise is not None:
-            self.action_noise.reset()
-
-        if reset_num_timesteps:
-            self.num_timesteps = 0
-            self._episode_num = 0
-        else:
-            # Make sure training timesteps are ahead of the internal counter
-            total_timesteps += self.num_timesteps
-        self._total_timesteps = total_timesteps
-        self._num_timesteps_at_start = self.num_timesteps
-
-        # Avoid resetting the environment when calling ``.learn()`` consecutive times
-        if reset_num_timesteps or self._last_obs is None:
-            self._last_obs = (
-                self.env.reset()
-            )  # pytype: disable=annotation-type-mismatch
-            self._last_episode_starts = th.ones(
-                (self.env.num_envs,), dtype=bool, device=self.device
-            )
-            # Retrieve unnormalized observation for saving into the buffer
-            if self._vec_normalize_env is not None:
-                self._last_original_obs = self._vec_normalize_env.get_original_obs()
-
-        if eval_env is not None and self.seed is not None:
-            eval_env.seed(self.seed)
-
-        eval_env = self._get_eval_env(eval_env)
-
-        # Configure logger's outputs if no logger was passed
-        if not self._custom_logger:
-            self._logger = utils.configure_logger(
-                self.verbose, self.tensorboard_log, tb_log_name, reset_num_timesteps
-            )
-
-        # Create eval callback if needed
-        callback = self._init_callback(
-            callback, eval_env, eval_freq, n_eval_episodes, log_path
-        )
-
-        self.prepare_next_rollout(self.env, callback)
-
-        return total_timesteps, callback
-
-    def _update_info_buffer(self, infos: List[Dict[str, Any]], dones=None) -> None:
-        """
-        Retrieve reward, episode length, episode success and update the buffer
-        if using Monitor wrapper or a GoalEnv.
-
-        :param infos: List of additional information about the transition.
-        :param dones: Termination signals
-        NOTE: Only supports fixed length games.
-        """
-        if dones is None:
-            dones = th.tensor([False])
-        if dones.any().detach().item():
-            self.ep_info_buffer.extend([infos])
 
     def train(self) -> None:
         """
@@ -449,206 +263,3 @@ class VecPPO(PPO):
         self.logger.record("train/clip_range", clip_range)
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
-
-    def predict(
-        self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
-        deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
-        """
-        Get the policy action from an observation (and optional hidden state).
-        Includes sugar-coating to handle different observations (e.g. normalizing images).
-
-        :param observation: the input observation
-        :param state: The last hidden states (can be None, used in recurrent policies)
-        :param episode_start: The last masks (can be None, used in recurrent policies)
-            this correspond to beginning of episodes,
-            where the hidden states of the RNN must be reset.
-        :param deterministic: Whether or not to return deterministic actions.
-        :return: the model's action and the next hidden state
-            (used in recurrent policies)
-        """
-        # TODO (GH/1): add support for RNN policies
-        # if state is None:
-        #     state = self.initial_state
-        # if episode_start is None:
-        #     episode_start = [False for _ in range(self.n_envs)]
-        # Switch to eval mode (this affects batch norm / dropout)
-        self.policy.set_training_mode(False)
-
-        with th.no_grad():
-            actions = self.policy._predict(observation, deterministic=deterministic)
-
-        if isinstance(self.policy.action_space, gym.spaces.Box):
-            if self.policy.squash_output:
-                # Rescale to proper domain when using squashing
-                actions = self.policy.unscale_action(actions)
-            else:
-                # Actions could be on arbitrary scale, so clip the actions to avoid
-                # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = th.clip(
-                    actions, self.policy.action_space.low, self.policy.action_space.high
-                )
-
-        return actions, state
-
-
-class VecRolloutBuffer(RolloutBuffer):
-    """
-    Extends Stable Baselines 3 RolloutBuffer to vectorzied learning.
-    """
-
-    def reset(self) -> None:
-
-        self.observations = th.zeros(
-            (self.buffer_size, self.n_envs) + self.obs_shape,
-            dtype=th.float32,
-            device=self.device,
-        )
-        self.actions = th.zeros(
-            (self.buffer_size, self.n_envs, self.action_dim),
-            dtype=th.float32,
-            device=self.device,
-        )
-        self.rewards = th.zeros(
-            (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
-        )
-        self.returns = th.zeros(
-            (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
-        )
-        self.episode_starts = th.zeros(
-            (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
-        )
-        self.values = th.zeros(
-            (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
-        )
-        self.log_probs = th.zeros(
-            (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
-        )
-        self.advantages = th.zeros(
-            (self.buffer_size, self.n_envs), dtype=th.float32, device=self.device
-        )
-        self.agent_ids = th.zeros((self.buffer_size,), dtype=th.int, device=self.device)
-        self.generator_ready = False
-        super(RolloutBuffer, self).reset()
-
-    def add(
-        self,
-        obs: th.Tensor,
-        action: th.Tensor,
-        reward: th.Tensor,
-        episode_start: th.Tensor,
-        value: th.Tensor,
-        log_prob: th.Tensor,
-        agent_ids: th.Tensor,
-    ) -> None:
-        """
-        :param obs: Observation
-        :param action: Action
-        :param reward:
-        :param episode_start: Start of episode signal.
-        :param value: estimated value of the current state
-            following the current policy.
-        :param log_prob: log probability of the action
-            following the current policy.
-        """
-        if len(log_prob.shape) == 0:
-            # Reshape 0-d tensor to avoid error
-            log_prob = log_prob.reshape(-1, 1)
-
-        # Reshape needed when using multiple envs with discrete observations
-        # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
-        if isinstance(self.observation_space, spaces.Discrete):
-            obs = obs.reshape((self.n_envs,) + self.obs_shape)
-
-        # TODO: do we need `copy()` here? (as in original version) @Nils: could they be changed later on?
-        self.observations[self.pos] = obs
-        self.actions[self.pos] = action
-        self.rewards[self.pos] = reward
-        self.episode_starts[self.pos] = episode_start
-        self.values[self.pos] = value.flatten()
-        self.log_probs[self.pos] = log_prob
-        self.agent_ids[self.pos] = agent_ids
-        self.pos += 1
-        if self.pos == self.buffer_size:
-            self.full = True
-
-    def compute_returns_and_advantage(
-        self, last_values: th.Tensor, dones: th.Tensor, policy_sharing: bool = False
-    ) -> None:
-        """
-        Post-processing step: compute the lambda-return (TD(lambda) estimate)
-        and GAE(lambda) advantage.
-
-        Uses Generalized Advantage Estimation (https://arxiv.org/abs/1506.02438)
-        to compute the advantage. To obtain Monte-Carlo advantage estimate (A(s) = R - V(S))
-        where R is the sum of discounted reward with value bootstrap
-        (because we don't always have full episode), set ``gae_lambda=1.0`` during initialization.
-
-        The TD(lambda) estimator has also two special cases:
-        - TD(1) is Monte-Carlo estimate (sum of discounted rewards)
-        - TD(0) is one-step estimate with bootstrapping (r_t + gamma * v(s_{t+1}))
-
-        For more information, see discussion in https://github.com/DLR-RM/stable-baselines3/pull/375.
-
-        :param last_values: state value estimation for the last step (one for each env)
-        :param dones: if the last step was a terminal step (one bool for each env).
-        """
-        agent_id = 0
-
-        last_values = {
-            agent_idx: sa_last_values.clone()
-            for agent_idx, sa_last_values in last_values.items()
-        }
-        last_gae_lam = {agent_idx: 0 for agent_idx in last_values.keys()}
-
-        for step in reversed(range(self.buffer_size)):
-            if policy_sharing:
-                agent_id = self.agent_ids[step].detach().item()
-            sa_last_values = last_values[agent_id]
-            if step >= self.buffer_size - len(last_values):
-                next_non_terminal = th.logical_not(dones)
-                next_values = sa_last_values
-            else:
-                step_size_to_data = self._find_step_size_to_agent_data(step)
-                next_non_terminal = 1.0 - self.episode_starts[step + step_size_to_data]
-                next_values = self.values[step + step_size_to_data]
-
-            delta = (
-                self.rewards[step]
-                + self.gamma * next_values * next_non_terminal
-                - self.values[step]
-            )
-            last_gae_lam[agent_id] = (
-                delta
-                + self.gamma
-                * self.gae_lambda
-                * next_non_terminal
-                * last_gae_lam[agent_id]
-            )
-            self.advantages[step] = last_gae_lam[agent_id]
-        # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
-        # in David Silver Lecture 4: https://www.youtube.com/watch?v=PnHCvfgC_ZA
-        self.returns = self.advantages + self.values
-
-    def _find_step_size_to_agent_data(self, step):
-        step_size = 1
-        target_agent_id = self.agent_ids[step].detach().item()
-        while target_agent_id != self.agent_ids[step + step_size].detach().item():
-            step_size += 1
-        return step_size
-
-    def _get_samples(
-        self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None
-    ) -> RolloutBufferSamples:
-        data = (
-            self.observations[batch_inds],
-            self.actions[batch_inds],
-            self.values[batch_inds].flatten(),
-            self.log_probs[batch_inds].flatten(),
-            self.advantages[batch_inds].flatten(),
-            self.returns[batch_inds].flatten(),
-        )
-        return RolloutBufferSamples(*tuple(data))
