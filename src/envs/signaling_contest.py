@@ -421,9 +421,8 @@ class SignalingContest(BaseEnvForVec):
 
     def _has_lost_already(self, state: torch.Tensor):
         """Check if player already has lost in previous round."""
-        # NOTE: unit-demand hardcoded
         return {
-            agent_id: state[:, 0, self.allocation_index] == 0
+            agent_id: state[:, agent_id, self.allocation_index] == 0
             for agent_id in range(state.shape[1])
         }
 
@@ -436,7 +435,6 @@ class SignalingContest(BaseEnvForVec):
             writer: tensorboard summary writer
             iteration: current training iteration
         """
-        pass
         self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
         self.log_metrics_to_equilibrium(learners)
 
@@ -473,7 +471,7 @@ class SignalingContest(BaseEnvForVec):
         return action_dict
 
     def plot_strategies_vs_equilibrium(
-        self, learners, writer, iteration: int, config, num_samples: int = 500
+        self, learners, writer, iteration: int, config, num_samples: int = 100
     ):
         """Evaluate and log current strategies."""
         seed = 69
@@ -491,9 +489,7 @@ class SignalingContest(BaseEnvForVec):
         cmap = plt.get_cmap("gnuplot")
         ax_second_round_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
         plt.rcParams["figure.figsize"] = (8, 5.5)
-        fig = plt.figure(
-            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
-        )
+        fig = plt.figure(figsize=plt.figaspect(1.0 + total_num_second_round_plots))
         ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
         ax_second_round_list = [
             fig.add_subplot(
@@ -597,19 +593,22 @@ class SignalingContest(BaseEnvForVec):
         color,
     ):
         ax.set_title("Second round")
+
+        mask = np.logical_and(~has_lost_already, opponent_info != 0)
         ax.scatter(
-            agent_vals[~has_lost_already],
-            opponent_info[~has_lost_already],
-            actions_array[~has_lost_already],
+            agent_vals[mask],
+            opponent_info[mask],
+            actions_array[mask],
             marker=".",
             color=color,
             label=f"bidder {agent_id} " + algo_name,
             s=8,
         )
+        mask = np.logical_and(has_lost_already, opponent_info != 0)
         ax.scatter(
-            agent_vals[has_lost_already],
-            opponent_info[has_lost_already],
-            actions_array[has_lost_already],
+            agent_vals[mask],
+            opponent_info[mask],
+            actions_array[mask],
             marker="1",
             color=color,
             label=f"bidder {agent_id} " + algo_name + " (lost)",
