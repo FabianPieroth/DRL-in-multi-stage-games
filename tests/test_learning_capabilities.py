@@ -65,8 +65,8 @@ def test_learning_in_sequential_auction(
 
 ids_sc, testdata_sc = zip(
     *[
-        ["symmetric_true_valuations", ("true_valuations", True, 300, 0.10)],
-        ["non_symmetric_true_valuations", ("true_valuations", False, 300, 0.09)],
+        ["symmetric_true_valuations", ("true_valuations", True, 300, 0.13)],
+        ["non_symmetric_true_valuations", ("true_valuations", False, 300, 0.13)],
         # ["symmetric_winning_bids", ("winning_bids", True, 300, 0.08)],
         # ["non_symmetric_winning_bids", ("winning_bids", False, 300, 0.13)],
     ]
