@@ -11,6 +11,7 @@ from src.learners.rps_dummy_learner import RPSDummyLearner
 from src.learners.simple_soccer_policies.block_policy import BlockPolicy
 from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolicy
 from src.learners.simple_soccer_policies.goal_wall_policy import GoalWallPolicy
+from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPolicy
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
@@ -87,6 +88,15 @@ def get_policy_for_agent(
         )
     elif algo_name == "soccer_block" and isinstance(env.model, SimpleSoccer):
         return BlockPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "soccer_handcrafted" and isinstance(env.model, SimpleSoccer):
+        return HandcraftedPolicy(
             agent_id,
             config,
             env=env,
