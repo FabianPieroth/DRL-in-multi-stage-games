@@ -471,7 +471,7 @@ class SignalingContest(BaseEnvForVec):
         return action_dict
 
     def plot_strategies_vs_equilibrium(
-        self, learners, writer, iteration: int, config, num_samples: int = 100
+        self, learners, writer, iteration: int, config, num_samples: int = 500
     ):
         """Evaluate and log current strategies."""
         seed = 69
@@ -489,7 +489,9 @@ class SignalingContest(BaseEnvForVec):
         cmap = plt.get_cmap("gnuplot")
         ax_second_round_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
         plt.rcParams["figure.figsize"] = (8, 5.5)
-        fig = plt.figure(figsize=plt.figaspect(1.0 + total_num_second_round_plots))
+        fig = plt.figure(
+            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
+        )
         ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
         ax_second_round_list = [
             fig.add_subplot(
