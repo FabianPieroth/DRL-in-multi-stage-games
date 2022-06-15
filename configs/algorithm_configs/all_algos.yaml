@@ -6,3 +6,4 @@ defaults:
   - soccer_chase_ball: chase_ball_policy
   - soccer_goal_wall: goal_wall_policy
   - soccer_block: block_policy
+  - soccer_handcrafted: handcrafted_policy
