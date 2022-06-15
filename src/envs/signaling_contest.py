@@ -5,16 +5,19 @@ Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bne
 """
 import time
 import warnings
+from multiprocessing.sharedctypes import Value
 from typing import Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym import spaces
+from pynverse import inversefunc
 
 from src.envs.equilibria import (
     equilibrium_fpsb_symmetric_uniform,
     no_signaling_equilibrium,
+    np_array_first_round_strategy,
     signaling_equilibrium,
 )
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
@@ -376,7 +379,7 @@ class SignalingContest(BaseEnvForVec):
             )
             observation_dict[agent_id] = self._get_obs_info_from_state(
                 agent_id, states, self.config["information_case"]
-            )
+            ).detach()
         return observation_dict
 
     def _get_obs_info_from_state(
@@ -612,27 +615,9 @@ class SignalingContest(BaseEnvForVec):
             label=f"bidder {agent_id} " + algo_name + " (lost)",
             s=6,
         )
+        if agent_id == 0:
+            self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
 
-        self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
-
-        """ax.plot(
-                        agent_obs[~has_lost_already],
-                        actions_array[~has_lost_already],
-                        linestyle="dotted",
-                        marker="o",
-                        markevery=32,
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} " + algo_name,
-                    )
-                    ax.plot(
-                        agent_vals[has_lost_already],
-                        actions_bne[has_lost_already],
-                        linestyle="--",
-                        marker="*",
-                        markevery=32,
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} BNE",
-                    )"""
         if self.config["information_case"] == "true_valuations":
             y_label = "opponent $v$"
         elif self.config["information_case"] == "winning_bids":
@@ -644,14 +629,37 @@ class SignalingContest(BaseEnvForVec):
         ax.set_zlabel("bid $b$", fontsize=12)
 
     def _plot_second_round_equ_strategy_surface(self, ax, agent_id, plot_precision):
-        val_xs = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
-        info_ys = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
-        val_x, info_y = torch.meshgrid(val_xs, info_ys, indexing="xy")
+        val_x, info_y, bid_opponent_info = self._get_meshgrid_for_second_round_equ(
+            plot_precision
+        )
         bid_z = self.equilibrium_strategies[agent_id](
-            round=2, valuations=val_x, opponent_vals=info_y, lost=None
+            round=2, valuations=val_x, opponent_vals=bid_opponent_info, lost=None
         )
         bid_z = bid_z.reshape(plot_precision, plot_precision)
         ax.plot_surface(val_x.numpy(), info_y.numpy(), bid_z.numpy(), alpha=0.2)
+
+    def _get_meshgrid_for_second_round_equ(self, plot_precision):
+        val_xs = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
+        if self.config["information_case"] == "true_valuations":
+            info_ys = torch.linspace(
+                self.prior_low, self.prior_high, steps=plot_precision
+            )
+            val_x, info_y = torch.meshgrid(val_xs, info_ys, indexing="xy")
+            bid_opponent_info = info_y
+        elif self.config["information_case"] == "winning_bids":
+            info_ys = np.linspace(0.000001, 0.297682, num=plot_precision)
+            inverse_bids = inversefunc(
+                np_array_first_round_strategy, y_values=info_ys, domain=[1.0, 1.5]
+            )
+            inverse_bids = np.repeat(inverse_bids[:, None], plot_precision, axis=1)
+            bid_opponent_info = torch.tensor(inverse_bids)
+
+            val_x, info_y = torch.meshgrid(
+                val_xs, torch.tensor(info_ys, dtype=torch.float32), indexing="xy"
+            )
+        else:
+            raise ValueError()
+        return val_x, info_y, bid_opponent_info
 
     def _plot_first_round_strategy(
         self,

@@ -2,6 +2,7 @@
 import math
 import warnings
 
+import numpy as np
 import torch
 
 
@@ -76,7 +77,7 @@ def no_signaling_equilibrium(num_agents: int, prior_low: float, prior_high: floa
     def bid_function(
         round: int,
         valuations: torch.Tensor,
-        opponent_vals: torch.Tensor,
+        opponent_vals: torch.Tensor = None,
         lost: torch.Tensor = None,
     ):
         if round == 1:
@@ -105,7 +106,7 @@ def signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
     def bid_function(
         round: int,
         valuations: torch.Tensor,
-        opponent_vals: torch.Tensor,
+        opponent_vals: torch.Tensor = None,
         lost: torch.Tensor = None,
     ):
         if round == 1:
@@ -121,3 +122,13 @@ def signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
         return bid.view(-1, 1)
 
     return bid_function
+
+
+def np_array_first_round_strategy(
+    valuation: np.ndarray, with_signaling: bool = True
+) -> np.ndarray:
+    valuation = torch.tensor(valuation)
+    res = winning_effect_term(valuation)
+    if with_signaling:
+        res += signaling_effect_term(valuation)
+    return res.numpy()
