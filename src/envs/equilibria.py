@@ -5,6 +5,10 @@ import warnings
 import numpy as np
 import torch
 
+RELU_LAYER = torch.nn.ReLU()
+"""We delete positive bids in equilibrium when appropriate. That is necessary due to 
+precision errors. See https://discuss.pytorch.org/t/numerical-error-between-batch-and-single-instance-computation/56735/4"""
+
 
 def equilibrium_fpsb_symmetric_uniform(
     num_agents: int, num_units: int, player_position: int = 0
@@ -44,7 +48,7 @@ def winning_effect_term(valuations: torch.Tensor) -> torch.Tensor:
     term_1 = 27.0 * torch.log(valuations + 1.5) - 17.0 / 2.0 * valuations
     term_2 = -43.0 / 4.0 * math.log(2.5)
     term_3 = 3.5 * torch.pow(valuations, 2) - 2.0 * torch.pow(valuations, 3)
-    term_4 = -4.0 * torch.log(valuations + 1.0) * (torch.pow(valuations, 4) - 1)
+    term_4 = -4.0 * torch.log(valuations + 1.0) * (torch.pow(valuations, 4) - 1.0)
     term_5 = (
         4.0 * torch.log(valuations + 1.5) * (torch.pow(valuations, 4) - 81.0 / 16.0)
         + 7.0
@@ -90,7 +94,7 @@ def no_signaling_equilibrium(num_agents: int, prior_low: float, prior_high: floa
         if lost is not None:
             bid[lost, ...] = 0
 
-        return bid.view(-1, 1)
+        return RELU_LAYER(bid.view(-1, 1))
 
     return bid_function
 
@@ -119,7 +123,7 @@ def signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
         if lost is not None:
             bid[lost, ...] = 0
 
-        return bid.view(-1, 1)
+        return RELU_LAYER(bid.view(-1, 1))
 
     return bid_function
 
