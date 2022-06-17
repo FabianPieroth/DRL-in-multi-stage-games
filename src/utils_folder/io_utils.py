@@ -5,6 +5,8 @@ import warnings
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+import src.utils_folder.policy_utils as pl_ut
+
 
 def save_omegaconf_to_yaml(file: DictConfig, filename: str, path: str = "./"):
     full_path = path + filename + ".yaml"
@@ -52,22 +54,17 @@ def get_total_training_steps(config: DictConfig) -> int:
 
 def get_n_steps_per_iteration(config: DictConfig) -> int:
     n_rollout_steps = None
-    if isinstance(config["algorithms"], str):
-        algo_name = config["algorithms"]
-        n_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
-    else:
-        for agent_id, algo_name in enumerate(config["algorithms"]):
-            algo_rollout_steps = config["algorithm_configs"][algo_name][
-                "n_rollout_steps"
-            ]
-            if algo_rollout_steps is not None and n_rollout_steps is None:
-                n_rollout_steps = algo_rollout_steps
-            elif algo_rollout_steps is not None and n_rollout_steps is not None:
-                if algo_rollout_steps != n_rollout_steps:
-                    raise ValueError(
-                        "Cannot handle algorithms with different rollout lengths! Check for agent: "
-                        + str(agent_id)
-                    )
+    for agent_id in range(config["rl_envs"]["num_agents"]):
+        algo_name = pl_ut.get_algo_name(agent_id, config)
+        algo_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
+        if algo_rollout_steps is not None and n_rollout_steps is None:
+            n_rollout_steps = algo_rollout_steps
+        elif algo_rollout_steps is not None and n_rollout_steps is not None:
+            if algo_rollout_steps != n_rollout_steps:
+                raise ValueError(
+                    "Cannot handle algorithms with different rollout lengths! Check for agent: "
+                    + str(agent_id)
+                )
     if n_rollout_steps is None:
         return config["rl_envs"]["num_agents"]
     return n_rollout_steps
@@ -89,6 +86,8 @@ def get_env_log_path_extension(config: DictConfig) -> str:
         return ""
     elif config["rl_envs"]["name"] == "sequential_auction":
         return "/" + config["rl_envs"]["mechanism_type"]
+    elif config["rl_envs"]["name"] == "signaling_contest":
+        return "/" + config["rl_envs"]["information_case"]
     else:
         warnings.warn(
             "No env log path extension specified for: " + config["rl_envs"]["name"]

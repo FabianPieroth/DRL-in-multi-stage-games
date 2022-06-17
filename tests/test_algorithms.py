@@ -21,6 +21,7 @@ ids, testdata = zip(
 
 @pytest.mark.parametrize("algorithms", testdata, ids=ids)
 def test_algos_in_rockpaperscissors(algorithms):
+    hydra.core.global_hydra.GlobalHydra().clear()
     config = io_ut.get_and_store_config()
     config["device"] = DEVICE
     config["iteration_num"] = 1

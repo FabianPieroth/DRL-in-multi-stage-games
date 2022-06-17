@@ -14,6 +14,7 @@ isort
 pytest
 pytest-cov
 imageio
+pynverse
 
 # 2022-05-30 
 #Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 

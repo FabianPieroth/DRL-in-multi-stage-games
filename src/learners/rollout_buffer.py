@@ -130,6 +130,7 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
         :param dones: if the last step was a terminal step (one bool for each env).
         """
         for step in reversed(range(self.buffer_size)):
+            self.returns[step] = self.rewards[step]
             if step >= self.buffer_size - len(last_values):
                 next_non_terminal = th.logical_not(dones)
             else:
@@ -137,16 +138,9 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
                 next_non_terminal = th.logical_not(
                     self.episode_starts[step + step_size_to_data]
                 )
-
-            if not next_non_terminal.all().item():
-                # If last stage of episode: return is the reward
-                self.returns[step] = self.rewards[step]
-            else:
-                # Otherwise: return is reward plus later rewards
-                self.returns[step] = (
-                    self.rewards[step] + self.returns[step + step_size_to_data]
-                )
-            # TODO: This is not equivalent to one update step for a whole episode!(?)
+                self.returns[step][next_non_terminal] += self.returns[
+                    step + step_size_to_data
+                ][next_non_terminal]
 
     def _find_step_size_to_agent_data(self, step):
         step_size = 1
