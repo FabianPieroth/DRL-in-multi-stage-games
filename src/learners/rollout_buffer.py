@@ -142,16 +142,6 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
                     step + step_size_to_data
                 ][next_non_terminal]
 
-            """if not next_non_terminal.all().item():
-                # If last stage of episode: return is the reward
-                self.returns[step] = self.rewards[step]
-            else:
-                # Otherwise: return is reward plus later rewards
-                self.returns[step] = (
-                    self.rewards[step] + self.returns[step + step_size_to_data]
-                )"""
-            # TODO: This is not equivalent to one update step for a whole episode!(?)
-
     def _find_step_size_to_agent_data(self, step):
         step_size = 1
         target_agent_id = self.agent_ids[step].detach().item()
