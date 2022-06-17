@@ -5,6 +5,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.ppo import VecPPO
+from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
 
 
@@ -36,7 +37,7 @@ def get_policy_for_agent(
             n_steps=n_rollout_steps,
             gamma=ppo_config["gamma"],
             batch_size=ppo_config["n_rollout_steps"] * config["num_envs"],
-            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
         )
     elif algo_name == "rps_single_action" and isinstance(env.model, RockPaperScissors):
@@ -45,7 +46,21 @@ def get_policy_for_agent(
             config["algorithm_configs"]["rps_single_action"],
             env=env,
             device=config["device"],
-            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "reinforce":
+        reinforce_config = config["algorithm_configs"]["reinforce"]
+        n_rollout_steps = reinforce_config["n_rollout_steps"]
+        if config["policy_sharing"]:
+            n_rollout_steps *= env.model.num_agents
+        return Reinforce(
+            policy=reinforce_config["policy"],
+            env=env,
+            device=config["device"],
+            n_steps=n_rollout_steps,
+            batch_size=reinforce_config["n_rollout_steps"] * config["num_envs"],
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
         )
     else:

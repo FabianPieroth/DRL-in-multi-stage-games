@@ -161,7 +161,6 @@ class MultiAgentCoordinator:
         log_interval: int = 1,
         eval_freq: int = 20,
         n_eval_episodes: int = 5,
-        tb_log_name: str = "MultiAgent",
         reset_num_timesteps: bool = True,
     ) -> "OnPolicyAlgorithm":
         """Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`"""
@@ -169,12 +168,7 @@ class MultiAgentCoordinator:
         iteration = 0
 
         total_timesteps, callbacks = self._setup_learners_for_training(
-            total_timesteps,
-            callbacks,
-            eval_freq,
-            n_eval_episodes,
-            tb_log_name,
-            reset_num_timesteps,
+            total_timesteps, callbacks, eval_freq, n_eval_episodes, reset_num_timesteps
         )
 
         while (
@@ -228,7 +222,6 @@ class MultiAgentCoordinator:
         callbacks,
         eval_freq,
         n_eval_episodes,
-        tb_log_name,
         reset_num_timesteps,
     ):
         # Each learner needs a callback
@@ -247,7 +240,6 @@ class MultiAgentCoordinator:
                 n_eval_episodes=n_eval_episodes,
                 log_path=self.config["experiment_log_path"],
                 reset_num_timesteps=reset_num_timesteps,
-                tb_log_name=tb_log_name,
             )
             callbacks[agent_id].on_training_start(locals(), globals())
             total_timesteps = max(timesteps, total_timesteps)

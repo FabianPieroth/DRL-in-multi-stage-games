@@ -17,7 +17,6 @@ def main():
             log_interval=1,
             eval_freq=adapted_config["eval_freq"],
             n_eval_episodes=5,
-            tb_log_name="MultiAgent",
         )
 
 

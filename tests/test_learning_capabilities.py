@@ -10,34 +10,36 @@ DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
 ids, testdata = zip(
     *[
-        ["first-price", ("first", False, False, 30, 0.08)],
-        ["second-price", ("second", False, False, 50, 0.13)],
-        ["first-price_policy_sharing", ("first", True, False, 30, 0.08)],
-        ["first-price_collapse_opponents", ("first", True, True, 30, 0.08)],
+        ["first-price-ppo", ("first", "ppo", False, False, 30, 0.08)],
+        ["first-price-reinforce", ("first", "reinforce", False, False, 30, 0.08)],
+        ["second-price", ("second", "ppo", False, False, 50, 0.13)],
+        ["first-price_policy_sharing", ("first", "ppo", True, False, 30, 0.08)],
+        ["first-price_collapse_opponents", ("first", "ppo", True, True, 30, 0.08)],
     ]
 )
 
 
 @pytest.mark.parametrize(
-    "mechanism_type, policy_sharing, collapse_symmetric_opponents, iteration_num, error_bound",
+    "mechanism_type, learner, policy_sharing, collapse_symmetric_opponents, iteration_num, error_bound",
     testdata,
     ids=ids,
 )
 def test_learning_in_sequential_auction(
-    mechanism_type,
-    policy_sharing,
-    collapse_symmetric_opponents,
-    iteration_num,
-    error_bound,
+    mechanism_type: str,
+    learner: str,
+    policy_sharing: bool,
+    collapse_symmetric_opponents: bool,
+    iteration_num: int,
+    error_bound: float,
 ):
     hydra.core.global_hydra.GlobalHydra().clear()
     config = io_ut.get_and_store_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
     config["policy_sharing"] = policy_sharing
-    config["algorithms"] = ["ppo", "ppo", "ppo"]
+    config["algorithms"] = [learner] * 3
     config["num_envs"] = 1024
-    config["algorithm_configs"]["ppo"]["n_rollout_steps"] = 4
+    config["algorithm_configs"][learner]["n_rollout_steps"] = 4
     config["eval_freq"] = iteration_num + 2
 
     rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][

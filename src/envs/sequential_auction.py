@@ -474,6 +474,9 @@ class SequentialAuction(BaseEnvForVec):
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
+                # get algorithm type
+                learner_name = self.learners[agent_id].__class__.__name__
+
                 # sort
                 agent_obs = agent_obs[increasing_order]
 
@@ -514,7 +517,7 @@ class SequentialAuction(BaseEnvForVec):
                     linestyle="dotted",
                     marker="o",
                     markevery=32,
-                    label=f"bidder {agent_id} PPO",
+                    label=f"bidder {agent_id} {learner_name}",
                 )
                 ax.plot(
                     agent_obs[~has_won_already],
@@ -536,7 +539,7 @@ class SequentialAuction(BaseEnvForVec):
                         marker="o",
                         markevery=32,
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id} PPO",
+                        label=f"bidder {agent_id} {learner_name}",
                     )
                     ax.plot(
                         agent_obs[has_won_already],
@@ -545,7 +548,7 @@ class SequentialAuction(BaseEnvForVec):
                         marker="x",
                         markevery=32,
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id} PPO (won)",
+                        label=f"bidder {agent_id} {learner_name} (won)",
                     )
                     ax.plot(
                         agent_obs[has_won_already],
