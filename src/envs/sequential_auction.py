@@ -475,7 +475,9 @@ class SequentialAuction(BaseEnvForVec):
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
                 # get algorithm type
-                learner_name = self.learners[agent_id].__class__.__name__
+                learner_name = self.learners[
+                    agent_id if not self.collapse_symmetric_opponents else 0
+                ].__class__.__name__
 
                 # sort
                 agent_obs = agent_obs[increasing_order]
