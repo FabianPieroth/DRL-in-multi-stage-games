@@ -25,6 +25,10 @@ class SequentialAuction(BaseEnvForVec):
     """
 
     DUMMY_PRICE_KEY = -1
+    ACTION_LOWER_BOUND = 0.0
+    ACTION_UPPER_BOUND = 1.1
+    OBSERVATION_DIM = None
+    ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.num_rounds_to_play = config["num_rounds_to_play"]
@@ -120,6 +124,7 @@ class SequentialAuction(BaseEnvForVec):
                 + [1.0] * self.num_rounds_to_play
                 + [np.inf] * (self.num_rounds_to_play * 2)
             )
+        self.OBSERVATION_DIM = len(low)
         return {
             agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
             for agent_id in range(self.num_agents)
@@ -131,8 +136,12 @@ class SequentialAuction(BaseEnvForVec):
             Dict[int, Space]: agent_id: action space
         """
         sa_action_space = spaces.Box(
-            low=np.float32([0] * self.config["action_size"]),
-            high=np.float32([np.inf] * self.config["action_size"]),
+            low=np.float32(
+                [SequentialAuction.ACTION_LOWER_BOUND] * self.config["action_size"]
+            ),
+            high=np.float32(
+                [SequentialAuction.ACTION_UPPER_BOUND] * self.config["action_size"]
+            ),
         )
         return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
 
@@ -681,3 +690,6 @@ class SequentialAuction(BaseEnvForVec):
     ):
         for agent_id, learner in learners.items():
             learner.logger.record(key_prefix, metric_dict[agent_id])
+
+    def __str__(self):
+        return "SequentialAuction"

@@ -2,24 +2,33 @@
 from typing import Dict
 
 import torch
+from gym import spaces
 from tqdm import tqdm
 
 from src.learners.base_learner import SABaseAlgorithm
+from src.verifier.base_verifier import BaseVerifier
 
 
-class BFVerifier:
+class BFVerifier(BaseVerifier):
     """Verifier that tries out a grid of alternative actions and choses the
     best combination as approximation to a best response.
     """
 
-    def __init__(self, env, num_envs: int = 8, num_alternative_actions: int = 4):
+    def __init__(self, env, num_envs: int = 32, num_alternative_actions: int = 16):
         self.env = env
         self.num_agents = self.env.model.num_agents
+        self.action_dim = env.model.ACTION_DIM
 
         self.device = self.env.device
 
-        # TODO: information should be read from env
-        self.action_range = [0, 1]
+        # Numeric actions
+        if all(isinstance(s, spaces.Box) for s in env.model.action_spaces.values()):
+            self.action_range = [
+                env.model.ACTION_LOWER_BOUND,
+                env.model.ACTION_UPPER_BOUND,
+            ]
+        else:
+            raise ValueError("This verifier is for numeric/continuous actions only.")
 
         self.num_own_envs = num_envs
         self.num_opponent_envs = num_envs
@@ -80,9 +89,9 @@ class BFVerifier:
                 : num_own_envs
                 * (self.num_alternative_actions ** self.num_rounds_to_play + 1),
                 [player_position],
-                0,
+                : self.env.model.valuation_size,
             ]
-            own_states = own_states.repeat([1, num_opponent_envs])
+            own_states = own_states.repeat([1, num_opponent_envs, 1]).squeeze()
             states[:, player_position, 0] = own_states.flatten()
 
             observations = self.env.model.get_observations(states)
@@ -109,6 +118,7 @@ class BFVerifier:
                 player_actions[:, 1:] = alternative_actions.repeat(
                     [num_own_envs * num_opponent_envs, 1]
                 )
+                # player_actions[:, 0] now correspond to the actual actions
                 actions[player_position] = player_actions.view(
                     -1, self.env.model.action_size
                 )
@@ -126,8 +136,11 @@ class BFVerifier:
                 actual_rewards_total += player_rewards[:, 0].mean()
                 alternative_rewards_total += player_rewards[:, 1:]
 
-            # Compute approximate best response & its utility
+            # NOTE: Currently we cannot get the BR's b/c we don't track actions from previous stages
+
+            # Compute utility of approximate best response
             alternative_utility = alternative_rewards_total.max(axis=1).values.mean()
+
             utility_loss[player_position] = (
                 (alternative_utility - actual_rewards_total).relu().item()
             )
@@ -138,8 +151,10 @@ class BFVerifier:
         """Generate a grid of alternative actions."""
 
         # TODO: support for higher action dimensions
-        action_dim = 1
-        dims = self.num_rounds_to_play * action_dim
+        if self.action_dim != 1:
+            raise NotImplementedError()
+
+        dims = self.num_rounds_to_play * self.action_dim
 
         # create equidistant lines along the support in each dimension
         lines = [

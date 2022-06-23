@@ -30,17 +30,21 @@ class SignalingContest(BaseEnvForVec):
     """
 
     DUMMY_PRICE_KEY = -1
+    OBSERVATION_DIM = 2
+    ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.valuation_size = config["valuation_size"]
         self.action_size = config["action_size"]
         self.prior_low, self.prior_high = config["prior_bounds"]
+        self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
         super().__init__(config, device)
 
         self.all_pay_mechanism = self._init_all_pay_mechanism()
         self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
 
         self.equilibrium_strategies = self._init_equilibrium_strategies()
+        self.num_rounds_to_play = 2
 
     def _init_all_pay_mechanism(self) -> Mechanism:
         return AllPayAuction(self.device)
@@ -119,8 +123,8 @@ class SignalingContest(BaseEnvForVec):
             Dict[int, Space]: agent_id: action space
         """
         sa_action_space = spaces.Box(
-            low=np.float32([0] * self.config["action_size"]),
-            high=np.float32([np.inf] * self.config["action_size"]),
+            low=np.float32([self.ACTION_LOWER_BOUND] * self.config["action_size"]),
+            high=np.float32([self.ACTION_UPPER_BOUND] * self.config["action_size"]),
         )
         return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
 
@@ -801,3 +805,6 @@ class SignalingContest(BaseEnvForVec):
     ):
         for agent_id, learner in learners.items():
             learner.logger.record(key_prefix, metric_dict[agent_id])
+
+    def __str__(self):
+        return "SignalingContest"

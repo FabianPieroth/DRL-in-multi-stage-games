@@ -3,15 +3,15 @@ import time
 from typing import Dict, List
 
 import torch
+from gym import spaces
 from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils_folder.logging_utils as log_ut
 import src.utils_folder.policy_utils as pl_ut
-from src.envs.sequential_auction import SequentialAuction
 from src.learners.utils import tensor_norm
-from src.verifier.brute_force_verifier import BFVerifier
+from src.verifier import BFVerifier, DiscreteVerifier
 
 
 class MultiAgentCoordinator:
@@ -33,10 +33,8 @@ class MultiAgentCoordinator:
         self.running_length = [0] * len(self.learners)
         self.current_parameters = self._get_policy_parameters(self.learners)
 
-        # Brute force verifier
-        if isinstance(self.env.model, SequentialAuction):
-            # TODO: Not implemented for other games
-            self.verifier = BFVerifier(env=self.env)
+        # Setup verifier
+        self.verifier = self._setup_verifier()
 
     def _get_policy_parameters(self, learners):
         param_dict = {}
@@ -48,6 +46,21 @@ class MultiAgentCoordinator:
             else:
                 param_dict[agent_id] = torch.zeros(1, device=self.config["device"])
         return param_dict
+
+    def _setup_verifier(self):
+        """Use appropriate verifier."""
+        if all(
+            isinstance(s, spaces.Box) for s in self.env.model.action_spaces.values()
+        ):
+            verifier = BFVerifier(env=self.env)
+        elif all(
+            isinstance(s, spaces.Discrete)
+            for s in self.env.model.action_spaces.values()
+        ):
+            verifier = DiscreteVerifier(env=self.env)
+        else:
+            raise NotImplementedError("Could not infer verifier for this game.")
+        return verifier
 
     def get_ma_action(self):
         actions_for_env = {}
@@ -196,9 +209,7 @@ class MultiAgentCoordinator:
                 self._evaluate_policies(
                     iteration, eval_freq, n_eval_episodes, callbacks
                 )
-                if isinstance(self.env.model, SequentialAuction):
-                    # TODO: Not implemented for other games
-                    self._verify_policies(iteration, eval_freq)
+                self._verify_policies(iteration, eval_freq)
 
             actions_for_env, actions, additional_actions_data = self.get_ma_action()
 
