@@ -1,2 +1,3 @@
 policy: "MlpPolicy"
 n_rollout_steps: 256
+gamma: 1.0
