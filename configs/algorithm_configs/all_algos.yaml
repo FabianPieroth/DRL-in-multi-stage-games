@@ -2,4 +2,5 @@ name: "all_algos"
 defaults:
   - ppo: ppo_for_rps
   - reinforce: reinforce
+  - dqn: dqn_for_rps
   - rps_single_action: rps_rock

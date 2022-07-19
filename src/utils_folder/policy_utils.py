@@ -4,6 +4,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.torch_vec_env import MATorchVecEnv
+from src.learners.gpu_dqn import GPUDQN
 from src.learners.ppo import VecPPO
 from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
@@ -62,6 +63,30 @@ def get_policy_for_agent(
             batch_size=reinforce_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
+        )
+    elif algo_name == "dqn":
+        dqn_config = config["algorithm_configs"]["dqn"]
+        if config["policy_sharing"]:
+            n_rollout_steps *= env.model.num_agents
+        return GPUDQN(
+            policy=dqn_config["policy"],
+            env=env,
+            learning_rate=1e-4,
+            buffer_size=1_000_000,  # 1e6
+            learning_starts=50000,
+            batch_size=32,
+            tau=1.0,
+            gamma=dqn_config["gamma"],
+            train_freq=(dqn_config["n_rollout_steps"], "step"),
+            optimize_memory_usage=False,
+            target_update_interval=10000,
+            exploration_fraction=0.1,
+            exploration_initial_eps=1.0,
+            exploration_final_eps=0.05,
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            verbose=0,
+            seed=None,
+            device=config["device"],
         )
     else:
         raise ValueError(
