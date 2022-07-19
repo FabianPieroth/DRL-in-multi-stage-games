@@ -1,20 +1,20 @@
-gizeh
-torch
-matplotlib
-seaborn
-stable-baselines3
-tensorboard
+gizeh==0.1.11
+torch==1.11.0
+matplotlib==3.5.1
+seaborn==0.11.2
+stable-baselines3==1.5.0
+tensorboard==2.8.0
 gym==0.21
 
-hydra-core
-opencv-python
-pre-commit
-black
-isort
-pytest
-pytest-cov
-imageio
-pynverse
+hydra-core==1.1.1
+opencv-python==4.5.5.62
+pre-commit==2.17.0
+black==22.1.0
+isort==5.10.1
+pytest==7.0.1
+pytest-cov==3.0.0
+imageio==2.16.1
+pynverse==0.1.4.4
 
 # 2022-05-30 
 #Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 
