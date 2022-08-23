@@ -48,6 +48,7 @@ def test_learning_sequential_auctions(
     config = io_ut.get_and_store_config()
     config["device"] = DEVICE
     config["policy_sharing"] = True
+    config["algorithms"] = "ppo"
 
     rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
         "configs"
