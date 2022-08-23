@@ -42,7 +42,7 @@ class ReplayBuffer(BaseBuffer):
         device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
-        handle_timeout_termination: bool = True,
+        handle_timeout_termination: bool = False,
     ):
         super(ReplayBuffer, self).__init__(
             buffer_size, observation_space, action_space, device, n_envs=n_envs
@@ -132,11 +132,11 @@ class ReplayBuffer(BaseBuffer):
 
     def add(
         self,
-        obs: th.Tensor,
-        next_obs: th.Tensor,
-        action: th.Tensor,
-        reward: th.Tensor,
-        done: th.Tensor,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
         infos: List[Dict[str, Any]],
     ) -> None:
 

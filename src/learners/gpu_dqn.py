@@ -1,10 +1,12 @@
 import warnings
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import gym
 import numpy as np
 import torch as th
-from stable_baselines3.common.buffers import ReplayBuffer
+
+# from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import maybe_transpose
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
@@ -132,6 +134,8 @@ class GPUDQN(OffPolicyAlgorithm):
         # Linear schedule will be defined in `_setup_model()`
         self.exploration_schedule = None
         self.q_net, self.q_net_target = None, None
+        self.num_collected_steps = 0
+        self.num_timesteps = 0
 
         if _init_setup_model:
             self._setup_model()
@@ -219,6 +223,18 @@ class GPUDQN(OffPolicyAlgorithm):
                 batch_size, env=self._vec_normalize_env
             )
 
+            if th.isnan(replay_data.observations).any().item():
+                obs_non_missing_data = th.any(~th.isnan(replay_data.observations), -1)
+                replay_data = replay_data._replace(
+                    observations=replay_data.observations[obs_non_missing_data],
+                    actions=replay_data.actions[obs_non_missing_data],
+                    next_observations=replay_data.next_observations[
+                        obs_non_missing_data
+                    ],
+                    dones=replay_data.dones[obs_non_missing_data],
+                    rewards=replay_data.rewards[obs_non_missing_data],
+                )
+
             with th.no_grad():
                 # Compute the next Q-values using the target network
                 next_q_values = self.q_net_target(replay_data.next_observations)
@@ -259,7 +275,7 @@ class GPUDQN(OffPolicyAlgorithm):
 
     def predict(
         self,
-        observation: np.ndarray,
+        observation: th.Tensor,
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
@@ -274,6 +290,7 @@ class GPUDQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
+        observation = observation.cpu().numpy()
         if not deterministic and np.random.rand() < self.exploration_rate:
             if is_vectorized_observation(
                 maybe_transpose(observation, self.observation_space),
@@ -290,7 +307,7 @@ class GPUDQN(OffPolicyAlgorithm):
             action, state = self.policy.predict(
                 observation, state, episode_start, deterministic
             )
-        return action, state
+        return th.from_numpy(action).to(self.device), state
 
     def learn(
         self,
@@ -305,7 +322,7 @@ class GPUDQN(OffPolicyAlgorithm):
         reset_num_timesteps: bool = True,
     ) -> OffPolicyAlgorithm:
 
-        return super(DQN, self).learn(
+        return super(GPUDQN, self).learn(
             total_timesteps=total_timesteps,
             callback=callback,
             log_interval=log_interval,
@@ -324,3 +341,128 @@ class GPUDQN(OffPolicyAlgorithm):
         state_dicts = ["policy", "policy.optimizer"]
 
         return state_dicts, []
+
+    def ingest_data_to_learner(
+        self,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        dones,
+        infos,
+        new_obs,
+        agent_id: int,
+        policy_sharing: bool,
+        callback,
+    ):
+        self.num_timesteps += self.n_envs
+        self.num_collected_steps += 1
+
+        # Retrieve reward and episode length if using Monitor wrapper
+        self._update_info_buffer(infos, dones)
+
+        # Store data in replay buffer (normalized action and unnormalized observation)
+        self._store_transition(
+            self.replay_buffer, sa_actions, new_obs, sa_rewards, dones, infos, agent_id
+        )
+
+        self._update_current_progress_remaining(
+            self.num_timesteps, self._total_timesteps
+        )
+
+        # For DQN, check if the target network should be updated
+        # and update the exploration schedule
+        # For SAC/TD3, the update is dones as the same time as the gradient update
+        # see https://github.com/hill-a/stable-baselines/issues/900
+        self._on_step()
+
+        if self.num_collected_steps > 0 and self.num_timesteps > self.learning_starts:
+            if self.num_collected_steps % self.train_freq.frequency == 0:
+                self.train(
+                    batch_size=self.batch_size, gradient_steps=self.gradient_steps
+                )
+        return self
+
+    def _store_transition(
+        self,
+        replay_buffer: ReplayBuffer,
+        buffer_action: np.ndarray,
+        new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
+        reward: np.ndarray,
+        dones: np.ndarray,
+        infos: List[Dict[str, Any]],
+        agent_id: int,
+    ) -> None:
+        """
+        Store transition in the replay buffer.
+        We store the normalized action and the unnormalized observation.
+        It also handles terminal observations (because VecEnv resets automatically).
+
+        :param replay_buffer: Replay buffer object where to store the transition.
+        :param buffer_action: normalized action
+        :param new_obs: next observation in the current episode
+            or first observation of the episode (when dones is True)
+        :param reward: reward for the current transition
+        :param dones: Termination signal
+        :param infos: List of additional information about the transition.
+            It may contain the terminal observations and information about timeout.
+        """
+        # Store only the unnormalized version
+        if self._vec_normalize_env is not None:
+            new_obs_ = self._vec_normalize_env.get_original_obs()
+            reward_ = self._vec_normalize_env.get_original_reward()
+        else:
+            # Avoid changing the original ones
+            self._last_original_obs, new_obs_, reward_ = self._last_obs, new_obs, reward
+
+        # Avoid modification by reference
+        sa_next_obs = deepcopy(new_obs_[agent_id])
+        # As the VecEnv resets automatically, new_obs is already the
+        # first observation of the next episode
+        if dones.any():
+            sa_next_obs[dones] = infos.get("terminal_observation")[agent_id]
+
+        sa_obs_array = self._last_original_obs[agent_id].detach().cpu().numpy()
+        sa_next_obs = sa_next_obs.detach().cpu().numpy()
+        buffer_action = buffer_action.detach().cpu().numpy()
+        buffer_reward_ = reward_.detach().cpu().numpy()
+        buffer_dones = dones.detach().cpu().numpy()
+
+        replay_buffer.add(
+            sa_obs_array,
+            sa_next_obs,
+            buffer_action,
+            buffer_reward_,
+            buffer_dones,
+            infos,
+        )
+
+        self._last_obs = new_obs
+        # Save the unnormalized observation
+        if self._vec_normalize_env is not None:
+            self._last_original_obs = new_obs_
+
+    def get_actions_with_data(
+        self, agent_id: int
+    ) -> Tuple[th.Tensor, th.Tensor, Tuple]:
+        """Computes actions for the current state for env.step()
+
+            Args:
+                agent_id (int): determines which agents_actions will be returned
+
+            Returns:
+                actions_for_env: possibly adapted actions for env
+                actions: predicted actions by policy
+                additional_actions_data: additional data needed for algorithm later on
+            """
+        actions, _ = self.predict(self._last_obs[agent_id])
+        actions_for_env = actions.clone()
+        additional_actions_data = ()
+        return actions_for_env, actions, additional_actions_data
+
+    def _update_info_buffer(
+        self, infos: List[Dict[str, Any]], dones: Optional[np.ndarray] = None
+    ) -> None:
+        if dones is None:
+            dones = th.tensor([False])
+        if dones.all().detach().item():
+            self.ep_info_buffer.extend([infos])
