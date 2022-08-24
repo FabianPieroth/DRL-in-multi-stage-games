@@ -74,8 +74,9 @@ def get_policy_for_agent(
             learning_rate=1e-4,
             buffer_size=1_000_000,  # 1e6
             learning_starts=50000,
-            batch_size=32,
+            batch_size=dqn_config["batch_size"],
             tau=1.0,
+            gradient_steps=dqn_config["gradient_steps"],
             gamma=dqn_config["gamma"],
             train_freq=(dqn_config["n_rollout_steps"], "step"),
             optimize_memory_usage=False,
