@@ -41,8 +41,7 @@ class GPUDQN(OffPolicyAlgorithm):
     :param train_freq: Update the model every ``train_freq`` steps. Alternatively pass a tuple of frequency and unit
         like ``(5, "step")`` or ``(2, "episode")``.
     :param gradient_steps: How many gradient steps to do after each rollout (see ``train_freq``)
-        Set to ``-1`` means to do as many gradient steps as steps done in the environment
-        during the rollout.
+        Set to ``-1`` means to oversample 50% compared to the steps done in the environment.
     :param replay_buffer_class: Replay buffer class to use (for instance ``HerReplayBuffer``).
         If ``None``, it will be automatically selected.
     :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation.
@@ -377,18 +376,27 @@ class GPUDQN(OffPolicyAlgorithm):
 
         if self.num_collected_steps > 0 and self.num_timesteps > self.learning_starts:
             if self.num_collected_steps % self.train_freq.frequency == 0:
-                self.train(
-                    batch_size=self.batch_size, gradient_steps=self.gradient_steps
+                gradient_steps = (
+                    self.gradient_steps
+                    if self.gradient_steps >= 0
+                    else int(
+                        self.train_freq.frequency
+                        * self.n_envs
+                        / self.batch_size
+                        * 3
+                        / 2
+                    )
                 )
+                self.train(batch_size=self.batch_size, gradient_steps=gradient_steps)
         return self
 
     def _store_transition(
         self,
         replay_buffer: ReplayBuffer,
-        buffer_action: np.ndarray,
-        new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
-        reward: np.ndarray,
-        dones: np.ndarray,
+        buffer_action: th.Tensor,
+        new_obs: th.Tensor,
+        reward: th.Tensor,
+        dones: th.Tensor,
         infos: List[Dict[str, Any]],
         agent_id: int,
     ) -> None:
