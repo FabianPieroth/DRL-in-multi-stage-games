@@ -13,6 +13,10 @@ from src.learners.rps_dummy_learner import RPSDummyLearner
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
     if config["policy_sharing"]:
         shared_policy = get_policy_for_agent(0, config, env)
+        for agent_id in range(
+            env.model.num_agents
+        ):  # TODO: Super ugly, but needed so that all space translators are initialized
+            env.set_env_for_current_agent(agent_id, get_algo_name(agent_id, config))
         return {agent_id: shared_policy for agent_id in range(env.model.num_agents)}
     else:
         return {
