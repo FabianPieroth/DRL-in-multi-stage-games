@@ -4,7 +4,7 @@ experiment_log_path: ''
 experiment_name: ''
 device: 2
 num_envs: 4096
-eval_freq: 100
+eval_freq: 10
 iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
