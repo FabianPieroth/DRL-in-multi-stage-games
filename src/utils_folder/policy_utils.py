@@ -25,7 +25,7 @@ def get_policy_for_agent(
     agent_id: int, config: Dict, env: MATorchVecEnv
 ) -> BaseAlgorithm:
     algo_name = get_algo_name(agent_id, config)
-    env.set_env_for_current_agent(agent_id)
+    env.set_env_for_current_agent(agent_id, algo_name)
     if algo_name == "ppo":
         ppo_config = config["algorithm_configs"]["ppo"]
         n_rollout_steps = ppo_config["n_rollout_steps"]
