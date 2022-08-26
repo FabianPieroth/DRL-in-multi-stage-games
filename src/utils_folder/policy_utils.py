@@ -5,6 +5,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.simple_soccer import SimpleSoccer
 from src.envs.torch_vec_env import MATorchVecEnv
+from src.learners.gpu_dqn import GPUDQN
 from src.learners.ppo import VecPPO
 from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
@@ -17,6 +18,10 @@ from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPo
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
     if config["policy_sharing"]:
         shared_policy = get_policy_for_agent(0, config, env)
+        for agent_id in range(
+            env.model.num_agents
+        ):  # TODO: Super ugly, but needed so that all space translators are initialized
+            env.set_env_for_current_agent(agent_id, get_algo_name(agent_id, config))
         return {agent_id: shared_policy for agent_id in range(env.model.num_agents)}
     else:
         return {
@@ -29,7 +34,7 @@ def get_policy_for_agent(
     agent_id: int, config: Dict, env: MATorchVecEnv
 ) -> BaseAlgorithm:
     algo_name = get_algo_name(agent_id, config)
-    env.set_env_for_current_agent(agent_id)
+    env.set_env_for_current_agent(agent_id, algo_name)
     if algo_name == "ppo":
         ppo_config = config["algorithm_configs"]["ppo"]
         n_rollout_steps = ppo_config["n_rollout_steps"]
@@ -103,6 +108,31 @@ def get_policy_for_agent(
             device=config["device"],
             tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
             verbose=0,
+        )
+    elif algo_name == "dqn":
+        dqn_config = config["algorithm_configs"]["dqn"]
+        if config["policy_sharing"]:
+            n_rollout_steps *= env.model.num_agents
+        return GPUDQN(
+            policy=dqn_config["policy"],
+            env=env,
+            learning_rate=1e-4,
+            buffer_size=1_000_000,  # 1e6
+            learning_starts=50000,
+            batch_size=dqn_config["batch_size"],
+            tau=1.0,
+            gradient_steps=dqn_config["gradient_steps"],
+            gamma=dqn_config["gamma"],
+            train_freq=(dqn_config["n_rollout_steps"], "step"),
+            optimize_memory_usage=False,
+            target_update_interval=10000,
+            exploration_fraction=0.1,
+            exploration_initial_eps=1.0,
+            exploration_final_eps=0.05,
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            verbose=0,
+            seed=None,
+            device=config["device"],
         )
     else:
         raise ValueError(

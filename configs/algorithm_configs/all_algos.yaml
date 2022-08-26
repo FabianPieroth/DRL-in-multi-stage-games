@@ -7,3 +7,4 @@ defaults:
   - soccer_goal_wall: goal_wall_policy
   - soccer_block: block_policy
   - soccer_handcrafted: handcrafted_policy
+  - dqn: dqn_for_rps
