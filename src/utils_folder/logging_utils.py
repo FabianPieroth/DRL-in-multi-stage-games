@@ -111,6 +111,7 @@ def evaluate_policies(
     current_lengths = torch.zeros((n_envs,), dtype=int, device=device)
     observations = env.reset()
     states = {agent_id: None for agent_id in range(env.model.num_agents)}
+    episode_rollout_ends = torch.zeros((env.num_envs), dtype=bool, device=env.device)
     episode_starts = torch.ones((env.num_envs,), dtype=bool)
     while episode_iter < n_eval_episodes:
         actions = get_eval_ma_actions(
@@ -128,7 +129,12 @@ def evaluate_policies(
                 episode_rewards[agent_id].append(current_rewards[agent_id][dones])
                 current_rewards[agent_id][dones] = 0.0
 
-            episode_iter += 1
+            episode_rollout_ends = torch.logical_or(episode_rollout_ends, dones)
+            if episode_rollout_ends.all().cpu().item():
+                episode_iter += 1
+                episode_rollout_ends = torch.zeros(
+                    (env.num_envs), dtype=bool, device=env.device
+                )
         if render:
             env.render()
 
