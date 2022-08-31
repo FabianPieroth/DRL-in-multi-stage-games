@@ -626,8 +626,9 @@ class SimpleSoccer(BaseEnvForVec):
             actions = log_ut.get_eval_ma_actions(
                 learners, observations, hidden_states, episode_starts, True
             )
+            translated_actions = env.translate_joint_actions(actions)
             observations, rewards, dones, states = env.model.compute_step(
-                states, actions
+                states, translated_actions
             )
             episode_starts = dones
             images.append(env.model.render(states[0]))

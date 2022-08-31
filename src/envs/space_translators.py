@@ -4,6 +4,8 @@ from typing import Dict, Optional
 import torch
 from gym.spaces import Box, Discrete, MultiDiscrete, Space
 
+import src.utils_folder.spaces_utils as sp_ut
+
 
 class BaseSpaceTranslator(ABC):
     """ Handles a mapping from one gym space to another. 
@@ -48,10 +50,13 @@ class MultiDiscreteToDiscreteSpaceTranslator(BaseSpaceTranslator):
         super().__init__(domain_space, config)
 
     def _set_image_space(self) -> Space:
-        return None
+        prod_space_size = torch.prod(
+            torch.tensor(self.config["multi_space_shape"])
+        ).item()
+        return Discrete(prod_space_size)
 
     def translate(self, data: torch.Tensor) -> torch.Tensor:
-        return None
+        return sp_ut.multidiscrete_to_discrete(data, self.config["multi_space_shape"])
 
     def inv_translate(self, data: torch.Tensor) -> torch.Tensor:
-        return None
+        return sp_ut.discrete_to_multidiscrete(data, self.config["multi_space_shape"])

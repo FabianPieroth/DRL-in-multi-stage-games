@@ -234,26 +234,28 @@ class MATorchVecEnv(VecEnv):
         self, agent_id: int, learner_type: str, space_type: str
     ) -> Tuple[BaseSpaceTranslator, Dict]:
         if self._non_identity_translation_needed(agent_id, learner_type, space_type):
-            domain_space_type = type(self.joint_spaces[space_type][agent_id])
-            image_space_type = self.available_translations.get(domain_space_type)
             space_translator_class, translator_config = self._choose_non_identity_translator_class(
-                domain_space_type, image_space_type
+                agent_id, learner_type, space_type
             )
         else:
             space_translator_class, translator_config = IdentitySpaceTranslator, None
         return space_translator_class, translator_config
 
     def _choose_non_identity_translator_class(
-        self, domain_space_type, image_space_type
+        self, agent_id: int, learner_type: str, space_type: str
     ) -> Tuple[BaseSpaceTranslator, Dict]:
-        if isinstance(domain_space_type, MultiDiscrete) and isinstance(
-            image_space_type, Discrete
+        agent_space = self.joint_spaces[space_type][agent_id]
+        if (
+            isinstance(agent_space, MultiDiscrete)
+            and self.available_translations.get(type(agent_space)) == Discrete
         ):
-            return
+            translator_class = MultiDiscreteToDiscreteSpaceTranslator
+            translator_config = {"multi_space_shape": tuple(agent_space.nvec)}
         else:
             raise ValueError(
                 "No valid non-identity translation available. You should not get here!"
             )
+        return translator_class, translator_config
 
     def _non_identity_translation_needed(
         self, agent_id: int, learner_type: str, space_type: str
@@ -276,12 +278,17 @@ class MATorchVecEnv(VecEnv):
         return True
 
     def step_async(self, actions: Dict[int, torch.Tensor]) -> None:
+        self.actions = self.translate_joint_actions(actions)
+
+    def translate_joint_actions(
+        self, actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
         translated_actions = {}
         for agent_id, agent_actions in actions.items():
             translated_actions[agent_id] = self.agent_translators["action_space"][
                 agent_id
             ].inv_translate(agent_actions)
-        self.actions = translated_actions
+        return translated_actions
 
     def step_wait(self) -> TorchVecEnvStepReturn:
         """
