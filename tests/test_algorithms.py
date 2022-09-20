@@ -1,6 +1,5 @@
 """This module tests a single iteration for each combination of algorithms."""
 import hydra
-import omegaconf
 import pytest
 import torch
 
@@ -40,12 +39,7 @@ def test_algos_in_rockpaperscissors(algorithms):
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
         "configs"
     ]["rl_envs"]
-    for algo_name in algorithms:
-        algo_instance = ALGO_INSTANCE_DICT[algo_name]
-        algorithm_config = omegaconf.OmegaConf.load(
-            "./configs/algorithm_configs/" + algo_name + "/" + algo_instance + ".yaml"
-        )
-        config["algorithm_configs"][algo_name] = algorithm_config
+    tst_ut.set_specific_algo_configs(config, algorithms, ALGO_INSTANCE_DICT)
     config["rl_envs"] = rl_envs
     config["algorithms"] = algorithms
     io_ut.enrich_config(config)

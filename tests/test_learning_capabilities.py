@@ -8,6 +8,13 @@ import src.utils_folder.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
+
+SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_sequ_auction",
+    "reinforce": "reinforce_for_sequ_auction",
+}
+
+
 ids, testdata = zip(
     *[
         ["first-price-ppo", ("first", "ppo", False, False, 30, 0.08)],
@@ -37,7 +44,8 @@ def test_learning_in_sequential_auction(
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
     config["policy_sharing"] = policy_sharing
-    config["algorithms"] = [learner] * 3
+    algorithms = [learner] * 3
+    config["algorithms"] = algorithms
     config["num_envs"] = 1024
     config["algorithm_configs"][learner]["n_rollout_steps"] = 4
     config["eval_freq"] = iteration_num + 2
@@ -52,6 +60,9 @@ def test_learning_in_sequential_auction(
     config["rl_envs"]["num_rounds_to_play"] = num_agents - 1
     config["rl_envs"]["reduced_observation_space"] = True
     config["rl_envs"]["collapse_symmetric_opponents"] = collapse_symmetric_opponents
+    tst_ut.set_specific_algo_configs(
+        config, algorithms, SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
+    )
     io_ut.enrich_config(config)
     ma_learner = tst_ut.run_limited_learning(config)
     _, _, l2_distances = ma_learner.env.model.do_equilibrium_and_actual_rollout(
@@ -75,6 +86,12 @@ ids_sc, testdata_sc = zip(
 )
 
 
+SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_signaling_contest",
+    "reinforce": "reinforce_for_signaling_contest",
+}
+
+
 @pytest.mark.parametrize(
     "information_case, policy_sharing, iteration_num, error_bound",
     testdata_sc,
@@ -96,6 +113,9 @@ def test_learning_in_signaling_contest(
     rl_envs = hydra.compose("../configs/rl_envs/signaling_contest.yaml")[""][""][""][
         "configs"
     ]["rl_envs"]
+    tst_ut.set_specific_algo_configs(
+        config, ["ppo"], SIGNALING_CONTEST_ALGO_INSTANCE_DICT
+    )
     config["rl_envs"] = rl_envs
     config["rl_envs"]["num_agents"] = 4
     config["rl_envs"]["information_case"] = information_case

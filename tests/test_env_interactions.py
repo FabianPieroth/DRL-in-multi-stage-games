@@ -8,6 +8,13 @@ import src.utils_folder.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
+RPS_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_rps",
+    "reinforce": "reinforce_for_rps",
+    "dqn": "dqn_for_rps",
+    "rps_single_action": "rps_rock",
+}
+
 
 def test_learning_rockpaperscissors():
     """Runs multi agent learning in RPS."""
@@ -19,7 +26,9 @@ def test_learning_rockpaperscissors():
         "configs"
     ]["rl_envs"]
     rl_envs["num_agents"] = 3
-    config["algorithms"] = ["ppo", "ppo", "ppo"]
+    algorithms = ["ppo", "ppo", "ppo"]
+    config["algorithms"] = algorithms
+    tst_ut.set_specific_algo_configs(config, algorithms, RPS_ALGO_INSTANCE_DICT)
     config["rl_envs"] = rl_envs
     tst_ut.run_limited_learning(config)
 
@@ -33,6 +42,11 @@ ids_sequ_auction, testdata_sequ_auction = zip(
         ["collapse-symmetric-opponents", ("second", 3, False, True)],
     ]
 )
+
+SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_sequ_auction",
+    "reinforce": "reinforce_for_sequ_auction",
+}
 
 
 @pytest.mark.parametrize(
@@ -49,6 +63,9 @@ def test_learning_sequential_auctions(
     config["device"] = DEVICE
     config["policy_sharing"] = True
     config["algorithms"] = "ppo"
+    tst_ut.set_specific_algo_configs(
+        config, ["ppo"], SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
+    )
 
     rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
         "configs"
@@ -65,6 +82,12 @@ def test_learning_sequential_auctions(
     config["total_training_steps"] = 1
 
     tst_ut.run_limited_learning(config)
+
+
+SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_signaling_contest",
+    "reinforce": "reinforce_for_signaling_contest",
+}
 
 
 ids_sign_contest, testdata_sign_contest = zip(
@@ -92,6 +115,9 @@ def test_learning_signaling_contest(information_case, num_agents):
     ]["rl_envs"]
     rl_envs["information_case"] = information_case
     config["rl_envs"] = rl_envs
+    tst_ut.set_specific_algo_configs(
+        config, ["ppo"], SIGNALING_CONTEST_ALGO_INSTANCE_DICT
+    )
     config["rl_envs"]["num_agents"] = num_agents
 
     io_ut.enrich_config(config)
