@@ -73,7 +73,7 @@ def signaling_effect_term(valuations: torch.Tensor) -> torch.Tensor:
 def no_signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
     """Equilibrium strategy for two stage signaling contest. First round all-pay,
     second round tullock contest. True valuations of winner revealed."""
-    if num_agents != 2 or prior_low != 1.0 or prior_high != 1.5:
+    if num_agents != 4 or prior_low != 1.0 or prior_high != 1.5:
         warnings.warn(
             "Only 2 agents per group, prior_low=1.0 and prior_high=1.5 is implemented!"
         )
@@ -103,7 +103,7 @@ def signaling_equilibrium(num_agents: int, prior_low: float, prior_high: float):
     """Equilibrium strategy for two stage signaling contest. First round all-pay,
     second round tullock contest. Bid of winner revealed."""
 
-    if num_agents != 2 or prior_low != 1.0 or prior_high != 1.5:
+    if num_agents != 4 or prior_low != 1.0 or prior_high != 1.5:
         warnings.warn(
             "Only 2 agents per group, prior_low=1.0 and prior_high=1.5 is implemented!"
         )
