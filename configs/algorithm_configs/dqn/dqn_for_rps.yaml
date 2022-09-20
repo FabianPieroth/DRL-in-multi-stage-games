@@ -3,3 +3,11 @@ n_rollout_steps: 10
 gamma: 1.0
 gradient_steps: -1
 batch_size: 256
+tau: 1.0
+learning_rate: 0.0001
+buffer_size: 50_000
+learning_starts: 5_000
+target_update_interval: 5_000
+exploration_fraction: 0.1
+exploration_initial_eps: 1.0
+exploration_final_eps: 0.05
