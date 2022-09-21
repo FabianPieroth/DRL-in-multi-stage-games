@@ -41,7 +41,7 @@ def test_learning_in_sequential_auction(
     error_bound: float,
 ):
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
     config["policy_sharing"] = policy_sharing
@@ -75,11 +75,12 @@ def test_learning_in_sequential_auction(
     assert (
         average_l2_distance < error_bound
     ), "The strategies are unexpectedly far away from equilibrium!"
+    io_ut.clean_logs_after_test(config)
 
 
 ids_sc, testdata_sc = zip(
     *[
-        ["symmetric_true_valuations", ("true_valuations", True, 300, 0.13)],
+        ["symmetric_true_valuations", ("true_valuations", True, 400, 0.13)],
         ["non_symmetric_true_valuations", ("true_valuations", False, 300, 0.16)],
         # ["symmetric_winning_bids", ("winning_bids", True, 300, 0.08)],
         # ["non_symmetric_winning_bids", ("winning_bids", False, 300, 0.13)],
@@ -102,7 +103,7 @@ def test_learning_in_signaling_contest(
     information_case, policy_sharing, iteration_num, error_bound
 ):
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
     config["policy_sharing"] = policy_sharing
@@ -132,6 +133,7 @@ def test_learning_in_signaling_contest(
     assert (
         average_l2_distance < error_bound
     ), "The strategies are unexpectedly far away from equilibrium!"
+    io_ut.clean_logs_after_test(config)
 
 
 ids_rps, testdata_rps = zip(
@@ -152,7 +154,7 @@ RPS_ALGO_INSTANCE_DICT = {
 )
 def test_learning_in_rps(algo_name, iteration_num, error_bound):
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
     config["policy_sharing"] = False
@@ -196,3 +198,4 @@ def test_learning_in_rps(algo_name, iteration_num, error_bound):
     assert (
         fixed_rock_player_percentage == 1.0
     ), "The opponents are not playing rock all the time!"
+    io_ut.clean_logs_after_test(config)

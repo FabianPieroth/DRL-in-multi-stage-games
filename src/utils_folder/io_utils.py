@@ -1,5 +1,6 @@
 import datetime
 import os
+import shutil
 import warnings
 
 import hydra
@@ -29,10 +30,9 @@ def read_hydra_config():
     return cfg
 
 
-def get_and_store_config() -> DictConfig:
+def get_config() -> DictConfig:
     config = read_hydra_config()
     enrich_config(config)
-    store_config(config)
     return config
 
 
@@ -95,3 +95,17 @@ def get_env_log_path_extension(config: DictConfig) -> str:
             "No env log path extension specified for: " + config["rl_envs"]["name"]
         )
         return ""
+
+
+def wrap_up_experiment_logging(config: DictConfig):
+    if config["delete_logs_after_training"]:
+        delete_folder(config["experiment_log_path"])
+
+
+def delete_folder(path_to_folder: str):
+    shutil.rmtree(path_to_folder, ignore_errors=True)
+
+
+def clean_logs_after_test(config: DictConfig):
+    config["delete_logs_after_training"] = True
+    wrap_up_experiment_logging(config)
