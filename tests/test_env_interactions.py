@@ -93,8 +93,8 @@ SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
 ids_sign_contest, testdata_sign_contest = zip(
     *[
         ["no-signaling-small", ("true_valuations", 4)],
-        ["no-signaling-large", ("true_valuations", 4)],
-        ["signaling-small", ("winning_bids", 8)],
+        ["no-signaling-large", ("true_valuations", 8)],
+        ["signaling-small", ("winning_bids", 4)],
         ["signaling-large", ("winning_bids", 8)],
     ]
 )
