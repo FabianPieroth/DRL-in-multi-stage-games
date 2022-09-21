@@ -19,6 +19,7 @@ RPS_ALGO_INSTANCE_DICT = {
 def test_learning_rockpaperscissors():
     """Runs multi agent learning in RPS."""
     hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = io_ut.get_config()
     config["device"] = DEVICE
     config["total_training_steps"] = 1
@@ -58,8 +59,9 @@ SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT = {
 def test_learning_sequential_auctions(
     mechanism_type, num_agents, reduced_observation_space, collapse_symmetric_opponents
 ):
-    hydra.core.global_hydra.GlobalHydra().clear()
     """Runs multi agent learning in sequential auctions for specified parameters."""
+    hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = io_ut.get_config()
     config["device"] = DEVICE
     config["policy_sharing"] = True
@@ -107,6 +109,7 @@ ids_sign_contest, testdata_sign_contest = zip(
 )
 def test_learning_signaling_contest(information_case, num_agents):
     """Runs multi agent learning in sequential auctions for specified parameters."""
+    io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
     config = io_ut.get_config()
     config["device"] = DEVICE
