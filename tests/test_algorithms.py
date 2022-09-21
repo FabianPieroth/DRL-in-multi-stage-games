@@ -31,7 +31,7 @@ ids, testdata = zip(
 @pytest.mark.parametrize("algorithms", testdata, ids=ids)
 def test_algos_in_rockpaperscissors(algorithms):
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = 1
     config["num_envs"] = 32
@@ -44,3 +44,4 @@ def test_algos_in_rockpaperscissors(algorithms):
     config["algorithms"] = algorithms
     io_ut.enrich_config(config)
     tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)
