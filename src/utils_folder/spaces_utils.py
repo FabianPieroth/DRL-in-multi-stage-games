@@ -51,7 +51,7 @@ def discrete_to_multidiscrete(int_actions: Tensor, array_shape: Tuple[int]) -> T
 
 
 def multidiscrete_to_discrete(multi_actions: Tensor, array_shape: Tuple[int]) -> Tensor:
-    """Tensor of shape (batch_size, num_agents) is turned into a raveled multi-index by array_shape shape (y,)
+    """Tensor of shape (batch_size, num_multi_discrete_actions) is turned into a raveled multi-index by array_shape shape (y,)
     Args:
         actions (Tensor): shape (batch_size, len(array_shape))
         array_shape (Tuple[int]): shape(batch_size, )
