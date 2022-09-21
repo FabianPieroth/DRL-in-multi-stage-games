@@ -4,14 +4,14 @@ log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
 device: 2
-num_envs: 64_000
+num_envs: 4_000
 eval_freq: 100
-iteration_num: 2000
+iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
-algorithms: ["dqn", "soccer_goal_wall"]
+algorithms: "ppo"
 policy_sharing: false
 defaults:
-  - rl_envs: simple_soccer
+  - rl_envs: sequential_auction
   - algorithm_configs: all_algos
   - _self_
