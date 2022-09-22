@@ -1,9 +1,12 @@
 import datetime
 import os
+import random
 import shutil
 import warnings
 
 import hydra
+import numpy as np
+import torch
 from omegaconf import DictConfig, OmegaConf
 
 import src.utils_folder.policy_utils as pl_ut
@@ -34,6 +37,18 @@ def get_config() -> DictConfig:
     config = read_hydra_config()
     enrich_config(config)
     return config
+
+
+def set_global_seed(seed: int):
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def store_config_and_set_seed(config: DictConfig):
+    store_config(config)
+    set_global_seed(config["seed"])
 
 
 def store_config(config: DictConfig):

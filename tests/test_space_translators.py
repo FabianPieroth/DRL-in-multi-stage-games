@@ -46,6 +46,7 @@ ids_id, testdata_id = zip(
 def test_identity_space_translator(domain_space, in_tensor):
     in_tensor.to(DEVICE)
     hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = {}
     translator = IdentitySpaceTranslator(domain_space=domain_space, config=config)
     assert torch.all(
@@ -88,7 +89,9 @@ def test_md_to_d_space_translator_invertibility_md_d(
     domain_space, in_tensor, out_tensor
 ):
     in_tensor.to(DEVICE)
+    out_tensor.to(DEVICE)
     hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = {"multi_space_shape": tuple(domain_space.nvec)}
     translator = MultiDiscreteToDiscreteSpaceTranslator(
         domain_space=domain_space, config=config

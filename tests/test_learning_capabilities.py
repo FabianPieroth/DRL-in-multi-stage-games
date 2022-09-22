@@ -41,6 +41,7 @@ def test_learning_in_sequential_auction(
     error_bound: float,
 ):
     hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
@@ -103,6 +104,7 @@ def test_learning_in_signaling_contest(
     information_case, policy_sharing, iteration_num, error_bound
 ):
     hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num
@@ -154,6 +156,7 @@ RPS_ALGO_INSTANCE_DICT = {
 )
 def test_learning_in_rps(algo_name, iteration_num, error_bound):
     hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
     config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = iteration_num

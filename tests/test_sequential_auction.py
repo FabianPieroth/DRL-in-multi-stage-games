@@ -12,6 +12,7 @@ def test_sequential_auction_in_bne():
     """Test the `sequential_auction` game environment by playing the BNE
     strategy. Collect the total rewards and compare with expectation.
     """
+    io_ut.set_global_seed(0)
     batch_size: int = 2 ** 10  # The higher the lower the error tolerance should be
 
     config = io_ut.get_config()
