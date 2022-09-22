@@ -5,9 +5,10 @@ experiment_log_path: ''
 experiment_name: ''
 delete_logs_after_training: false
 device: 2
+seed: 0
 num_envs: 4_000
 eval_freq: 100
-iteration_num: 1
+iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
 algorithms: "ppo"
