@@ -32,6 +32,7 @@ class MultiAgentCoordinator:
         self.current_parameters = self._get_policy_parameters(self.learners)
 
     def _get_policy_parameters(self, learners):
+        """Collect all current neural network parameters of the policy."""
         param_dict = {}
         for agent_id, learner in learners.items():
             if learner.policy is not None:
@@ -68,6 +69,7 @@ class MultiAgentCoordinator:
         policy_sharing,
         callbacks,
     ):
+        """All required information is shared with the individual learners."""
         for agent_id, learner in self.learners.items():
             learner.ingest_data_to_learner(
                 last_obs[agent_id],
@@ -84,6 +86,9 @@ class MultiAgentCoordinator:
             )
 
     def _do_break_for_policy_sharing(self, agent_id: int):
+        """If all agents share the same policy, we only train the one at 
+        index 0.
+        """
         return self.config["policy_sharing"] and agent_id > 0
 
     def _display_and_log_training_progress(self, iteration, log_interval):
@@ -135,6 +140,7 @@ class MultiAgentCoordinator:
     def _evaluate_policies(
         self, iteration: int, eval_freq: int, n_eval_episodes: int, callbacks: None
     ) -> None:
+        """Evaluate current training progress."""
         if (iteration + 1) % eval_freq == 0:
             log_ut.evaluate_policies(
                 self.learners,
@@ -167,8 +173,12 @@ class MultiAgentCoordinator:
         n_eval_episodes: int = 5,
         reset_num_timesteps: bool = True,
     ) -> "OnPolicyAlgorithm":
-        """Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`"""
-
+        """Main training loop for multi-agent learning: Here, (1) the agents
+        are asked to submit actions, (2) these are passed to the environment,
+        and (3) the utilities are passed back to the agents for learning.        
+        
+        Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`.
+        """
         iteration = 0
 
         total_timesteps, callbacks = self._setup_learners_for_training(

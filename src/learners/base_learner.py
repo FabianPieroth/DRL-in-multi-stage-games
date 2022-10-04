@@ -98,6 +98,9 @@ class SABaseAlgorithm(PPO, ABC):
         policy_sharing: bool,
         callback,
     ):
+        """This interface is used by the `MultiAgentCoordinator` to be the
+        single point of information sharing with this learner.
+        """
         if not (policy_sharing and agent_id > 0):
             self.num_timesteps += self.env.num_envs
 
@@ -296,6 +299,9 @@ class MABaseAlgorithm(BaseAlgorithm):
         sde_sample_freq: int = -1,
         supported_action_spaces: Optional[Tuple[gym.spaces.Space, ...]] = None,
     ):
+        """Most basic multi-agent base algorithm that is used, e.g., for non
+        neural network based policies.
+        """
         self.agent_id = agent_id
         self.config = config
         if policy is None:
