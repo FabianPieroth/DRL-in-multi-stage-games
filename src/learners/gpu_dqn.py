@@ -334,7 +334,7 @@ class GPUDQN(OffPolicyAlgorithm):
         )
 
     def _excluded_save_params(self) -> List[str]:
-        return super(DQN, self)._excluded_save_params() + ["q_net", "q_net_target"]
+        return super(GPUDQN, self)._excluded_save_params() + ["q_net", "q_net_target"]
 
     def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
         state_dicts = ["policy", "policy.optimizer"]
@@ -343,6 +343,8 @@ class GPUDQN(OffPolicyAlgorithm):
 
     def ingest_data_to_learner(
         self,
+        sa_last_obs,
+        last_episode_starts,
         sa_actions,
         sa_rewards,
         sa_additional_actions_data,
@@ -361,7 +363,15 @@ class GPUDQN(OffPolicyAlgorithm):
 
         # Store data in replay buffer (normalized action and unnormalized observation)
         self._store_transition(
-            self.replay_buffer, sa_actions, new_obs, sa_rewards, dones, infos, agent_id
+            self.replay_buffer,
+            sa_last_obs,
+            last_episode_starts,
+            sa_actions,
+            new_obs,
+            sa_rewards,
+            dones,
+            infos,
+            agent_id,
         )
 
         self._update_current_progress_remaining(
@@ -393,6 +403,8 @@ class GPUDQN(OffPolicyAlgorithm):
     def _store_transition(
         self,
         replay_buffer: ReplayBuffer,
+        sa_last_obs: th.Tensor,
+        last_episode_starts: th.Tensor,
         buffer_action: th.Tensor,
         new_obs: th.Tensor,
         reward: th.Tensor,
@@ -414,13 +426,8 @@ class GPUDQN(OffPolicyAlgorithm):
         :param infos: List of additional information about the transition.
             It may contain the terminal observations and information about timeout.
         """
-        # Store only the unnormalized version
-        if self._vec_normalize_env is not None:
-            new_obs_ = self._vec_normalize_env.get_original_obs()
-            reward_ = self._vec_normalize_env.get_original_reward()
-        else:
-            # Avoid changing the original ones
-            self._last_original_obs, new_obs_, reward_ = self._last_obs, new_obs, reward
+        # Avoid changing the original ones
+        new_obs_, reward_ = new_obs, reward
 
         # Avoid modification by reference
         sa_next_obs = deepcopy(new_obs_[agent_id])
@@ -429,7 +436,7 @@ class GPUDQN(OffPolicyAlgorithm):
         if dones.any():
             sa_next_obs[dones] = infos.get("terminal_observation")[agent_id]
 
-        sa_obs_array = self._last_original_obs[agent_id].detach().cpu().numpy()
+        sa_obs_array = sa_last_obs.detach().cpu().numpy()
         sa_next_obs = sa_next_obs.detach().cpu().numpy()
         buffer_action = buffer_action.detach().cpu().numpy()
         buffer_reward_ = reward_.detach().cpu().numpy()
@@ -444,13 +451,8 @@ class GPUDQN(OffPolicyAlgorithm):
             infos,
         )
 
-        self._last_obs = new_obs
-        # Save the unnormalized observation
-        if self._vec_normalize_env is not None:
-            self._last_original_obs = new_obs_
-
     def get_actions_with_data(
-        self, agent_id: int
+        self, sa_obs: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, Tuple]:
         """Computes actions for the current state for env.step()
 
@@ -462,7 +464,7 @@ class GPUDQN(OffPolicyAlgorithm):
                 actions: predicted actions by policy
                 additional_actions_data: additional data needed for algorithm later on
             """
-        actions, _ = self.predict(self._last_obs[agent_id])
+        actions, _ = self.predict(sa_obs, deterministic=False)
         actions_for_env = actions.clone()
         additional_actions_data = ()
         return actions_for_env, actions, additional_actions_data

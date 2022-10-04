@@ -42,13 +42,13 @@ class MultiAgentCoordinator:
                 param_dict[agent_id] = torch.zeros(1, device=self.config["device"])
         return param_dict
 
-    def get_ma_action(self):
+    def get_ma_action(self, obs: Dict[int, torch.Tensor]):
         actions_for_env = {}
         actions = {}
         additional_actions_data = {}
         for agent_id, learner in self.learners.items():
             sa_actions_for_env, sa_actions, sa_additional_actions_data = learner.get_actions_with_data(
-                agent_id
+                obs[agent_id]
             )
             actions_for_env[agent_id] = sa_actions_for_env
             actions[agent_id] = sa_actions
@@ -57,6 +57,8 @@ class MultiAgentCoordinator:
 
     def ingest_ma_data_into_learners(
         self,
+        last_obs,
+        last_episode_starts,
         actions,
         rewards,
         additional_actions_data,
@@ -68,6 +70,8 @@ class MultiAgentCoordinator:
     ):
         for agent_id, learner in self.learners.items():
             learner.ingest_data_to_learner(
+                last_obs[agent_id],
+                last_episode_starts,
                 actions[agent_id],
                 rewards[agent_id],
                 additional_actions_data[agent_id],
@@ -171,13 +175,20 @@ class MultiAgentCoordinator:
             total_timesteps, callbacks, eval_freq, n_eval_episodes, reset_num_timesteps
         )
 
+        last_obs = self.env.reset()
+        last_episode_starts = torch.ones(
+            (self.env.num_envs,), dtype=bool, device=self.env.device
+        )
+
         while (
             min(learner.num_timesteps for learner in self.learners.values())
             < total_timesteps
         ):
             if self._iteration_finished(n_steps_per_iteration):
                 print(f"Iteration {iteration} starts.")
-            actions_for_env, actions, additional_actions_data = self.get_ma_action()
+            actions_for_env, actions, additional_actions_data = self.get_ma_action(
+                last_obs
+            )
 
             new_obs, rewards, dones, infos = self.env.step(
                 actions_for_env
@@ -186,6 +197,8 @@ class MultiAgentCoordinator:
             self.n_step += 1
 
             self.ingest_ma_data_into_learners(
+                last_obs,
+                last_episode_starts,
                 actions,
                 rewards,
                 additional_actions_data,
@@ -195,6 +208,9 @@ class MultiAgentCoordinator:
                 self.config["policy_sharing"],
                 callbacks,
             )
+
+            last_obs = {k: v.detach().clone() for k, v in new_obs.items()}
+            last_episode_starts = dones.detach().clone()
             # Give access to local variables
             for callback in callbacks:
                 callback.update_locals(locals())

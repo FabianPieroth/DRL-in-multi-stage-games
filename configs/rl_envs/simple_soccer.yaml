@@ -1,3 +1,3 @@
 name: "simple_soccer"
-num_agents: 2
+num_agents: 6
 max_episode_length: 165

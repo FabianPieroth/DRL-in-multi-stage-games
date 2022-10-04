@@ -41,7 +41,7 @@ class RPSDummyLearner(MABaseAlgorithm):
         self.action_dict = {"ROCK": 0, "PAPER": 1, "SCISSORS": 2}
 
     def get_actions_with_data(
-        self, agent_id: int
+        self, sa_obs: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, Tuple]:
         """Computes actions for the current state for env.step()
 
@@ -54,7 +54,7 @@ class RPSDummyLearner(MABaseAlgorithm):
             additional_actions_data: additional data needed for algorithm later on
         """
         action_to_play = self.action_dict[self.dummy_action]
-        num_envs = self._last_obs[agent_id].shape[0]
+        num_envs = sa_obs.shape[0]
         actions = torch.ones([num_envs], dtype=int, device=self.device) * action_to_play
         actions_for_env = actions
         additional_actions_data = ()
@@ -74,6 +74,8 @@ class RPSDummyLearner(MABaseAlgorithm):
 
     def ingest_data_to_learner(
         self,
+        sa_last_obs,
+        last_episode_starts,
         sa_actions,
         sa_rewards,
         sa_additional_actions_data,
