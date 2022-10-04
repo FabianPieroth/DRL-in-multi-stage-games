@@ -193,18 +193,6 @@ class SABaseAlgorithm(PPO, ABC):
         self._total_timesteps = total_timesteps
         self._num_timesteps_at_start = self.num_timesteps
 
-        # Avoid resetting the environment when calling ``.learn()`` consecutive times
-        """if reset_num_timesteps or self._last_obs is None:
-            self._last_obs = (
-                self.env.reset()
-            )  # pytype: disable=annotation-type-mismatch
-            self._last_episode_starts = th.ones(
-                (self.env.num_envs,), dtype=bool, device=self.device
-            )
-            # Retrieve unnormalized observation for saving into the buffer
-            if self._vec_normalize_env is not None:
-                self._last_original_obs = self._vec_normalize_env.get_original_obs()"""
-
         if eval_env is not None and self.seed is not None:
             eval_env.seed(self.seed)
 
