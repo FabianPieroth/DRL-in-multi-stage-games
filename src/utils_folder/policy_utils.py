@@ -16,12 +16,9 @@ from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPo
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
+    set_space_translators_in_env(config, env)
     if config["policy_sharing"]:
         shared_policy = get_policy_for_agent(0, config, env)
-        for agent_id in range(
-            env.model.num_agents
-        ):  # TODO: Super ugly, but needed so that all space translators are initialized
-            env.set_env_for_current_agent(agent_id, get_algo_name(agent_id, config))
         return {agent_id: shared_policy for agent_id in range(env.model.num_agents)}
     else:
         return {
@@ -30,11 +27,18 @@ def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
         }
 
 
+def set_space_translators_in_env(config: Dict, env: MATorchVecEnv):
+    for agent_id in range(env.model.num_agents):
+        env.set_space_translators_for_agent(
+            agent_id, config["algorithm_configs"][get_algo_name(agent_id, config)]
+        )
+
+
 def get_policy_for_agent(
     agent_id: int, config: Dict, env: MATorchVecEnv
 ) -> BaseAlgorithm:
     algo_name = get_algo_name(agent_id, config)
-    env.set_env_for_current_agent(agent_id, algo_name)
+    env.set_env_for_current_agent(agent_id)
     if algo_name == "ppo":
         ppo_config = config["algorithm_configs"]["ppo"]
         n_rollout_steps = ppo_config["n_rollout_steps"]

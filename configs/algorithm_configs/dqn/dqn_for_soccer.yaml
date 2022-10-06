@@ -11,3 +11,7 @@ target_update_interval: 50_000_000
 exploration_fraction: 0.1
 exploration_initial_eps: 1.0
 exploration_final_eps: 0.05
+translate_action_spaces_for_agents: None
+translate_observation_spaces_for_agents: None
+action_space_translator: "multidiscrete_to_discrete"
+observation_space_translator: "identity"

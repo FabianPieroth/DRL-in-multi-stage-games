@@ -1,2 +1,6 @@
 name: "block_policy"
 n_rollout_steps: null
+translate_action_spaces_for_agents: None
+translate_observation_spaces_for_agents: None
+action_space_translator: "identity"
+observation_space_translator: "identity"
