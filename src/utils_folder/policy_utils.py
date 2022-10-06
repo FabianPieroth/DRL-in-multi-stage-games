@@ -30,7 +30,9 @@ def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
 def set_space_translators_in_env(config: Dict, env: MATorchVecEnv):
     for agent_id in range(env.model.num_agents):
         env.set_space_translators_for_agent(
-            agent_id, config["algorithm_configs"][get_algo_name(agent_id, config)]
+            agent_id,
+            config["algorithm_configs"][get_algo_name(agent_id, config)],
+            config["space_translators"],
         )
 
 

@@ -12,6 +12,7 @@ from stable_baselines3.common.vec_env import VecEnv
 
 from src.envs.space_translators import (
     BaseSpaceTranslator,
+    BoxToDiscreteSpaceTranslator,
     IdentitySpaceTranslator,
     MultiDiscreteToDiscreteSpaceTranslator,
 )
@@ -200,15 +201,16 @@ class MATorchVecEnv(VecEnv):
                 agent_id: None for agent_id in range(self.model.num_agents)
             },
         }
-        self.available_translations = {
-            MultiDiscrete: Discrete,
-            Box: Discrete,
-            Discrete: Box,
-        }
 
-    def set_space_translators_for_agent(self, agent_id: int, learner_config: Dict):
-        self._set_translator_for_learner(agent_id, learner_config, "action_space")
-        self._set_translator_for_learner(agent_id, learner_config, "observation_space")
+    def set_space_translators_for_agent(
+        self, agent_id: int, learner_config: Dict, translator_configs: Dict
+    ):
+        self._set_translator_for_learner(
+            agent_id, learner_config, translator_configs, "action_space"
+        )
+        self._set_translator_for_learner(
+            agent_id, learner_config, translator_configs, "observation_space"
+        )
 
     def set_env_for_current_agent(self, agent_id: int):
         """Sets the environment to the view of provided agent. 
@@ -220,10 +222,14 @@ class MATorchVecEnv(VecEnv):
         ].image_space
 
     def _set_translator_for_learner(
-        self, agent_id: int, learner_config: str, space_type: str
+        self,
+        agent_id: int,
+        learner_config: Dict,
+        translator_configs: Dict,
+        space_type: str,
     ) -> Space:
         space_translator_class, translator_config = self._get_translator_type_and_config(
-            agent_id, learner_config, space_type
+            agent_id, learner_config, translator_configs, space_type
         )
         agent_translator = space_translator_class(
             domain_space=self.joint_spaces[space_type][agent_id],
@@ -232,7 +238,11 @@ class MATorchVecEnv(VecEnv):
         self.agent_translators[space_type][agent_id] = agent_translator
 
     def _get_translator_type_and_config(
-        self, agent_id: int, learner_config: str, space_type: str
+        self,
+        agent_id: int,
+        learner_config: Dict,
+        translator_configs: Dict,
+        space_type: str,
     ) -> Tuple[BaseSpaceTranslator, Dict]:
 
         translator_type = learner_config[space_type + "_translator"]
@@ -247,9 +257,11 @@ class MATorchVecEnv(VecEnv):
             agent_space = self.joint_spaces[space_type][agent_id]
             translator_config = {"multi_space_shape": tuple(agent_space.nvec)}
         elif translator_type == "box_to_discrete":
-            raise NotImplementedError
-        elif translator_type == "discrete_to_box":
-            raise NotImplementedError
+            space_translator_class = BoxToDiscreteSpaceTranslator
+            translator_config = {
+                "granularity": translator_configs["box_to_discrete_granularity"],
+                "maximum_width": translator_configs["box_to_discrete_maximum_width"],
+            }
         else:
             raise ValueError("No valid translation type provided: " + translator_type)
         return space_translator_class, translator_config
