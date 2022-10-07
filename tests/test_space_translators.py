@@ -8,6 +8,7 @@ from gym.spaces import Box, Discrete, MultiDiscrete
 import src.utils_folder.io_utils as io_ut
 import src.utils_folder.test_utils as tst_ut
 from src.envs.space_translators import (
+    BoxToDiscreteSpaceTranslator,
     IdentitySpaceTranslator,
     MultiDiscreteToDiscreteSpaceTranslator,
 )
@@ -105,3 +106,58 @@ def test_md_to_d_space_translator_invertibility_md_d(
     assert torch.all(
         translator.inv_translate(translator.translate(in_tensor)) == in_tensor
     ).item(), "The translation is not invertible!"
+
+
+ids_box_to_d, testdata_box_to_d = zip(
+    *[
+        [
+            "box_to_d_bounded",
+            (
+                Box(low=0.0, high=1.0, shape=(1,)),
+                11,
+                2.0,
+                torch.tensor([-1.0, 0.0, 0.02, 0.08, 0.81, 0.91, 0.99, 1.2]),
+                torch.tensor([0, 0, 0, 1, 8, 9, 10, 10]),
+            ),
+        ],
+        [
+            "box_to_d_lower_bounded",
+            (
+                Box(low=0.0, high=np.inf, shape=(1,)),
+                11,
+                1.0,
+                torch.tensor([-1.0, 0.0, 0.02, 0.08, 0.81, 0.91, 0.99, 1.2]),
+                torch.tensor([0, 0, 0, 1, 8, 9, 10, 10]),
+            ),
+        ],
+        [
+            "box_to_d_unbounded",
+            (
+                Box(low=-np.inf, high=np.inf, shape=(1,)),
+                21,
+                2.0,
+                torch.tensor([-1.0, 0.0, 0.02, 0.08, 0.81, 0.91, 0.99, 1.2]),
+                torch.tensor([0, 10, 10, 11, 18, 19, 20, 20]),
+            ),
+        ],
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "domain_space, granularity, maximum_width, in_tensor, out_tensor",
+    testdata_box_to_d,
+    ids=ids_box_to_d,
+)
+def test_box_to_d_space_translator(
+    domain_space, granularity, maximum_width, in_tensor, out_tensor
+):
+    in_tensor.to(DEVICE)
+    out_tensor.to(DEVICE)
+    hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
+    config = {"granularity": granularity, "maximum_width": maximum_width}
+    translator = BoxToDiscreteSpaceTranslator(domain_space=domain_space, config=config)
+    assert torch.all(
+        translator.translate(in_tensor) == out_tensor
+    ).item(), "The translation does not produce the expected output!"

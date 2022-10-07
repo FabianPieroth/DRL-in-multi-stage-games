@@ -84,7 +84,7 @@ class BoxToDiscreteSpaceTranslator(BaseSpaceTranslator):
         if not self.domain_space.bounded_below and not self.domain_space.bounded_above:
             warnings.warn(
                 "The box domain space is unbounded. We set the center to 0.0 with a maximum width of "
-                + self.config["maximum_width"]
+                + str(self.config["maximum_width"])
             )
             lower_bound = -self.config["maximum_width"] / 2.0
             upper_bound = self.config["maximum_width"] / 2.0
