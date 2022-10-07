@@ -103,7 +103,7 @@ class BoxToDiscreteSpaceTranslator(BaseSpaceTranslator):
             warnings.warn(
                 "The box domain space is not bounded from above. We set the upper bound to "
                 + str(upper_bound)
-                + "while keeping the lower bound at "
+                + " while keeping the lower bound at "
                 + str(lower_bound)
             )
         else:

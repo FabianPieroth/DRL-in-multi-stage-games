@@ -16,4 +16,5 @@ policy_sharing: false
 defaults:
   - rl_envs: sequential_auction
   - algorithm_configs: all_algos
+  - space_translators: default_config
   - _self_
