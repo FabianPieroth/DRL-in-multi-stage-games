@@ -1,6 +1,6 @@
 name: "all_algos"
 defaults:
-  - ppo: ppo_for_soccer
+  - ppo: ppo_for_sequ_auction
   - reinforce: reinforce
   - rps_single_action: rps_rock
   - soccer_chase_ball: chase_ball_policy

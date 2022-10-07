@@ -12,6 +12,7 @@ from stable_baselines3.common.vec_env import VecEnv
 
 from src.envs.space_translators import (
     BaseSpaceTranslator,
+    BoxToDiscreteSpaceTranslator,
     IdentitySpaceTranslator,
     MultiDiscreteToDiscreteSpaceTranslator,
 )
@@ -200,82 +201,76 @@ class MATorchVecEnv(VecEnv):
                 agent_id: None for agent_id in range(self.model.num_agents)
             },
         }
-        self.available_translations = {MultiDiscrete: Discrete}
-        self.non_valid_spaces_for_algos = {
-            "action_space": {"dqn": [Box, MultiDiscrete, MultiBinary]},
-            "observation_space": {},
-        }
 
-    def set_env_for_current_agent(self, agent_id: int, learner_type: str):
+    def set_space_translators_for_agent(
+        self, agent_id: int, learner_config: Dict, translator_configs: Dict
+    ):
+        self._set_translator_for_learner(
+            agent_id, learner_config, translator_configs, "action_space"
+        )
+        self._set_translator_for_learner(
+            agent_id, learner_config, translator_configs, "observation_space"
+        )
+
+    def set_env_for_current_agent(self, agent_id: int):
         """Sets the environment to the view of provided agent. 
         Needed to initialize leaners.
         """
-        self.action_space = self._set_translators_for_learners(
-            agent_id, learner_type, "action_space"
-        )
-        self.observation_space = self._set_translators_for_learners(
-            agent_id, learner_type, "observation_space"
-        )
+        self.action_space = self.agent_translators["action_space"][agent_id].image_space
+        self.observation_space = self.agent_translators["observation_space"][
+            agent_id
+        ].image_space
 
-    def _set_translators_for_learners(
-        self, agent_id: int, learner_type: str, space_type: str
+    def _set_translator_for_learner(
+        self,
+        agent_id: int,
+        learner_config: Dict,
+        translator_configs: Dict,
+        space_type: str,
     ) -> Space:
-        space_translator_class, translator_config = self._get_translator_type(
-            agent_id, learner_type, space_type
+        space_translator_class, translator_config = self._get_translator_type_and_config(
+            agent_id, learner_config, translator_configs, space_type
         )
         agent_translator = space_translator_class(
             domain_space=self.joint_spaces[space_type][agent_id],
             config=translator_config,
         )
         self.agent_translators[space_type][agent_id] = agent_translator
-        return agent_translator.image_space
 
-    def _get_translator_type(
-        self, agent_id: int, learner_type: str, space_type: str
+    def _get_translator_type_and_config(
+        self,
+        agent_id: int,
+        learner_config: Dict,
+        translator_configs: Dict,
+        space_type: str,
     ) -> Tuple[BaseSpaceTranslator, Dict]:
-        if self._non_identity_translation_needed(agent_id, learner_type, space_type):
-            space_translator_class, translator_config = self._choose_non_identity_translator_class(
-                agent_id, learner_type, space_type
-            )
-        else:
+
+        translator_type = learner_config[space_type + "_translator"]
+        agents_to_translate = self._get_list_of_agents_to_translate(
+            learner_config, space_type
+        )
+
+        if translator_type == "identity" or agent_id not in agents_to_translate:
             space_translator_class, translator_config = IdentitySpaceTranslator, None
+        elif translator_type == "multidiscrete_to_discrete":
+            space_translator_class = MultiDiscreteToDiscreteSpaceTranslator
+            agent_space = self.joint_spaces[space_type][agent_id]
+            translator_config = {"multi_space_shape": tuple(agent_space.nvec)}
+        elif translator_type == "box_to_discrete":
+            space_translator_class = BoxToDiscreteSpaceTranslator
+            translator_config = {
+                "granularity": translator_configs["box_to_discrete_granularity"],
+                "maximum_width": translator_configs["box_to_discrete_maximum_width"],
+            }
+        else:
+            raise ValueError("No valid translation type provided: " + translator_type)
         return space_translator_class, translator_config
 
-    def _choose_non_identity_translator_class(
-        self, agent_id: int, learner_type: str, space_type: str
-    ) -> Tuple[BaseSpaceTranslator, Dict]:
-        agent_space = self.joint_spaces[space_type][agent_id]
-        if (
-            isinstance(agent_space, MultiDiscrete)
-            and self.available_translations.get(type(agent_space)) == Discrete
-        ):
-            translator_class = MultiDiscreteToDiscreteSpaceTranslator
-            translator_config = {"multi_space_shape": tuple(agent_space.nvec)}
-        else:
-            raise ValueError(
-                "No valid non-identity translation available. You should not get here!"
-            )
-        return translator_class, translator_config
-
-    def _non_identity_translation_needed(
-        self, agent_id: int, learner_type: str, space_type: str
-    ) -> Tuple[BaseSpaceTranslator, Dict]:
-        non_valid_spaces_for_algo = self.non_valid_spaces_for_algos[space_type].get(
-            learner_type
-        )
-        agent_space_type = type(self.joint_spaces[space_type][agent_id])
-        if not non_valid_spaces_for_algo is not None:
-            return False
-        if not agent_space_type in non_valid_spaces_for_algo:
-            return False
-        if not self.available_translations.get(agent_space_type) is not None:
-            return False
-        if (
-            not self.available_translations.get(agent_space_type)
-            not in non_valid_spaces_for_algo
-        ):
-            return False
-        return True
+    def _get_list_of_agents_to_translate(self, learner_config, space_type):
+        agents_to_translate = learner_config["translate_" + space_type + "s_for_agents"]
+        if agents_to_translate == "None":
+            agents_to_translate = [i for i in range(self.model.num_agents)]
+        return agents_to_translate
 
     def step_async(self, actions: Dict[int, torch.Tensor]) -> None:
         self.actions = self.translate_joint_actions(actions)
