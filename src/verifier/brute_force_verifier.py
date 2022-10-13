@@ -1,4 +1,5 @@
 """Verifier"""
+import traceback
 from typing import Dict
 
 import torch
@@ -8,13 +9,16 @@ from tqdm import tqdm
 from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.base_verifier import BaseVerifier
 
+_CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
+ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch_size of 1 leads to OOM!"
+
 
 class BFVerifier(BaseVerifier):
     """Verifier that tries out a grid of alternative actions and choses the
     best combination as approximation to a best response.
     """
 
-    def __init__(self, env, num_envs: int = 32, num_alternative_actions: int = 16):
+    def __init__(self, env, num_envs: int = 1024, num_alternative_actions: int = 32):
         self.env = env
         self.num_agents = self.env.model.num_agents
         self.action_dim = env.model.ACTION_DIM
@@ -40,13 +44,30 @@ class BFVerifier(BaseVerifier):
         sequentialize some of the computation for reduced memory consumption.
         """
         utility_loss = torch.zeros(self.num_agents)
-        for i in tqdm(range(self.num_own_envs)):
-            utility_loss += torch.tensor(
-                [
-                    l / self.num_own_envs
-                    for l in self._verify(learners, 1, self.num_opponent_envs)
-                ]
-            )
+
+        # Lower batch size until tensor fits in (GPU) memory
+        calculation_successful = False
+        mini_batch_size = self.num_own_envs
+        while not calculation_successful:
+            try:
+                for i in tqdm(range(int(self.num_own_envs / mini_batch_size))):
+                    utility_loss += torch.tensor(
+                        [
+                            l / mini_batch_size
+                            for l in self._verify(
+                                learners, mini_batch_size, self.num_opponent_envs
+                            )
+                        ]
+                    )
+                calculation_successful = True
+            except RuntimeError as e:
+                if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
+                    raise e
+                if mini_batch_size <= 1:
+                    traceback.print_exc()
+                    raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
+                mini_batch_size = int(mini_batch_size / 2)
+
         return utility_loss.tolist()
 
     def _verify(
@@ -109,7 +130,7 @@ class BFVerifier(BaseVerifier):
 
             actual_rewards_total = torch.zeros(1, device=self.device)
             alternative_rewards_total = torch.zeros(
-                self.num_own_envs,
+                num_own_envs,
                 self.num_alternative_actions ** self.num_rounds_to_play,
                 device=self.device,
             )
