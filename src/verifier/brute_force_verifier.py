@@ -79,20 +79,31 @@ class BFVerifier(BaseVerifier):
         utility_loss = [None] * self.num_agents
 
         # Dimensions (opponent_batch_size, [actual_actions, alternative_actions])
+        # TODO: Even when policy sharing is used, there are multiple learners!
         for player_position, learner in learners.items():
 
             states = self.env.model.sample_new_states(num_total_envs)
 
-            # TODO: we need the same own valuation for multiple samples of opponents
-            # -> should be done in env
+            # We need to reduce the number of own valuations to exactly
+            # `num_own_envs`: Then, for each valuation and all combinations of
+            # actions throughout all stages of the game are averaged over
+            # `num_opponent_envs` opponents (and their corresponding valuations
+            # and actions).
             own_states = states[
-                : num_own_envs
-                * (self.num_alternative_actions ** self.num_rounds_to_play + 1),
-                [player_position],
-                : self.env.model.valuation_size,
-            ]
-            own_states = own_states.repeat([1, num_opponent_envs, 1]).squeeze()
-            states[:, player_position, 0] = own_states.flatten()
+                :num_own_envs, [player_position], : self.env.model.valuation_size
+            ].view(num_own_envs, 1, self.env.model.valuation_size)
+            own_states = own_states.repeat(
+                [
+                    num_opponent_envs
+                    * (self.num_alternative_actions ** self.num_rounds_to_play + 1),
+                    1,
+                    1,
+                ]
+            )
+            states[:, [player_position], : self.env.model.valuation_size] = own_states
+
+            # NOTE: Sample size from opponents could be reduced analogously to
+            # `num_opponent_envs` to reduce variance
 
             observations = self.env.model.get_observations(states)
 
@@ -136,7 +147,8 @@ class BFVerifier(BaseVerifier):
                 actual_rewards_total += player_rewards[:, 0].mean()
                 alternative_rewards_total += player_rewards[:, 1:]
 
-            # NOTE: Currently we cannot get the BR's b/c we don't track actions from previous stages
+            # NOTE: Currently we cannot get the BR's b/c we don't track actions
+            # from previous stages
 
             # Compute utility of approximate best response
             alternative_utility = alternative_rewards_total.max(axis=1).values.mean()
