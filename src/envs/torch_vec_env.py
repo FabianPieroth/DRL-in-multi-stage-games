@@ -395,6 +395,38 @@ class MATorchVecEnv(VecEnv):
         obses = self.model.get_observations(self.current_states)
         return obses
 
+    def get_action_grid(self, agent_id: int, grid_size: int = 4) -> torch.Tensor:
+        """
+        Generate a grid of alternative actions that are equally spaced on the
+        action domain for continuous action spaces or fall back to return all
+        actions for discrete action spaces.
+        
+        NOTE: Currently, the framework can only handle a static (state/stage
+        independent) action space.
+        """
+        own_action_space = self.model.action_spaces[agent_id]
+        own_action_space.shape
+        if not all(own_action_space.bounded_above) or not all(
+            own_action_space.bounded_below
+        ):
+            raise NotImplementedError("Action space is unbounded.")
+
+        if own_action_space.shape != (1,):
+            raise NotImplementedError(
+                "High dimensional action spaces are not supported yet."
+            )
+
+        if isinstance(own_action_space, Discrete):
+            grid_size = own_action_space.n  # arg grid_size is ignored then
+            action_grid = torch.range(0, own_action_space.n, device=self.device)
+
+        else:
+            low = own_action_space.low.item()
+            high = own_action_space.high.item()
+            action_grid = torch.linspace(low, high, grid_size, device=self.device)
+
+        return action_grid.view(grid_size, *own_action_space.shape)
+
     def get_images(self) -> Sequence[np.ndarray]:
         pass
 

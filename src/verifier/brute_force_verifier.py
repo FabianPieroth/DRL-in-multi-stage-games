@@ -25,15 +25,6 @@ class BFVerifier(BaseVerifier):
 
         self.device = self.env.device
 
-        # Numeric actions
-        if all(isinstance(s, spaces.Box) for s in env.model.action_spaces.values()):
-            self.action_range = [
-                env.model.ACTION_LOWER_BOUND,
-                env.model.ACTION_UPPER_BOUND,
-            ]
-        else:
-            raise ValueError("This verifier is for numeric/continuous actions only.")
-
         self.num_own_envs = num_envs
         self.num_opponent_envs = num_envs
         self.num_alternative_actions = num_alternative_actions
@@ -142,7 +133,7 @@ class BFVerifier(BaseVerifier):
 
                 # Replace our actions with alternative actions
                 # Except the first one -> for actual play
-                alternative_actions = self._generate_action_grid(stage=stage)
+                alternative_actions = self._generate_action_grid(player_position, stage)
                 player_actions = actions[player_position].view(
                     num_own_envs * num_opponent_envs, -1
                 )
@@ -177,7 +168,7 @@ class BFVerifier(BaseVerifier):
 
         return utility_loss
 
-    def _generate_action_grid(self, stage: int):
+    def _generate_action_grid(self, player_position: int, stage: int):
         """Generate a grid of alternative actions."""
 
         # TODO: support for higher action dimensions
@@ -188,12 +179,9 @@ class BFVerifier(BaseVerifier):
 
         # create equidistant lines along the support in each dimension
         lines = [
-            torch.linspace(
-                self.action_range[0],
-                self.action_range[1],
-                self.num_alternative_actions,
-                device=self.device,
-            )
+            self.env.get_action_grid(
+                player_position, self.num_alternative_actions
+            ).view(-1)
             for d in range(dims)
         ]
         mesh = torch.meshgrid(lines)
