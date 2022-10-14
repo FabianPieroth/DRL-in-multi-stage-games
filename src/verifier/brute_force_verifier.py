@@ -1,6 +1,6 @@
 """Verifier"""
 import traceback
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import torch
 from gym import spaces
@@ -16,34 +16,42 @@ ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM
 class BFVerifier(BaseVerifier):
     """Verifier that tries out a grid of alternative actions and choses the
     best combination as approximation to a best response.
+    Assumptions:
+    1. The number of stages is equal for all initial conditions
+    2. We assume that the initial conditions are independent between the agents
+    3. We only support single dimension actions at the moment
     """
 
-    def __init__(self, env, num_envs: int = 16, num_alternative_actions: int = 32):
+    def __init__(self, env, mc_agent: int, mc_opps: int, action_discretization: int):
         self.env = env
         self.num_agents = self.env.model.num_agents
+        self.mc_agent = mc_agent
+        self.mc_opps = mc_opps
+        self.action_discretization = action_discretization
+        self.num_rounds_to_play = (
+            self.env.model.num_rounds_to_play
+        )  # TODO: Is this in every env?
         self.action_dim = env.model.ACTION_DIM
 
         self.device = self.env.device
 
-        # Numeric actions
-        if all(isinstance(s, spaces.Box) for s in env.model.action_spaces.values()):
+        """if all(isinstance(s, spaces.Box) for s in env.model.action_spaces.values()):
             self.action_range = [
                 env.model.ACTION_LOWER_BOUND,
                 env.model.ACTION_UPPER_BOUND,
             ]
         else:
-            raise ValueError("This verifier is for numeric/continuous actions only.")
-
-        self.num_own_envs = num_envs
-        self.num_opponent_envs = num_envs
-        self.num_alternative_actions = num_alternative_actions
-        self.num_rounds_to_play = self.env.model.num_rounds_to_play
+            raise ValueError("This verifier is for numeric/continuous actions only.")"""
 
     def verify(self, learners: Dict[int, SABaseAlgorithm]):
         """Loop over the current player's valuation. This can be done to
         sequentialize some of the computation for reduced memory consumption.
         """
-        utility_loss = torch.zeros(self.num_agents)
+        utility_loss = torch.zeros(self.num_agents, device=self.device)
+
+        for agent_id in range(self.num_agents):
+            utility_loss[agent_id] = self._get_utility_loss(learners, agent_id)
+        return utility_loss.cpu().detach().tolist()
 
         # Lower batch size until tensor fits in (GPU) memory
         calculation_successful = False
@@ -68,7 +76,86 @@ class BFVerifier(BaseVerifier):
                     raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
                 mini_batch_size = int(mini_batch_size / 2)
 
-        return utility_loss.tolist()
+    def _get_utility_loss(self, learners, agent_id: int) -> float:
+        """
+        Args:
+            learners (_type_): holds agents' strategies
+            agent_id (int): 
+
+        Returns:
+            float: estimated utility loss
+            # TODO: could also return best response
+        """
+        first_stage_batch_sizes = self._get_first_stage_batch_sizes()
+        eval_utilities = torch.zeros(len(first_stage_batch_sizes), device=self.device)
+        for k, batch_size in enumerate(first_stage_batch_sizes):
+            eval_utilities[k] = self._get_batch_utilities(
+                learners, agent_id, batch_size
+            )
+        return self.weighted_average(eval_utilities, first_stage_batch_sizes)
+
+    @staticmethod
+    def weighted_average(values: torch.Tensor, weight_list: List[int]) -> float:
+        # TODO: Put this into some utils file
+        weight_tensor = torch.tensor(weight_list).to(values.device)
+        weight_tensor = weight_tensor / torch.sum(weight_tensor)
+        return torch.mean(values * weight_tensor)
+
+    def _get_batch_utilities(self, learners, agent_id: int, batch_size: int) -> float:
+        """Iterative Monte-Carlo approximation over an action-grid for the
+        given agent. We expand the game tree and recursively average over
+        the opponent actions' outcomes.
+
+        Args:
+            learners (_type_): holds agents' strategies
+            agent_id (int):
+            batch_size (int): 
+        Returns:
+            float: estimated utility loss
+            # TODO: could also return best response
+        """
+        batch_utilities = torch.zeros(
+            self._total_utilities_shape_for_batch(batch_size), device=self.device
+        )
+
+        agent_initial_states = self.env.model.sample_new_states(batch_size)
+        agent_initial_obs = self.env.model.get_observations(agent_initial_states)[
+            agent_id
+        ]
+
+        sim_initial_states = self.env.model.sample_new_states(self.mc_opps)
+        sim_initial_obs = self.env.model.get_observations(sim_initial_states)[agent_id]
+        """Repeat and play:
+        1. repeat the agent_obs (batch_size, obs_size) along oppo_obs num (mc_opps, ) 
+        to get agent_obs of shape (batch_size * mc_opps, obs_size) and repeat oppo_obs by batch_size
+        2. get states from new observation dict
+        3. repeat with actions as well
+        4. make step
+        5. reshape rewards (batch_size * mc_opps,...) to (batch_size, mc_opps)
+        6. add and broadcast reshaped rewards to batch_utilities
+        7. repeat for next stages
+        """
+
+    def _total_utilities_shape_for_batch(self, batch_size: int) -> Tuple[int]:
+        """Gives the shape of total utilities to be estimated in a single batch rollout.
+        Args:
+            batch_size (int):
+        Returns:
+            Tuple[int]: Shape of utility tensor
+        """
+        return (batch_size,) + tuple(
+            [self.action_discretization, self.mc_opps] * self.num_rounds_to_play
+        )
+
+    def _get_first_stage_batch_sizes(self) -> List[int]:
+        """We check how to distribute the initial draws of
+        environments so that they fit on the GPU.
+
+        Returns:
+            List[int]: How many envs to create in first stage
+        """
+        # TODO:
+        return [2 for _ in range(self.mc_agent / 2)]
 
     def _verify(
         self,
