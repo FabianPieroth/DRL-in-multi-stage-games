@@ -386,6 +386,47 @@ class SequentialAuction(BaseEnvForVec):
             stage = self.num_rounds_to_play - 1
         return stage
 
+    def obs2state(self, observation_dict: dict) -> torch.Tensor:
+        """For the verifier, we need to recreate the state from observations."""
+        batch_size = observation_dict[0].shape[0]
+        states = -torch.ones(
+            (
+                batch_size,
+                self.num_opponents + 1,
+                self.payments_start_index + self.num_rounds_to_play,
+            ),
+            device=self.device,
+        )
+
+        if self.reduced_observation_space:
+            stage = observation_dict[0][
+                0, 1
+            ]  # NOTE: assumes all games are in same stage
+            states[:, :, 1] = stage
+            for agent_id in range(self.num_agents):
+                states[
+                    :,
+                    agent_id,
+                    self.valuations_start_index : self.valuations_start_index
+                    + self.valuation_size,
+                ] = observation_dict[agent_id][
+                    :,
+                    self.valuations_start_index : self.valuations_start_index
+                    + self.valuation_size,
+                ]
+
+                won = observation_dict[agent_id][:, 2]
+                # states[:, agent_id, ???] = won
+                raise NotImplementedError("We don't know when the agent won!")
+
+        else:
+            for agent_id in range(self.num_agents):
+                states[:, agent_id, :] = observation_dict[agent_id][
+                    :, : self.payments_start_index + self.num_rounds_to_play
+                ]
+
+        return states
+
     def _has_won_already(self, state: torch.Tensor, stage: int):
         """Check if the current player already has won in previous stages of the auction."""
         # NOTE: unit-demand hardcoded
