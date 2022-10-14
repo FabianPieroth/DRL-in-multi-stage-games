@@ -6,6 +6,7 @@ import torch
 from gym import spaces
 from tqdm import tqdm
 
+import src.utils_folder.logging_utils as log_ut
 from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.base_verifier import BaseVerifier
 
@@ -50,7 +51,7 @@ class BFVerifier(BaseVerifier):
         utility_loss = torch.zeros(self.num_agents, device=self.device)
 
         for agent_id in range(self.num_agents):
-            utility_loss[agent_id] = self._get_utility_loss(learners, agent_id)
+            utility_loss[agent_id] = self._get_agent_utility_loss(learners, agent_id)
         return utility_loss.cpu().detach().tolist()
 
         # Lower batch size until tensor fits in (GPU) memory
@@ -76,7 +77,7 @@ class BFVerifier(BaseVerifier):
                     raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
                 mini_batch_size = int(mini_batch_size / 2)
 
-    def _get_utility_loss(self, learners, agent_id: int) -> float:
+    def _get_agent_utility_loss(self, learners, agent_id: int) -> float:
         """
         Args:
             learners (_type_): holds agents' strategies
@@ -99,12 +100,13 @@ class BFVerifier(BaseVerifier):
         # TODO: Put this into some utils file
         weight_tensor = torch.tensor(weight_list).to(values.device)
         weight_tensor = weight_tensor / torch.sum(weight_tensor)
-        return torch.mean(values * weight_tensor)
+        return torch.sum(values * weight_tensor)
 
     def _get_batch_utilities(self, learners, agent_id: int, batch_size: int) -> float:
         """Iterative Monte-Carlo approximation over an action-grid for the
-        given agent. We expand the game tree and recursively average over
-        the opponent actions' outcomes.
+        given agent. We expand the game tree and average over
+        the opponent actions' outcomes. We simulate agent grid actions and
+        query the strategies.
 
         Args:
             learners (_type_): holds agents' strategies
@@ -123,8 +125,46 @@ class BFVerifier(BaseVerifier):
             agent_id
         ]
 
+        agent_grid_actions = self.env.get_action_grid(
+            agent_id, grid_size=self.action_discretization
+        )
+
         sim_initial_states = self.env.model.sample_new_states(self.mc_opps)
-        sim_initial_obs = self.env.model.get_observations(sim_initial_states)[agent_id]
+        sim_initial_obs = self.env.model.get_observations(sim_initial_states)
+
+        states = {agent_id: None for agent_id in range(self.num_agents)}
+        episode_starts = torch.ones((self.mc_opps,), dtype=bool, device=self.device)
+        opp_actions = log_ut.get_eval_ma_actions(
+            learners,
+            sim_initial_obs,
+            states,
+            episode_starts,
+            True,
+            excluded_agents=[agent_id],
+        )
+
+        # ############### REPEAT TENSORS ############### #
+        """
+        agent_initial_obs: (batch_size, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+        sim_initial_obs_agent: (mc_opp, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+        agent_grid_actions: (action_discretization, action_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+        opp_actions: (mc_opp, action_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+        """
+        # TODO: Check if torch.expand() instead of torch.repeat() is feasible!
+        cur_batch_size = agent_initial_obs.shape[0]
+
+        agent_initial_obs = self._repeat_tensor_along_new_axis(
+            data=agent_initial_obs,
+            pos=[1, 1],
+            repeats=[self.action_discretization, self.mc_opps],
+        )
+
+        agent_initial_obs = agent_initial_obs.unsqueeze(1).unsqueeze(1)
+        agent_initial_obs = agent_initial_obs.repeat(
+            1, self.action_discretization, self.mc_opps, 1
+        )
+        flatten_agent_initial_obs = torch.flatten(agent_initial_obs, end_dim=2)
+
         """Repeat and play:
         1. repeat the agent_obs (batch_size, obs_size) along oppo_obs num (mc_opps, ) 
         to get agent_obs of shape (batch_size * mc_opps, obs_size) and repeat oppo_obs by batch_size
@@ -135,6 +175,27 @@ class BFVerifier(BaseVerifier):
         6. add and broadcast reshaped rewards to batch_utilities
         7. repeat for next stages
         """
+
+    @staticmethod
+    def _repeat_tensor_along_new_axis(
+        data: torch.Tensor, pos: List[int], repeats: List[int]
+    ) -> torch.Tensor:
+        """Add additional dimensions as pos and repeat it for repeats along these dimensions.
+
+        Args:
+            data (torch.Tensor): tensor to be repeated
+            pos (List[int]): non-decreasing order of positions where dimensions should be added
+            repeats (List[int]): number of repeats of dimensions
+
+        Returns:
+            torch.Tensor: repeated tensor
+        """
+        assert len(pos) == len(repeats), "Each pos needs a specified repeat!"
+        initial_shape = data.shape
+        for single_pos in pos:
+            data = data.unsqueeze(single_pos)
+
+        data.repeat()  # TODO: make tuple, insert repeats between 1's
 
     def _total_utilities_shape_for_batch(self, batch_size: int) -> Tuple[int]:
         """Gives the shape of total utilities to be estimated in a single batch rollout.
@@ -155,7 +216,7 @@ class BFVerifier(BaseVerifier):
             List[int]: How many envs to create in first stage
         """
         # TODO:
-        return [2 for _ in range(self.mc_agent / 2)]
+        return [2 for _ in range(int(self.mc_agent / 2))]
 
     def _verify(
         self,

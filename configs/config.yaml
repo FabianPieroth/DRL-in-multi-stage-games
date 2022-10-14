@@ -7,7 +7,7 @@ delete_logs_after_training: false
 device: 2
 seed: 0
 num_envs: 4_000
-eval_freq: 100
+eval_freq: 1
 iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
@@ -17,4 +17,5 @@ defaults:
   - rl_envs: sequential_auction
   - algorithm_configs: all_algos
   - space_translators: default_config
+  - verifier: debug_verifier
   - _self_

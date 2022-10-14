@@ -53,7 +53,12 @@ class MultiAgentCoordinator:
         if all(
             isinstance(s, spaces.Box) for s in self.env.model.action_spaces.values()
         ):
-            verifier = BFVerifier(env=self.env)
+            verifier = BFVerifier(
+                mc_agent=self.config["verifier"]["mc_agent"],
+                mc_opps=self.config["verifier"]["mc_opps"],
+                action_discretization=self.config["verifier"]["action_discretization"],
+                env=self.env,
+            )
         elif all(
             isinstance(s, spaces.Discrete)
             for s in self.env.model.action_spaces.values()

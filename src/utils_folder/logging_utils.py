@@ -154,13 +154,18 @@ def evaluate_policies(
     return episode_rewards, episode_lengths
 
 
-def get_eval_ma_actions(learners, observations, states, episode_starts, deterministic):
+def get_eval_ma_actions(
+    learners, observations, states, episode_starts, deterministic, excluded_agents=None
+):
+    if excluded_agents is None:
+        excluded_agents = []
     actions = {}
     for agent_id, learner in learners.items():
-        actions[agent_id], states[agent_id] = learner.predict(
-            observations[agent_id],
-            states[agent_id],
-            episode_start=episode_starts,
-            deterministic=deterministic,
-        )
+        if agent_id not in excluded_agents:
+            actions[agent_id], states[agent_id] = learner.predict(
+                observations[agent_id],
+                states[agent_id],
+                episode_start=episode_starts,
+                deterministic=deterministic,
+            )
     return actions
