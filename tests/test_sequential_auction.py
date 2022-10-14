@@ -12,14 +12,15 @@ def test_sequential_auction_in_bne():
     """Test the `sequential_auction` game environment by playing the BNE
     strategy. Collect the total rewards and compare with expectation.
     """
+    io_ut.set_global_seed(0)
     batch_size: int = 2 ** 10  # The higher the lower the error tolerance should be
 
-    config = io_ut.get_and_store_config()
+    config = io_ut.get_config()
     config["device"] = DEVICE
-    config = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
+    rl_config = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
         "configs"
     ]
-    env = SequentialAuction(config["rl_envs"], device=DEVICE)
+    env = SequentialAuction(rl_config["rl_envs"], device=DEVICE)
 
     states = env.sample_new_states(n=batch_size)
     observations = env.get_observations(states)

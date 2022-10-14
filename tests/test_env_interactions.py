@@ -8,20 +8,31 @@ import src.utils_folder.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
+RPS_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_rps",
+    "reinforce": "reinforce_for_rps",
+    "dqn": "dqn_for_rps",
+    "rps_single_action": "rps_rock",
+}
+
 
 def test_learning_rockpaperscissors():
     """Runs multi agent learning in RPS."""
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    io_ut.set_global_seed(0)
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["total_training_steps"] = 1
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
         "configs"
     ]["rl_envs"]
     rl_envs["num_agents"] = 3
-    config["algorithms"] = ["ppo", "ppo", "ppo"]
+    algorithms = ["ppo", "ppo", "ppo"]
+    config["algorithms"] = algorithms
+    tst_ut.set_specific_algo_configs(config, algorithms, RPS_ALGO_INSTANCE_DICT)
     config["rl_envs"] = rl_envs
     tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)
 
 
 ids_sequ_auction, testdata_sequ_auction = zip(
@@ -34,6 +45,11 @@ ids_sequ_auction, testdata_sequ_auction = zip(
     ]
 )
 
+SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_sequ_auction",
+    "reinforce": "reinforce_for_sequ_auction",
+}
+
 
 @pytest.mark.parametrize(
     "mechanism_type,num_agents,reduced_observation_space,collapse_symmetric_opponents",
@@ -43,11 +59,16 @@ ids_sequ_auction, testdata_sequ_auction = zip(
 def test_learning_sequential_auctions(
     mechanism_type, num_agents, reduced_observation_space, collapse_symmetric_opponents
 ):
-    hydra.core.global_hydra.GlobalHydra().clear()
     """Runs multi agent learning in sequential auctions for specified parameters."""
-    config = io_ut.get_and_store_config()
+    hydra.core.global_hydra.GlobalHydra().clear()
+    io_ut.set_global_seed(0)
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["policy_sharing"] = True
+    config["algorithms"] = "ppo"
+    tst_ut.set_specific_algo_configs(
+        config, ["ppo"], SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
+    )
 
     rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
         "configs"
@@ -64,13 +85,20 @@ def test_learning_sequential_auctions(
     config["total_training_steps"] = 1
 
     tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)
+
+
+SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_signaling_contest",
+    "reinforce": "reinforce_for_signaling_contest",
+}
 
 
 ids_sign_contest, testdata_sign_contest = zip(
     *[
         ["no-signaling-small", ("true_valuations", 4)],
-        ["no-signaling-large", ("true_valuations", 4)],
-        ["signaling-small", ("winning_bids", 8)],
+        ["no-signaling-large", ("true_valuations", 8)],
+        ["signaling-small", ("winning_bids", 4)],
         ["signaling-large", ("winning_bids", 8)],
     ]
 )
@@ -81,8 +109,9 @@ ids_sign_contest, testdata_sign_contest = zip(
 )
 def test_learning_signaling_contest(information_case, num_agents):
     """Runs multi agent learning in sequential auctions for specified parameters."""
+    io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["policy_sharing"] = True
     config["algorithms"] = ["ppo" for _ in range(num_agents)]
@@ -91,9 +120,13 @@ def test_learning_signaling_contest(information_case, num_agents):
     ]["rl_envs"]
     rl_envs["information_case"] = information_case
     config["rl_envs"] = rl_envs
+    tst_ut.set_specific_algo_configs(
+        config, ["ppo"], SIGNALING_CONTEST_ALGO_INSTANCE_DICT
+    )
     config["rl_envs"]["num_agents"] = num_agents
 
     io_ut.enrich_config(config)
     config["total_training_steps"] = 1
 
     tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)

@@ -41,7 +41,6 @@ class SABaseAlgorithm(PPO, ABC):
             self.action_space.high = self.action_space.high.to(device=self.device)
 
     def prepare_next_rollout(self, env, callback):
-        assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
 
@@ -62,7 +61,17 @@ class SABaseAlgorithm(PPO, ABC):
             self.policy.reset_noise(env.num_envs)
 
     @abstractmethod
-    def get_actions_with_data(self, agent_id: int):
+    def get_actions_with_data(self, obs_tensor: th.Tensor):
+        """Computes actions for the current state for env.step()
+
+        Args:
+            obs_tensor (th.Tensor): Observations the agent makes in the env.
+
+        Returns:
+            actions_for_env: possibly adapted actions for env
+            actions: predicted actions by policy
+            additional_actions_data: additional data needed for algorithm later on
+        """
         pass
 
     def prepare_actions_for_buffer(self, actions):
@@ -77,6 +86,8 @@ class SABaseAlgorithm(PPO, ABC):
 
     def ingest_data_to_learner(
         self,
+        sa_last_obs,
+        last_episode_starts,
         sa_actions,
         sa_rewards,
         sa_additional_actions_data,
@@ -87,6 +98,9 @@ class SABaseAlgorithm(PPO, ABC):
         policy_sharing: bool,
         callback,
     ):
+        """This interface is used by the `MultiAgentCoordinator` to be the
+        single point of information sharing with this learner.
+        """
         if not (policy_sharing and agent_id > 0):
             self.num_timesteps += self.env.num_envs
 
@@ -97,16 +111,13 @@ class SABaseAlgorithm(PPO, ABC):
         sa_rewards = self.handle_dones(dones, infos, sa_rewards, agent_id)
 
         self.add_data_to_replay_buffer(
-            sa_actions, sa_rewards, sa_additional_actions_data, agent_id
+            sa_last_obs,
+            last_episode_starts,
+            sa_actions,
+            sa_rewards,
+            sa_additional_actions_data,
+            agent_id,
         )
-
-        if policy_sharing:
-            if (agent_id + 1) == self.env.model.num_agents:
-                self.update_internal_state_after_step(new_obs, dones)
-            else:
-                pass
-        else:
-            self.update_internal_state_after_step(new_obs, dones)
 
         if self.rollout_buffer.full:
             sa_new_obs = new_obs[agent_id]
@@ -126,13 +137,15 @@ class SABaseAlgorithm(PPO, ABC):
 
     @abstractmethod
     def add_data_to_replay_buffer(
-        self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
+        self,
+        sa_last_obs,
+        last_episode_starts,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        agent_id: int,
     ):
         pass
-
-    def update_internal_state_after_step(self, new_obs, dones):
-        self._last_obs = new_obs
-        self._last_episode_starts = dones
 
     @abstractmethod
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
@@ -182,18 +195,6 @@ class SABaseAlgorithm(PPO, ABC):
             total_timesteps += self.num_timesteps
         self._total_timesteps = total_timesteps
         self._num_timesteps_at_start = self.num_timesteps
-
-        # Avoid resetting the environment when calling ``.learn()`` consecutive times
-        if reset_num_timesteps or self._last_obs is None:
-            self._last_obs = (
-                self.env.reset()
-            )  # pytype: disable=annotation-type-mismatch
-            self._last_episode_starts = th.ones(
-                (self.env.num_envs,), dtype=bool, device=self.device
-            )
-            # Retrieve unnormalized observation for saving into the buffer
-            if self._vec_normalize_env is not None:
-                self._last_original_obs = self._vec_normalize_env.get_original_obs()
 
         if eval_env is not None and self.seed is not None:
             eval_env.seed(self.seed)
@@ -298,6 +299,9 @@ class MABaseAlgorithm(BaseAlgorithm):
         sde_sample_freq: int = -1,
         supported_action_spaces: Optional[Tuple[gym.spaces.Space, ...]] = None,
     ):
+        """Most basic multi-agent base algorithm that is used, e.g., for non
+        neural network based policies.
+        """
         self.agent_id = agent_id
         self.config = config
         if policy is None:
@@ -323,6 +327,8 @@ class MABaseAlgorithm(BaseAlgorithm):
 
     def ingest_data_to_learner(
         self,
+        sa_last_obs,
+        last_episode_starts,
         sa_actions,
         sa_rewards,
         sa_additional_actions_data,
@@ -333,7 +339,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         policy_sharing: bool,
         callback,
     ):
-        raise NotImplementedError
+        self.num_timesteps += self.env.num_envs
 
     def predict(
         self,
@@ -345,7 +351,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         raise NotImplementedError
 
     def get_actions_with_data(
-        self, agent_id: int
+        self, sa_obs: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, Tuple]:
         """Computes actions for the current state for env.step()
 

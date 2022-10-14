@@ -162,8 +162,6 @@ class SequentialAuction(BaseEnvForVec):
             where ...
         `current_round` and `num_rounds_to_play`.
         """
-        # TODO: perhaps it's easier to split state into multiple tensors? @Nils: is this still relevant?
-        # -> needs special treatment in `torch_vec_env`
         self.valuations_start_index = 0
         self.allocations_start_index = self.valuation_size
         self.payments_start_index = (

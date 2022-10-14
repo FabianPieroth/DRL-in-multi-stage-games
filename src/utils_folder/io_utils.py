@@ -1,8 +1,12 @@
 import datetime
 import os
+import random
+import shutil
 import warnings
 
 import hydra
+import numpy as np
+import torch
 from omegaconf import DictConfig, OmegaConf
 
 import src.utils_folder.policy_utils as pl_ut
@@ -29,11 +33,22 @@ def read_hydra_config():
     return cfg
 
 
-def get_and_store_config() -> DictConfig:
+def get_config() -> DictConfig:
     config = read_hydra_config()
     enrich_config(config)
-    store_config(config)
     return config
+
+
+def set_global_seed(seed: int):
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def store_config_and_set_seed(config: DictConfig):
+    store_config(config)
+    set_global_seed(config["seed"])
 
 
 def store_config(config: DictConfig):
@@ -88,8 +103,24 @@ def get_env_log_path_extension(config: DictConfig) -> str:
         return "/" + config["rl_envs"]["mechanism_type"]
     elif config["rl_envs"]["name"] == "signaling_contest":
         return "/" + config["rl_envs"]["information_case"]
+    elif config["rl_envs"]["name"] == "simple_soccer":
+        return ""
     else:
         warnings.warn(
             "No env log path extension specified for: " + config["rl_envs"]["name"]
         )
         return ""
+
+
+def wrap_up_experiment_logging(config: DictConfig):
+    if config["delete_logs_after_training"]:
+        delete_folder(config["experiment_log_path"])
+
+
+def delete_folder(path_to_folder: str):
+    shutil.rmtree(path_to_folder, ignore_errors=True)
+
+
+def clean_logs_after_test(config: DictConfig):
+    config["delete_logs_after_training"] = True
+    wrap_up_experiment_logging(config)

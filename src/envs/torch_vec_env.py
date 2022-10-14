@@ -6,9 +6,16 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, U
 import gym
 import numpy as np
 import torch
-from gym.spaces import Space
+from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete, Space
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.vec_env import VecEnv
+
+from src.envs.space_translators import (
+    BaseSpaceTranslator,
+    BoxToDiscreteSpaceTranslator,
+    IdentitySpaceTranslator,
+    MultiDiscreteToDiscreteSpaceTranslator,
+)
 
 VecEnvIndices = Union[None, int, Iterable[int]]
 TorchVecEnvStepReturn = Tuple[
@@ -177,18 +184,106 @@ class MATorchVecEnv(VecEnv):
 
         self.observation_spaces = model.observation_spaces
         self.action_spaces = model.action_spaces
+        self.joint_spaces = {
+            "action_space": self.action_spaces,
+            "observation_space": self.observation_spaces,
+        }
         self.observation_space = None
         self.action_space = None
+        self.learner_type = {
+            agent_id: None for agent_id in range(self.model.num_agents)
+        }
+        self.agent_translators = {
+            "action_space": {
+                agent_id: None for agent_id in range(self.model.num_agents)
+            },
+            "observation_space": {
+                agent_id: None for agent_id in range(self.model.num_agents)
+            },
+        }
+
+    def set_space_translators_for_agent(
+        self, agent_id: int, learner_config: Dict, translator_configs: Dict
+    ):
+        self._set_translator_for_learner(
+            agent_id, learner_config, translator_configs, "action_space"
+        )
+        self._set_translator_for_learner(
+            agent_id, learner_config, translator_configs, "observation_space"
+        )
 
     def set_env_for_current_agent(self, agent_id: int):
         """Sets the environment to the view of provided agent. 
         Needed to initialize leaners.
         """
-        self.observation_space = self.observation_spaces[agent_id]
-        self.action_space = self.action_spaces[agent_id]
+        self.action_space = self.agent_translators["action_space"][agent_id].image_space
+        self.observation_space = self.agent_translators["observation_space"][
+            agent_id
+        ].image_space
 
-    def step_async(self, actions: np.ndarray) -> None:
-        self.actions = actions
+    def _set_translator_for_learner(
+        self,
+        agent_id: int,
+        learner_config: Dict,
+        translator_configs: Dict,
+        space_type: str,
+    ) -> Space:
+        space_translator_class, translator_config = self._get_translator_type_and_config(
+            agent_id, learner_config, translator_configs, space_type
+        )
+        agent_translator = space_translator_class(
+            domain_space=self.joint_spaces[space_type][agent_id],
+            config=translator_config,
+        )
+        self.agent_translators[space_type][agent_id] = agent_translator
+
+    def _get_translator_type_and_config(
+        self,
+        agent_id: int,
+        learner_config: Dict,
+        translator_configs: Dict,
+        space_type: str,
+    ) -> Tuple[BaseSpaceTranslator, Dict]:
+
+        translator_type = learner_config[space_type + "_translator"]
+        agents_to_translate = self._get_list_of_agents_to_translate(
+            learner_config, space_type
+        )
+
+        if translator_type == "identity" or agent_id not in agents_to_translate:
+            space_translator_class, translator_config = IdentitySpaceTranslator, None
+        elif translator_type == "multidiscrete_to_discrete":
+            space_translator_class = MultiDiscreteToDiscreteSpaceTranslator
+            agent_space = self.joint_spaces[space_type][agent_id]
+            translator_config = {"multi_space_shape": tuple(agent_space.nvec)}
+        elif translator_type == "box_to_discrete":
+            space_translator_class = BoxToDiscreteSpaceTranslator
+            translator_config = {
+                "granularity": translator_configs["box_to_discrete_granularity"],
+                "maximum_width": translator_configs["box_to_discrete_maximum_width"],
+            }
+        else:
+            raise ValueError("No valid translation type provided: " + translator_type)
+        return space_translator_class, translator_config
+
+    def _get_list_of_agents_to_translate(self, learner_config, space_type):
+        agents_to_translate = learner_config["translate_" + space_type + "s_for_agents"]
+        if agents_to_translate == "None":
+            agents_to_translate = [i for i in range(self.model.num_agents)]
+        return agents_to_translate
+
+    def step_async(self, actions: Dict[int, torch.Tensor]) -> None:
+        self.actions = self.translate_joint_actions(actions)
+
+    def translate_joint_actions(
+        self, actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        translated_actions = {}
+        for agent_id, agent_actions in actions.items():
+            translated_actions[agent_id] = self.agent_translators["action_space"][
+                agent_id
+            ].inv_translate(agent_actions)
+        return translated_actions
 
     def step_wait(self) -> TorchVecEnvStepReturn:
         """
@@ -250,7 +345,7 @@ class MATorchVecEnv(VecEnv):
             )
             for agent_id in range(self.model.num_agents):
                 obses[agent_id][dones] = newly_sampled_obses[agent_id]
-
+        # TODO: observation translator not in place yet!
         return (
             self.clone_tensor_dict(obses),
             self.clone_tensor_dict(rewards),

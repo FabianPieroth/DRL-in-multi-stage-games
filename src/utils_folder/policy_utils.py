@@ -3,13 +3,20 @@ from typing import Dict
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from src.envs.rock_paper_scissors import RockPaperScissors
+from src.envs.simple_soccer import SimpleSoccer
 from src.envs.torch_vec_env import MATorchVecEnv
+from src.learners.gpu_dqn import GPUDQN
 from src.learners.ppo import VecPPO
 from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
+from src.learners.simple_soccer_policies.block_policy import BlockPolicy
+from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolicy
+from src.learners.simple_soccer_policies.goal_wall_policy import GoalWallPolicy
+from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPolicy
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
+    set_space_translators_in_env(config, env)
     if config["policy_sharing"]:
         shared_policy = get_policy_for_agent(0, config, env)
         return {agent_id: shared_policy for agent_id in range(env.model.num_agents)}
@@ -18,6 +25,15 @@ def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
             agent_id: get_policy_for_agent(agent_id, config, env)
             for agent_id in range(env.model.num_agents)
         }
+
+
+def set_space_translators_in_env(config: Dict, env: MATorchVecEnv):
+    for agent_id in range(env.model.num_agents):
+        env.set_space_translators_for_agent(
+            agent_id,
+            config["algorithm_configs"][get_algo_name(agent_id, config)],
+            config["space_translators"],
+        )
 
 
 def get_policy_for_agent(
@@ -62,6 +78,67 @@ def get_policy_for_agent(
             batch_size=reinforce_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
+        )
+    elif algo_name == "soccer_chase_ball" and isinstance(env.model, SimpleSoccer):
+        return ChaseBallPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "soccer_goal_wall" and isinstance(env.model, SimpleSoccer):
+        return GoalWallPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "soccer_block" and isinstance(env.model, SimpleSoccer):
+        return BlockPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "soccer_handcrafted" and isinstance(env.model, SimpleSoccer):
+        return HandcraftedPolicy(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+        )
+    elif algo_name == "dqn":
+        dqn_config = config["algorithm_configs"]["dqn"]
+        if config["policy_sharing"]:
+            n_rollout_steps *= env.model.num_agents
+        return GPUDQN(
+            policy=dqn_config["policy"],
+            env=env,
+            learning_rate=1e-4,
+            buffer_size=dqn_config["buffer_size"],
+            learning_starts=dqn_config["learning_starts"],
+            batch_size=dqn_config["batch_size"],
+            tau=dqn_config["tau"],
+            gradient_steps=dqn_config["gradient_steps"],
+            gamma=dqn_config["gamma"],
+            train_freq=(dqn_config["n_rollout_steps"], "step"),
+            optimize_memory_usage=False,
+            target_update_interval=dqn_config["target_update_interval"],
+            exploration_fraction=dqn_config["exploration_fraction"],
+            exploration_initial_eps=dqn_config["exploration_initial_eps"],
+            exploration_final_eps=dqn_config["exploration_final_eps"],
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            verbose=0,
+            seed=None,
+            device=config["device"],
         )
     else:
         raise ValueError(

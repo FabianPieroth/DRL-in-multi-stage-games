@@ -8,6 +8,13 @@ import src.utils_folder.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
+ALGO_INSTANCE_DICT = {
+    "ppo": "ppo_for_rps",
+    "reinforce": "reinforce_for_rps",
+    "dqn": "dqn_for_rps",
+    "rps_single_action": "rps_rock",
+}
+
 ids, testdata = zip(
     *[
         ["all_ppo", ["ppo", "ppo", "ppo"]],
@@ -15,6 +22,8 @@ ids, testdata = zip(
         ["ppo_ppo_dummy", ["ppo", "ppo", "rps_single_action"]],
         ["dummy_ppo_dummy", ["rps_single_action", "ppo", "rps_single_action"]],
         ["all_dummy", ["rps_single_action", "rps_single_action", "rps_single_action"]],
+        ["all_dqn", ["dqn", "dqn", "dqn"]],
+        ["dummy_dqn_dummy", ["rps_single_action", "dqn", "rps_single_action"]],
     ]
 )
 
@@ -22,7 +31,8 @@ ids, testdata = zip(
 @pytest.mark.parametrize("algorithms", testdata, ids=ids)
 def test_algos_in_rockpaperscissors(algorithms):
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_and_store_config()
+    io_ut.set_global_seed(0)
+    config = io_ut.get_config()
     config["device"] = DEVICE
     config["iteration_num"] = 1
     config["num_envs"] = 32
@@ -30,7 +40,9 @@ def test_algos_in_rockpaperscissors(algorithms):
     rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
         "configs"
     ]["rl_envs"]
+    tst_ut.set_specific_algo_configs(config, algorithms, ALGO_INSTANCE_DICT)
     config["rl_envs"] = rl_envs
     config["algorithms"] = algorithms
     io_ut.enrich_config(config)
     tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)

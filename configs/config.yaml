@@ -1,16 +1,20 @@
-valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest"]
+
+valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest", "simple_soccer"]
 log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
+delete_logs_after_training: false
 device: 2
-num_envs: 4096
+seed: 0
+num_envs: 4_000
 eval_freq: 100
 iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
 algorithms: "ppo"
-policy_sharing: true
+policy_sharing: false
 defaults:
-  - rl_envs: signaling_contest
+  - rl_envs: sequential_auction
   - algorithm_configs: all_algos
+  - space_translators: default_config
   - _self_

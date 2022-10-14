@@ -37,6 +37,7 @@ class MultiAgentCoordinator:
         self.verifier = self._setup_verifier()
 
     def _get_policy_parameters(self, learners):
+        """Collect all current neural network parameters of the policy."""
         param_dict = {}
         for agent_id, learner in learners.items():
             if learner.policy is not None:
@@ -62,13 +63,13 @@ class MultiAgentCoordinator:
             raise NotImplementedError("Could not infer verifier for this game.")
         return verifier
 
-    def get_ma_action(self):
+    def get_ma_action(self, obs: Dict[int, torch.Tensor]):
         actions_for_env = {}
         actions = {}
         additional_actions_data = {}
         for agent_id, learner in self.learners.items():
             sa_actions_for_env, sa_actions, sa_additional_actions_data = learner.get_actions_with_data(
-                agent_id
+                obs[agent_id]
             )
             actions_for_env[agent_id] = sa_actions_for_env
             actions[agent_id] = sa_actions
@@ -77,6 +78,8 @@ class MultiAgentCoordinator:
 
     def ingest_ma_data_into_learners(
         self,
+        last_obs,
+        last_episode_starts,
         actions,
         rewards,
         additional_actions_data,
@@ -86,8 +89,11 @@ class MultiAgentCoordinator:
         policy_sharing,
         callbacks,
     ):
+        """All required information is shared with the individual learners."""
         for agent_id, learner in self.learners.items():
             learner.ingest_data_to_learner(
+                last_obs[agent_id],
+                last_episode_starts,
                 actions[agent_id],
                 rewards[agent_id],
                 additional_actions_data[agent_id],
@@ -100,6 +106,9 @@ class MultiAgentCoordinator:
             )
 
     def _do_break_for_policy_sharing(self, agent_id: int):
+        """If all agents share the same policy, we only train the one at 
+        index 0.
+        """
         return self.config["policy_sharing"] and agent_id > 0
 
     def _display_and_log_training_progress(self, iteration, log_interval):
@@ -151,7 +160,8 @@ class MultiAgentCoordinator:
     def _evaluate_policies(
         self, iteration: int, eval_freq: int, n_eval_episodes: int, callbacks: None
     ) -> None:
-        if iteration == 0 or (iteration + 1) % eval_freq == 0:
+        """Evaluate current training progress."""
+        if (iteration + 1) % eval_freq == 0:
             log_ut.evaluate_policies(
                 self.learners,
                 self.env,
@@ -189,12 +199,21 @@ class MultiAgentCoordinator:
         n_eval_episodes: int = 5,
         reset_num_timesteps: bool = True,
     ) -> "OnPolicyAlgorithm":
-        """Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`"""
-
+        """Main training loop for multi-agent learning: Here, (1) the agents
+        are asked to submit actions, (2) these are passed to the environment,
+        and (3) the utilities are passed back to the agents for learning.        
+        
+        Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`.
+        """
         iteration = 0
 
         total_timesteps, callbacks = self._setup_learners_for_training(
             total_timesteps, callbacks, eval_freq, n_eval_episodes, reset_num_timesteps
+        )
+
+        last_obs = self.env.reset()
+        last_episode_starts = torch.ones(
+            (self.env.num_envs,), dtype=bool, device=self.env.device
         )
 
         while (
@@ -211,7 +230,9 @@ class MultiAgentCoordinator:
                 )
                 self._verify_policies(iteration, eval_freq)
 
-            actions_for_env, actions, additional_actions_data = self.get_ma_action()
+            actions_for_env, actions, additional_actions_data = self.get_ma_action(
+                last_obs
+            )
 
             new_obs, rewards, dones, infos = self.env.step(
                 actions_for_env
@@ -220,6 +241,8 @@ class MultiAgentCoordinator:
             self.n_step += 1
 
             self.ingest_ma_data_into_learners(
+                last_obs,
+                last_episode_starts,
                 actions,
                 rewards,
                 additional_actions_data,
@@ -229,6 +252,9 @@ class MultiAgentCoordinator:
                 self.config["policy_sharing"],
                 callbacks,
             )
+
+            last_obs = {k: v.detach().clone() for k, v in new_obs.items()}
+            last_episode_starts = dones.detach().clone()
             # Give access to local variables
             for callback in callbacks:
                 callback.update_locals(locals())

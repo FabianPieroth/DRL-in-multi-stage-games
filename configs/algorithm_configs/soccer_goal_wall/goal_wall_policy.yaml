@@ -1,5 +1,4 @@
-name: "rps_rock"
-action: "ROCK"
+name: "goal_wall_policy"
 n_rollout_steps: null
 translate_action_spaces_for_agents: None
 translate_observation_spaces_for_agents: None

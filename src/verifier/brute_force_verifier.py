@@ -10,7 +10,7 @@ from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.base_verifier import BaseVerifier
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
-ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch_size of 1 leads to OOM!"
+ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM!"
 
 
 class BFVerifier(BaseVerifier):
@@ -18,7 +18,7 @@ class BFVerifier(BaseVerifier):
     best combination as approximation to a best response.
     """
 
-    def __init__(self, env, num_envs: int = 1024, num_alternative_actions: int = 32):
+    def __init__(self, env, num_envs: int = 16, num_alternative_actions: int = 32):
         self.env = env
         self.num_agents = self.env.model.num_agents
         self.action_dim = env.model.ACTION_DIM
@@ -126,8 +126,6 @@ class BFVerifier(BaseVerifier):
             # NOTE: Sample size from opponents could be reduced analogously to
             # `num_opponent_envs` to reduce variance
 
-            observations = self.env.model.get_observations(states)
-
             actual_rewards_total = torch.zeros(1, device=self.device)
             alternative_rewards_total = torch.zeros(
                 num_own_envs,
@@ -137,6 +135,7 @@ class BFVerifier(BaseVerifier):
 
             for stage in range(self.num_rounds_to_play):
 
+                observations = self.env.model.get_observations(states)
                 actions = self.env.model.get_ma_learner_predictions(
                     learners, observations, True
                 )
@@ -155,9 +154,7 @@ class BFVerifier(BaseVerifier):
                     -1, self.env.model.action_size
                 )
 
-                observations, rewards, _, states = self.env.model.compute_step(
-                    states, actions
-                )
+                _, rewards, _, states = self.env.model.compute_step(states, actions)
 
                 # Collect rewards
                 player_rewards = (

@@ -29,12 +29,10 @@ class VecPPO(SABaseAlgorithm):
     Extends Stable Baselines 3 PPO to vectorized learning.
     """
 
-    def get_actions_with_data(self, agent_id: int):
+    def get_actions_with_data(self, sa_obs: th.Tensor):
         self.prepare_step(self.rollout_buffer.pos, self.env)
         with th.no_grad():
-            # Convert to pytorch tensor or to TensorDict
-            obs_tensor = self._last_obs[agent_id]
-            actions, values, log_probs = self.policy.forward(obs_tensor)
+            actions, values, log_probs = self.policy.forward(sa_obs)
 
         # Rescale and perform action
         clipped_actions = actions
@@ -58,14 +56,20 @@ class VecPPO(SABaseAlgorithm):
         return sa_rewards
 
     def add_data_to_replay_buffer(
-        self, sa_actions, sa_rewards, sa_additional_actions_data, agent_id: int
+        self,
+        sa_last_obs,
+        last_episode_starts,
+        sa_actions,
+        sa_rewards,
+        sa_additional_actions_data,
+        agent_id: int,
     ):
         sa_values, sa_log_probs = sa_additional_actions_data
         self.rollout_buffer.add(
-            self._last_obs[agent_id],
+            sa_last_obs,
             sa_actions,
             sa_rewards,
-            self._last_episode_starts,
+            last_episode_starts,
             sa_values,
             sa_log_probs,
             th.ones(1, dtype=int) * agent_id,
