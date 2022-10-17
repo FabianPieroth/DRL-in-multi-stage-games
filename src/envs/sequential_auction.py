@@ -416,15 +416,25 @@ class SequentialAuction(BaseEnvForVec):
     ):
         if for_single_learner:
             predictions = {
-                agent_id: learner.predict(observations[agent_id], deterministic)[0]
+                agent_id: learner.predict(
+                    observations[agent_id], deterministic=deterministic
+                )[0]
                 for agent_id, learner in learners.items()
             }
         else:
             predictions = {
-                agent_id: learners[0].predict(obs, deterministic)[0]
+                agent_id: learners[0].predict(obs, deterministic=deterministic)[0]
                 for agent_id, obs in observations.items()
             }
         return predictions
+
+    @staticmethod
+    def get_ma_learner_stddevs(learners, observations):
+        stddevs = {
+            agent_id: learners[0].policy.get_stddev(obs)
+            for agent_id, obs in observations.items()
+        }
+        return stddevs
 
     @staticmethod
     def get_equilibrium_actions(
@@ -440,7 +450,7 @@ class SequentialAuction(BaseEnvForVec):
         }
 
     def plot_strategies_vs_bne(
-        self, learners, writer, iteration: int, config, num_samples: int = 500
+        self, learners, writer, iteration: int, config, num_samples: int = 2 ** 12
     ):
         """Evaluate and log current strategies."""
         seed = 69
@@ -465,15 +475,14 @@ class SequentialAuction(BaseEnvForVec):
             ma_deterministic_actions = self.get_ma_learner_predictions(
                 learners, observations, True, for_single_learner=False
             )
-            ma_mixed_actions = self.get_ma_learner_predictions(
-                learners, observations, False, for_single_learner=False
-            )
-            for agent_id in range(self.num_opponents + 1):
+            ma_stddevs = self.get_ma_learner_stddevs(learners, observations)
+
+            for agent_id in range(len(learners)):
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
                 # get algorithm type
-                learner_name = self.learners[agent_id].__class__.__name__
+                learner_name = learners[agent_id].__class__.__name__
 
                 # sort
                 agent_obs = agent_obs[increasing_order]
@@ -486,7 +495,7 @@ class SequentialAuction(BaseEnvForVec):
                 deterministic_actions = ma_deterministic_actions[agent_id][
                     increasing_order
                 ]
-                mixed_actions = ma_mixed_actions[agent_id][increasing_order]
+                stddevs = ma_stddevs[agent_id][increasing_order]
 
                 # get BNE actions
                 actions_bne = self.get_bne_actions(
@@ -499,7 +508,7 @@ class SequentialAuction(BaseEnvForVec):
                 # covert to numpy
                 agent_obs = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
-                mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
+                stddevs = stddevs.view(-1).detach().cpu().numpy()
                 actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
                 has_won_already = has_won_already.cpu().numpy()
 
@@ -512,53 +521,61 @@ class SequentialAuction(BaseEnvForVec):
                 drawing, = ax.plot(
                     agent_obs[~has_won_already],
                     actions_array[~has_won_already],
-                    linestyle="dotted",
-                    marker="o",
-                    markevery=32,
-                    label=f"bidder {agent_id} {learner_name}",
+                    linestyle="-",
+                    label=f"bidder {agent_id+1} {learner_name}",
                 )
                 ax.plot(
                     agent_obs[~has_won_already],
                     actions_bne[~has_won_already],
                     linestyle="--",
-                    marker="*",
-                    markevery=32,
                     color=drawing.get_color(),
-                    label=f"bidder {agent_id} BNE",
+                    label=f"bidder {agent_id+1} BNE",
                 )
-                ax.plot(
-                    agent_obs, mixed_actions, ".", alpha=0.2, color=drawing.get_color()
+                ax.fill_between(
+                    agent_obs[~has_won_already],
+                    (
+                        actions_array[~has_won_already].squeeze()
+                        - stddevs[~has_won_already]
+                    ).clip(min=0),
+                    (
+                        actions_array[~has_won_already].squeeze()
+                        + stddevs[~has_won_already]
+                    ).clip(min=0),
+                    alpha=0.2,
+                    color=drawing.get_color(),
                 )
                 if stage > 0:
-                    ax.plot(
-                        agent_obs[~has_won_already],
-                        actions_array[~has_won_already],
-                        linestyle="dotted",
-                        marker="o",
-                        markevery=32,
-                        color=drawing.get_color(),
-                        label=f"bidder {agent_id} {learner_name}",
-                    )
                     ax.plot(
                         agent_obs[has_won_already],
                         actions_array[has_won_already],
                         linestyle="dotted",
-                        marker="x",
-                        markevery=32,
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id} {learner_name} (won)",
+                        alpha=0.5,
+                        label=f"bidder {agent_id+1} {learner_name} (won)",
                     )
                     ax.plot(
                         agent_obs[has_won_already],
                         actions_bne[has_won_already],
                         linestyle="--",
-                        marker="*",
-                        markevery=32,
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id} BNE",
+                        alpha=0.5,
+                        label=f"bidder {agent_id+1} BNE (won)",
+                    )
+                    ax.fill_between(
+                        agent_obs[has_won_already],
+                        (
+                            actions_array[has_won_already].squeeze()
+                            - stddevs[has_won_already]
+                        ).clip(min=0),
+                        (
+                            actions_array[has_won_already].squeeze()
+                            + stddevs[has_won_already]
+                        ).clip(min=0),
+                        alpha=0.1,
+                        color=drawing.get_color(),
                     )
             lin = np.linspace(0, 1, 2)
-            ax.plot(lin, lin, "--", color="grey")
+            ax.plot(lin, lin, "--", color="grey", alpha=0.5)
             ax.set_xlabel("valuation $v$")
             if stage == 0:
                 ax.set_ylabel("bid $b$")

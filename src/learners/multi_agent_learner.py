@@ -150,7 +150,13 @@ class MultiAgentCoordinator:
                 n_eval_episodes=n_eval_episodes,
             )
             self.env.model.custom_evaluation(
-                self.learners, self.env, self.writer, iteration + 1, self.config
+                {0: self.learners[0]}
+                if self.config["policy_sharing"]
+                else self.learners,
+                self.env,
+                self.writer,
+                iteration + 1,
+                self.config,
             )
         self._log_change_in_parameter_space()
 

@@ -1,4 +1,4 @@
-policy: "MlpPolicy"
+policy: "CustomActorCriticPolicy"
 n_rollout_steps: 16
 gamma: 1.0
 translate_action_spaces_for_agents: None
