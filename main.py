@@ -1,16 +1,11 @@
 import copy
 
-from stable_baselines3.common.policies import register_policy
-
 import src.utils_folder.env_utils as env_ut
 import src.utils_folder.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
-from src.learners.policies.MlpPolicy import *
 
 
 def main():
-
-    register_policy("CustomActorCriticPolicy", CustomActorCriticPolicy)
 
     config = io_ut.get_config()
     for i in range(1):  # You can change adapted config inside the loop

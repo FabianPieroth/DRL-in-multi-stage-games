@@ -3,12 +3,14 @@ import time
 from typing import Dict, List
 
 import torch
+from stable_baselines3.common.policies import register_policy
 from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils_folder.logging_utils as log_ut
 import src.utils_folder.policy_utils as pl_ut
+from src.learners.policies.MlpPolicy import *
 from src.learners.utils import tensor_norm
 
 
@@ -16,6 +18,10 @@ class MultiAgentCoordinator:
     """Coordinates simultaneous learning of multiple learners."""
 
     def __init__(self, config: Dict, env):
+
+        # Register any custom policy
+        register_policy("CustomActorCriticPolicy", CustomActorCriticPolicy)
+
         self.config = config
         self.env = env
         self.n_step = 0

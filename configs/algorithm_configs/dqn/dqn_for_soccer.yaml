@@ -1,4 +1,4 @@
-policy: "CustomActorCriticPolicy"
+policy: "MlpPolicy"
 n_rollout_steps: 256
 gamma: 0.99
 gradient_steps: -1
