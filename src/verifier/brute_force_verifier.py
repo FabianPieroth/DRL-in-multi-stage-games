@@ -147,23 +147,65 @@ class BFVerifier(BaseVerifier):
         """
         agent_initial_obs: (batch_size, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
         sim_initial_obs_agent: (mc_opp, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
-        agent_grid_actions: (action_discretization, action_size) -> (batch_size, action_discretization, mc_opp, obs_size)
-        opp_actions: (mc_opp, action_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+        agent_grid_actions: (action_discretization, action_size) -> (batch_size, action_discretization, mc_opp, action_size)
+        opp_actions: (mc_opp, action_size) -> (batch_size, action_discretization, mc_opp, action_size)
         """
         # TODO: Check if torch.expand() instead of torch.repeat() is feasible!
         cur_batch_size = agent_initial_obs.shape[0]
+        obs_shape = tuple(agent_initial_obs.shape[1:])
+        action_size = tuple(agent_grid_actions.shape[1:])
+        obs_expanded_shape = (
+            cur_batch_size,
+            self.action_discretization,
+            self.mc_opps,
+        ) + obs_shape
+        action_expanded_shape = (
+            cur_batch_size,
+            self.action_discretization,
+            self.mc_opps,
+        ) + action_size
 
         agent_initial_obs = self._repeat_tensor_along_new_axis(
             data=agent_initial_obs,
-            pos=[1, 1],
+            pos=[1, 2],
             repeats=[self.action_discretization, self.mc_opps],
         )
 
-        agent_initial_obs = agent_initial_obs.unsqueeze(1).unsqueeze(1)
-        agent_initial_obs = agent_initial_obs.repeat(
-            1, self.action_discretization, self.mc_opps, 1
+        agent_grid_actions = self._repeat_tensor_along_new_axis(
+            data=agent_grid_actions, pos=[0, 2], repeats=[cur_batch_size, self.mc_opps]
         )
-        flatten_agent_initial_obs = torch.flatten(agent_initial_obs, end_dim=2)
+
+        for opp_agent, data in sim_initial_obs.items():
+            sim_initial_obs[opp_agent] = self._repeat_tensor_along_new_axis(
+                data=data,
+                pos=[0, 1],
+                repeats=[cur_batch_size, self.action_discretization],
+            )
+
+        for opp_agent, opp_action in opp_actions.items():
+            opp_actions[opp_agent] = self._repeat_tensor_along_new_axis(
+                data=opp_action,
+                pos=[0, 1],
+                repeats=[cur_batch_size, self.action_discretization],
+            )
+
+        combined_actions = {}
+        combined_obs = {}
+        for agent_identifier in range(self.num_agents):
+            if agent_identifier == agent_id:
+                combined_actions[agent_identifier] = agent_grid_actions.flatten(
+                    end_dim=2
+                )
+                combined_obs[agent_identifier] = agent_initial_obs.flatten(end_dim=2)
+            else:
+                combined_actions[agent_identifier] = opp_actions[
+                    agent_identifier
+                ].flatten(end_dim=2)
+                combined_obs[agent_identifier] = sim_initial_obs[
+                    agent_identifier
+                ].flatten(end_dim=2)
+
+        print("test")
 
         """Repeat and play:
         1. repeat the agent_obs (batch_size, obs_size) along oppo_obs num (mc_opps, ) 
@@ -184,18 +226,24 @@ class BFVerifier(BaseVerifier):
 
         Args:
             data (torch.Tensor): tensor to be repeated
-            pos (List[int]): non-decreasing order of positions where dimensions should be added
+            pos (List[int]): strictly increasing order of positions where repeats should be in out-tensor
             repeats (List[int]): number of repeats of dimensions
 
         Returns:
             torch.Tensor: repeated tensor
+        Example:
+        data.shape = (2, 3)
+        pos = [1, 2]
+        repeats = [11, 7]
+        out.shape = (2, 11, 7, 3)
         """
         assert len(pos) == len(repeats), "Each pos needs a specified repeat!"
-        initial_shape = data.shape
         for single_pos in pos:
             data = data.unsqueeze(single_pos)
-
-        data.repeat()  # TODO: make tuple, insert repeats between 1's
+        dims_to_be_repeated = [1 for i in range(len(data.shape))]
+        for k, repeat in enumerate(repeats):
+            dims_to_be_repeated[pos[k]] = repeat
+        return data.repeat(tuple(dims_to_be_repeated))
 
     def _total_utilities_shape_for_batch(self, batch_size: int) -> Tuple[int]:
         """Gives the shape of total utilities to be estimated in a single batch rollout.
