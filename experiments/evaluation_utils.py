@@ -7,6 +7,17 @@ import yaml
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 
+def metric_python2latex(metric_python_name: str):
+
+    metric_latex_name = metric_python_name
+
+    if metric_python_name.startswith("eval/action_equ_L2_distance_stage_"):
+        stage = int(metric_python_name[metric_python_name.rfind("_") + 1 :]) + 1
+        metric_latex_name = "$L_2^{S" + str(stage) + "}$"
+
+    return metric_latex_name
+
+
 def df_to_tex(
     df: pd.DataFrame,
     name: str = "table.tex",

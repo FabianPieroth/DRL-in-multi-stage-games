@@ -84,6 +84,7 @@ def evaluate_sequential_sales_experiment():
     # 1. Scalability in terms of rounds to play
     df_select = df[df.metric.isin(metrics)]
     df_select = df_select[df_select.time_step == max(df_select.time_step)]
+    df_select.metric = df_select.metric.apply(metric_python2latex)
 
     index_without_seeds = list(df_select.index.names)
     index_without_seeds.remove("seed")
