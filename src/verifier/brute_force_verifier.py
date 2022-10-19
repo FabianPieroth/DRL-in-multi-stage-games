@@ -31,7 +31,7 @@ class BFVerifier(BaseVerifier):
         self.action_discretization = action_discretization
         self.num_rounds_to_play = (
             self.env.model.num_rounds_to_play
-        )  # TODO: Is this in every env?
+        )  # TODO: Is this in every (feasible) env?
         self.action_dim = env.model.ACTION_DIM
 
         self.device = self.env.device
@@ -119,104 +119,109 @@ class BFVerifier(BaseVerifier):
         batch_utilities = torch.zeros(
             self._total_utilities_shape_for_batch(batch_size), device=self.device
         )
+        expansion_shape = (batch_size,)
 
         agent_initial_states = self.env.model.sample_new_states(batch_size)
-        agent_initial_obs = self.env.model.get_observations(agent_initial_states)[
-            agent_id
-        ]
-
+        agent_obs = self.env.model.get_observations(agent_initial_states)[agent_id]
         agent_grid_actions = self.env.get_action_grid(
             agent_id, grid_size=self.action_discretization
         )
 
         sim_initial_states = self.env.model.sample_new_states(self.mc_opps)
-        sim_initial_obs = self.env.model.get_observations(sim_initial_states)
-
-        states = {agent_id: None for agent_id in range(self.num_agents)}
-        episode_starts = torch.ones((self.mc_opps,), dtype=bool, device=self.device)
-        opp_actions = log_ut.get_eval_ma_actions(
-            learners,
-            sim_initial_obs,
-            states,
-            episode_starts,
-            True,
-            excluded_agents=[agent_id],
-        )
-
-        # ############### REPEAT TENSORS ############### #
-        """
-        agent_initial_obs: (batch_size, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
-        sim_initial_obs_agent: (mc_opp, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
-        agent_grid_actions: (action_discretization, action_size) -> (batch_size, action_discretization, mc_opp, action_size)
-        opp_actions: (mc_opp, action_size) -> (batch_size, action_discretization, mc_opp, action_size)
-        """
-        # TODO: Check if torch.expand() instead of torch.repeat() is feasible!
-        cur_batch_size = agent_initial_obs.shape[0]
-        obs_shape = tuple(agent_initial_obs.shape[1:])
-        action_size = tuple(agent_grid_actions.shape[1:])
-        obs_expanded_shape = (
-            cur_batch_size,
-            self.action_discretization,
-            self.mc_opps,
-        ) + obs_shape
-        action_expanded_shape = (
-            cur_batch_size,
-            self.action_discretization,
-            self.mc_opps,
-        ) + action_size
-
-        agent_initial_obs = self._repeat_tensor_along_new_axis(
-            data=agent_initial_obs,
-            pos=[1, 2],
-            repeats=[self.action_discretization, self.mc_opps],
-        )
-
-        agent_grid_actions = self._repeat_tensor_along_new_axis(
-            data=agent_grid_actions, pos=[0, 2], repeats=[cur_batch_size, self.mc_opps]
-        )
-
-        for opp_agent, data in sim_initial_obs.items():
-            sim_initial_obs[opp_agent] = self._repeat_tensor_along_new_axis(
-                data=data,
-                pos=[0, 1],
-                repeats=[cur_batch_size, self.action_discretization],
+        opp_obs = self.env.model.get_observations(sim_initial_states)
+        for stage in range(self.num_rounds_to_play):
+            states = {agent_id: None for agent_id in range(self.num_agents)}
+            episode_starts = torch.ones((self.mc_opps,), dtype=bool, device=self.device)
+            opp_actions = log_ut.get_eval_ma_actions(
+                learners,
+                opp_obs,
+                states,
+                episode_starts,
+                True,
+                excluded_agents=[agent_id],
             )
 
-        for opp_agent, opp_action in opp_actions.items():
-            opp_actions[opp_agent] = self._repeat_tensor_along_new_axis(
-                data=opp_action,
-                pos=[0, 1],
-                repeats=[cur_batch_size, self.action_discretization],
+            # ############### REPEAT TENSORS ############### #
+            """
+            agent_initial_obs: (batch_size, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+            sim_initial_obs_agent: (mc_opp, obs_size) -> (batch_size, action_discretization, mc_opp, obs_size)
+            agent_grid_actions: (action_discretization, action_size) -> (batch_size, action_discretization, mc_opp, action_size)
+            opp_actions: (mc_opp, action_size) -> (batch_size, action_discretization, mc_opp, action_size)
+            """
+            # TODO: Check if torch.expand() instead of torch.repeat() is feasible!
+            cur_batch_size = agent_obs.shape[0]
+            obs_shape = tuple(agent_obs.shape[1:])
+            action_size = tuple(agent_grid_actions.shape[1:])
+            expansion_shape += (self.action_discretization, self.mc_opps)
+            obs_expanded_shape = expansion_shape + obs_shape
+            action_expanded_shape = expansion_shape + action_size
+
+            agent_obs = self._repeat_tensor_along_new_axis(
+                data=agent_obs,
+                pos=[1, 2],
+                repeats=[self.action_discretization, self.mc_opps],
             )
 
-        combined_actions = {}
-        combined_obs = {}
-        for agent_identifier in range(self.num_agents):
-            if agent_identifier == agent_id:
-                combined_actions[agent_identifier] = agent_grid_actions.flatten(
-                    end_dim=2
+            repeated_grid_actions = self._repeat_tensor_along_new_axis(
+                data=agent_grid_actions,
+                pos=[0, 2],
+                repeats=[cur_batch_size, self.mc_opps],
+            )
+
+            for opp_agent, data in opp_obs.items():
+                opp_obs[opp_agent] = self._repeat_tensor_along_new_axis(
+                    data=data,
+                    pos=[0, 1],
+                    repeats=[cur_batch_size, self.action_discretization],
                 )
-                combined_obs[agent_identifier] = agent_initial_obs.flatten(end_dim=2)
-            else:
-                combined_actions[agent_identifier] = opp_actions[
-                    agent_identifier
-                ].flatten(end_dim=2)
-                combined_obs[agent_identifier] = sim_initial_obs[
-                    agent_identifier
-                ].flatten(end_dim=2)
 
-        print("test")
+            for opp_agent, opp_action in opp_actions.items():
+                opp_actions[opp_agent] = self._repeat_tensor_along_new_axis(
+                    data=opp_action,
+                    pos=[0, 1],
+                    repeats=[cur_batch_size, self.action_discretization],
+                )
 
-        """Repeat and play:
-        1. repeat the agent_obs (batch_size, obs_size) along oppo_obs num (mc_opps, ) 
-        to get agent_obs of shape (batch_size * mc_opps, obs_size) and repeat oppo_obs by batch_size
-        2. get states from new observation dict
-        3. repeat with actions as well
-        4. make step
-        5. reshape rewards (batch_size * mc_opps,...) to (batch_size, mc_opps)
-        6. add and broadcast reshaped rewards to batch_utilities
-        7. repeat for next stages
-        """
+            combined_actions = {}
+            combined_obs = {}
+            for agent_identifier in range(self.num_agents):
+                if agent_identifier == agent_id:
+                    combined_actions[agent_identifier] = repeated_grid_actions.flatten(
+                        end_dim=2
+                    )
+                    combined_obs[agent_identifier] = agent_obs.flatten(end_dim=2)
+                else:
+                    combined_actions[agent_identifier] = opp_actions[
+                        agent_identifier
+                    ].flatten(end_dim=2)
+                    combined_obs[agent_identifier] = opp_obs[agent_identifier].flatten(
+                        end_dim=2
+                    )
+
+            states_to_sim = self.env.model.obs2state(combined_obs)
+            new_obs, rewards, dones, _ = self.env.model.compute_step(
+                states_to_sim, combined_actions
+            )
+            agent_obs = new_obs.pop(agent_id)
+            opp_obs = new_obs
+
+            sim_rewards = rewards[agent_id].reshape(expansion_shape)
+            reward_dims_to_expand = [
+                k + len(sim_rewards.shape)
+                for k in range(len(batch_utilities.shape) - len(sim_rewards.shape))
+            ]
+            expanded_sim_rewards = self._repeat_tensor_along_new_axis(
+                sim_rewards,
+                reward_dims_to_expand,
+                [1 for _ in range(len(reward_dims_to_expand))],
+            )
+
+            batch_utilities += expanded_sim_rewards
+            print("test")
+        assert (
+            torch.all(dones).cpu().item()
+        ), "The game should have ended after playing all rounds! Check num_rounds_to_play of env!"
+        print("test2")
 
     @staticmethod
     def _repeat_tensor_along_new_axis(
