@@ -113,8 +113,12 @@ def get_env_log_path_extension(config: DictConfig) -> str:
 
 
 def wrap_up_experiment_logging(config: DictConfig):
+
     if config["delete_logs_after_training"]:
         delete_folder(config["experiment_log_path"])
+
+    # Clear hydra config
+    hydra.core.global_hydra.GlobalHydra.instance().clear()
 
 
 def delete_folder(path_to_folder: str):
