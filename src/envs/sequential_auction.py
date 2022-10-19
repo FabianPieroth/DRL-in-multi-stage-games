@@ -196,14 +196,22 @@ class SequentialAuction(BaseEnvForVec):
         :return episode-done markers:
         :return updated_states:
         """
+        player_positions_of_actions = set(actions.keys())
 
         # create opponent action
         if self.collapse_symmetric_opponents:
+
+            # TODO: The cases should be clear!!!
+            # Possibly we do not want to overwrite 1's action?
+            assert player_positions_of_actions in [{0, 1}, {0}]
+
             opponent_obs = self.get_observations(cur_states, for_single_learner=False)[
                 1
             ]
             opponent_actions = self.learners[0].policy.forward(opponent_obs)[0]
             actions[1] = opponent_actions
+        else:
+            assert player_positions_of_actions == set(range(self.num_agents))
 
         # append opponents' actions
         action_profile = torch.stack(tuple(actions.values()), dim=1)
@@ -324,12 +332,12 @@ class SequentialAuction(BaseEnvForVec):
             valuation and a vector of allocations and payments (for each stage)
             and the public observation consists of published prices.
         """
-        # obs consists of: own valuations, own allocations, own payments and
-        # published (here = highest payments)
-
         num_agents = self.num_agents if for_single_learner else self.num_opponents + 1
 
         if self.reduced_observation_space:
+            # Observation consists of: own valuation, stage number, and own
+            # allocations
+
             stage = self._state2stage(states)
             won = self._has_won_already(states, stage)
             batch_size = states.shape[0]
@@ -352,6 +360,8 @@ class SequentialAuction(BaseEnvForVec):
                 observation_dict[agent_id][:, 2] = won[agent_id]
 
         else:
+            # Observation consists of: own valuation, own allocations, own
+            # payments and published (here = highest payments)
             obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
             observation_dict = {
                 agent_id: torch.concat((states[:, agent_id, :], obs_public), axis=1)
@@ -646,8 +656,11 @@ class SequentialAuction(BaseEnvForVec):
                 stage, self.strategies_bne, equ_observations, equ_has_won_already
             )
 
+            # NOTE: Here we need to query `self.learners` (even when policy
+            # sharing is turned on), because we need multi-agent actions for
+            # all player positions
             actual_actions = self.get_ma_learner_predictions(
-                learners, actual_observations, True
+                self.learners, actual_observations, True
             )
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(

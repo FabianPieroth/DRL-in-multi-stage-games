@@ -147,7 +147,7 @@ class MultiAgentCoordinator:
         self, iteration: int, eval_freq: int, n_eval_episodes: int, callbacks: None
     ) -> None:
         """Evaluate current training progress."""
-        if (iteration + 1) % eval_freq == 0:
+        if (iteration + 1) % eval_freq == 0 or iteration == 0:
             log_ut.evaluate_policies(
                 self.learners,
                 self.env,

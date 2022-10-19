@@ -116,6 +116,10 @@ def tb2df(path: str):
         EventAccumulator(os.path.join(path, name)).Reload() for name in os.listdir(path)
     ]
     tags = summary_iterators[0].Tags()["scalars"]
+
+    if len(tags) == 0:
+        return pd.DataFrame()
+
     out = dict()
     steps = [e.step for e in summary_iterators[0].Scalars(tags[0])]
     for tag in tags:

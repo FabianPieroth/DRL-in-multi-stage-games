@@ -13,14 +13,14 @@ from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 def run_sequential_sales_experiment():
 
-    runs = 2
-    total_training_steps = 10_000_000
-    # n_steps_per_iteration =
+    runs = 3
+    total_training_steps = 50_000_000
+    n_steps_per_iteration = 200
     policy_sharing = True
 
-    collapse_symmetric_opponents_options = [False]  # [True, False]
+    collapse_symmetric_opponents_options = [True, False]
     num_rounds_to_play_options = [2, 4]
-    mechanism_type_options = ["first"]  # ["first", "second"]
+    mechanism_type_options = ["first", "second"]
     options = product(
         collapse_symmetric_opponents_options,
         num_rounds_to_play_options,
@@ -44,6 +44,7 @@ def run_sequential_sales_experiment():
             )
             # Hyperparameters
             adapted_config["total_training_steps"] = total_training_steps
+            adapted_config["n_steps_per_iteration"] = n_steps_per_iteration
             adapted_config["rl_envs"][
                 "collapse_symmetric_opponents"
             ] = collapse_symmetric_opponents
@@ -111,5 +112,5 @@ def evaluate_sequential_sales_experiment():
 
 if __name__ == "__main__":
 
-    # run_sequential_sales_experiment()
+    run_sequential_sales_experiment()
     evaluate_sequential_sales_experiment()
