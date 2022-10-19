@@ -122,6 +122,12 @@ class BaseEnvForVec(ABC):
         """For the verifier, we need to recreate the state from observations."""
         raise NotImplementedError
 
+    def get_obs_discretization_shape(
+        self, agent_id: int, obs_discretization: int, stage: int
+    ) -> Tuple[int]:
+        """For the verifier, we return a discretized observation space."""
+        raise NotImplementedError
+
     def custom_evaluation(
         self,
         learners: Dict[int, BaseAlgorithm],

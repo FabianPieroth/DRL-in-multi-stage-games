@@ -386,6 +386,15 @@ class SequentialAuction(BaseEnvForVec):
             stage = self.num_rounds_to_play - 1
         return stage
 
+    def get_obs_discretization_shape(
+        self, agent_id: int, obs_discretization: int, stage: int
+    ) -> Tuple[int]:
+        """We only consider the agent's valuation space and loss/win."""
+        if stage == 0:
+            return (obs_discretization,)
+        else:
+            return (obs_discretization, 2)
+
     def obs2state(self, observation_dict: dict) -> torch.Tensor:
         """For the verifier, we need to recreate the state from observations."""
         batch_size = observation_dict[0].shape[0]
