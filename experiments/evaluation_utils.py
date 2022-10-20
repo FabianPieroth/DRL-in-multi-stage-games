@@ -15,6 +15,10 @@ def metric_python2latex(metric_python_name: str):
         stage = int(metric_python_name[metric_python_name.rfind("_") + 1 :]) + 1
         metric_latex_name = "$L_2^{S" + str(stage) + "}$"
 
+    algorithm_dict = {"ppo": "PPO", "reinforce": "REINFORCE"}
+    if metric_python_name in algorithm_dict.keys():
+        metric_latex_name = algorithm_dict[metric_python_name]
+
     return metric_latex_name
 
 
@@ -38,7 +42,7 @@ def df_to_tex(
         na_rep="--",
         escape=False,
         caption=caption,
-        column_format="l" + "r" * (len(df.columns) - 1),
+        column_format="".join(["l"] * len(df.index.names) + ["r"] * len(df.columns)),
         label=label,
     )
 
@@ -110,7 +114,10 @@ def get_log_df(path: str):
 
 
 def tb2df(path: str):
-    """TensorBoard log to `DataFrame`."""
+    """TensorBoard log to `DataFrame`.
+
+    TODO: I think this looping is slow AF!
+    """
     dirs = os.listdir(path)
     summary_iterators = [
         EventAccumulator(os.path.join(path, name)).Reload() for name in os.listdir(path)

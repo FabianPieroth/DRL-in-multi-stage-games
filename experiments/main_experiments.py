@@ -14,21 +14,25 @@ from src.learners.multi_agent_learner import MultiAgentCoordinator
 def run_sequential_sales_experiment():
 
     runs = 3
-    total_training_steps = 50_000_000
+    total_training_steps = 200_000_000
     n_steps_per_iteration = 200
     policy_sharing = True
 
     collapse_symmetric_opponents_options = [True, False]
     num_rounds_to_play_options = [2, 4]
     mechanism_type_options = ["first", "second"]
+    algorithms = ["ppo", "reinforce"]
     options = product(
         collapse_symmetric_opponents_options,
         num_rounds_to_play_options,
         mechanism_type_options,
+        algorithms,
     )
 
     for option in options:
-        collapse_symmetric_opponents, num_rounds_to_play, mechanism_type = option
+        collapse_symmetric_opponents, num_rounds_to_play, mechanism_type, algorithm = (
+            option
+        )
         config = io_ut.get_config()
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -43,6 +47,7 @@ def run_sequential_sales_experiment():
                 + f"{i}/"
             )
             # Hyperparameters
+            adapted_config["algorithms"] = algorithm
             adapted_config["total_training_steps"] = total_training_steps
             adapted_config["n_steps_per_iteration"] = n_steps_per_iteration
             adapted_config["rl_envs"][
@@ -86,20 +91,46 @@ def evaluate_sequential_sales_experiment():
     df_select = df[df.metric.isin(metrics)]
     df_select = df_select[df_select.time_step == max(df_select.time_step)]
     df_select.metric = df_select.metric.apply(metric_python2latex)
+    df_select = df_select[
+        df_select.index.get_level_values("collapse_symmetric_opponents") == False
+    ]
+    df_select = df_select.droplevel(level="collapse_symmetric_opponents")
 
-    index_without_seeds = list(df_select.index.names)
-    index_without_seeds.remove("seed")
-    index_without_seeds.append("metric")
-    aggregate_df = df_select.groupby(index_without_seeds).agg(
-        {"value": ["mean", "std"]}
+    reduced_index = list(df_select.index.names)
+    reduced_index.remove("seed")
+    reduced_index.remove("algorithms")
+    reduced_index.append("metric")
+    df_select = df_select.reset_index()
+    df_select = df_select.set_index(reduced_index)
+    df_select.algorithms = df_select.algorithms.apply(metric_python2latex)
+
+    aggregate_df = pd.pivot_table(
+        df_select,
+        values="value",
+        index=reduced_index,
+        columns=["algorithms"],
+        aggfunc=[np.mean, np.std],
     )
-    aggregate_df = aggregate_df.round(decimals=4)
-    aggregate_df.columns = ["mean", "std"]
 
+    # Formatting
+    aggregate_df = aggregate_df.swaplevel(axis=1)
+    aggregate_df = aggregate_df[aggregate_df.columns[[0, 2, 1, 3]]]
+
+    aggregate_df = aggregate_df.round(decimals=4)
+    final_df = pd.DataFrame()
+    for algorithm in set(i[0] for i in aggregate_df.columns):
+        final_df[algorithm] = (
+            aggregate_df[(algorithm, "mean")].astype(str)
+            + " ("
+            + aggregate_df[(algorithm, "std")].astype(str)
+            + ")"
+        )
+
+    # Write to disk
     df_to_tex(
-        df=aggregate_df,
+        df=final_df,
         name="table_sequential_sales.tex",
-        label="tab:results",
+        label="tab:table_sequential_sales",
         caption="",
         path=path,
     )
