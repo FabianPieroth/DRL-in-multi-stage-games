@@ -9,7 +9,7 @@ from tqdm import tqdm
 import src.utils_folder.logging_utils as log_ut
 from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.base_verifier import BaseVerifier
-from src.verifier.strategy_enumerator import DiscreteStrategyEnumerator
+from src.verifier.information_set_tree import InformationSetTree
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM!"
@@ -25,11 +25,15 @@ class BFVerifier(BaseVerifier):
     """
 
     def __init__(
-        self, env, mc_num: int, obs_discretization: int, action_discretization: int
+        self,
+        env,
+        num_simulations: int,
+        obs_discretization: int,
+        action_discretization: int,
     ):
         self.env = env
         self.num_agents = self.env.model.num_agents
-        self.mc_num = mc_num
+        self.num_simulations = num_simulations
         self.action_discretization = action_discretization
         self.obs_discretization = obs_discretization
         self.num_rounds_to_play = (
@@ -90,34 +94,43 @@ class BFVerifier(BaseVerifier):
             float: estimated utility loss
             # TODO: could also return best response
         """
-        strategy_enumerator = DiscreteStrategyEnumerator(
+        information_tree = InformationSetTree(
             agent_id,
             self.env,
             self.obs_discretization,
             self.action_discretization,
             self.device,
         )
-        for strategy_index in strategy_enumerator.get_strategy_index_iterator():
-            self._add_simulation_results_for_strategy(
-                learners, agent_id, self.mc_num, strategy_index, strategy_enumerator
+        for batch_size in self._get_first_stage_batch_sizes():
+            self._add_simulation_results_to_tree(
+                learners, agent_id, batch_size, information_tree
             )
-        return strategy_enumerator.get_br_utility_estimate()
+        return information_tree.get_br_utility_estimate()
+
+    def _get_first_stage_batch_sizes(self) -> List[int]:
+        """We check how to distribute the initial draws of
+        environments so that they fit on the GPU.
+
+        Returns:
+            List[int]: How many envs to create in first stage
+        """
+        # TODO:
+        return [2 for _ in range(int(self.num_simulations / 2))]
 
     @staticmethod
     def weighted_average(values: torch.Tensor, weight_list: List[int]) -> float:
-        # TODO: Put this into some utils file
+        # TODO: Put this into some utils file or delete
         weight_tensor = torch.tensor(weight_list).to(values.device)
         weight_tensor = weight_tensor / torch.sum(weight_tensor)
         return torch.sum(values * weight_tensor)
 
-    def _add_simulation_results_for_strategy(
+    def _add_simulation_results_to_tree(
         self,
         learners,
         agent_id: int,
         batch_size: int,
-        strategy_index: int,
-        strategy_enumerator: DiscreteStrategyEnumerator,
-    ) -> float:
+        information_tree: InformationSetTree,
+    ):
         """Monte-Carlo approximation for a fixed discretized strategy for the
         given agent. We simulate batch_size games for this given strategy.
 
@@ -125,24 +138,53 @@ class BFVerifier(BaseVerifier):
             learners (_type_): holds agents' strategies
             agent_id (int):
             batch_size (int): 
-        Returns:
-            float: estimated utility loss
+            information_tree (InformationSetTree): game tree
         """
-        strategy_enumerator.reset_simulation_index()
 
+        batch_utilities = torch.zeros(
+            self._total_utilities_shape_for_batch(batch_size), device=self.device
+        ).flatten()
         cur_sim_size = batch_size
 
         states = self.env.model.sample_new_states(batch_size)
         agent_obs, opp_obs = self._split_obs(
             agent_id, self.env.model.get_observations(states)
         )
+        episode_starts = torch.ones((batch_size,), dtype=bool, device=self.device)
+        batch_indices = torch.tensor([], device=self.device).long()
 
         for stage in range(self.num_rounds_to_play):
-            cur_sim_size *= self.action_discretization
-
+            # TODO: Write a method with corresponding test for the repeation here. It looks correct atm.
+            obs_bin_indices = self.env.model.get_obs_bin_indices(
+                agent_obs, agent_id, stage, self.obs_discretization
+            )
+            repeated_obs_bin_indices = self._repeat_and_flatten_to_full_sim_size(
+                obs_bin_indices, stage
+            ).unsqueeze(-1)
+            action_bins = torch.arange(self.action_discretization, device=self.device)
+            repeated_action_bins = (
+                self._repeat_tensor_along_new_axis(
+                    data=action_bins,
+                    pos=[0, 2],
+                    repeats=[
+                        cur_sim_size,
+                        self.action_discretization
+                        ** (self.num_rounds_to_play - stage - 1),
+                    ],
+                )
+                .flatten()
+                .unsqueeze(-1)
+            )
+            batch_indices = torch.cat(
+                (batch_indices, repeated_obs_bin_indices, repeated_action_bins), dim=-1
+            )
             repeated_grid_actions = self._get_agent_grid_actions(agent_id, cur_sim_size)
 
-            opp_actions = self._get_opponent_actions(learners, agent_id, opp_obs)
+            cur_sim_size *= self.action_discretization
+
+            opp_actions = self._get_opponent_actions(
+                episode_starts, learners, agent_id, opp_obs
+            )
             for opp_agent, opp_action in opp_actions.items():
                 opp_actions[opp_agent] = self._repeat_tensor_along_new_axis(
                     data=opp_action, pos=[1], repeats=[self.action_discretization]
@@ -167,10 +209,11 @@ class BFVerifier(BaseVerifier):
             new_obs, rewards, dones, new_states = self.env.model.compute_step(
                 flattened_states, combined_actions
             )
-
-            strategy_enumerator.add_transition_results(
-                agent_obs, rewards[agent_id], stage
+            repeated_agent_rewards = self._repeat_and_flatten_to_full_sim_size(
+                rewards[agent_id], stage + 1
             )
+            batch_utilities += repeated_agent_rewards
+            episode_starts = dones
 
             agent_obs, opp_obs = self._split_obs(agent_id, new_obs)
             states = new_states
@@ -178,6 +221,17 @@ class BFVerifier(BaseVerifier):
         assert (
             torch.all(dones).cpu().item()
         ), "The game should have ended after playing all rounds! Check num_rounds_to_play of env!"
+        information_tree.add_simulation_results(batch_utilities, batch_indices)
+
+    def _repeat_and_flatten_to_full_sim_size(
+        self, data: torch.Tensor, stage: int
+    ) -> torch.Tensor:
+        pos_to_repeat = len(data.shape)
+        return self._repeat_tensor_along_new_axis(
+            data=data,
+            pos=[pos_to_repeat],
+            repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
+        ).flatten()
 
     def _get_agent_grid_actions(self, agent_id, cur_sim_size):
         agent_grid_actions = self.env.get_action_grid(
@@ -194,9 +248,10 @@ class BFVerifier(BaseVerifier):
         opp_obs = obs
         return agent_obs, opp_obs
 
-    def _get_opponent_actions(self, learners, agent_id, opp_obs):
+    def _get_opponent_actions(
+        self, episode_starts: torch.Tensor, learners, agent_id, opp_obs
+    ):
         states = {agent_id: None for agent_id in range(self.num_agents)}
-        episode_starts = torch.ones((self.mc_opps,), dtype=bool, device=self.device)
         opp_actions = log_ut.get_eval_ma_actions(
             learners, opp_obs, states, episode_starts, True, excluded_agents=[agent_id]
         )
@@ -239,7 +294,7 @@ class BFVerifier(BaseVerifier):
             Tuple[int]: Shape of utility tensor
         """
         return (batch_size,) + tuple(
-            [self.action_discretization, self.mc_opps] * self.num_rounds_to_play
+            [self.action_discretization] * self.num_rounds_to_play
         )
 
     def _get_batch_sizes_for_sim(self) -> List[int]:

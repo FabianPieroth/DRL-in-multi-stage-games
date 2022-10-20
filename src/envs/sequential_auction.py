@@ -122,7 +122,7 @@ class SequentialAuction(BaseEnvForVec):
             high = (
                 [1.0]
                 + [1.0] * self.num_rounds_to_play
-                + [np.inf] * (self.num_rounds_to_play * 2)
+                + [SequentialAuction.ACTION_UPPER_BOUND] * (self.num_rounds_to_play * 2)
             )
         self.OBSERVATION_DIM = len(low)
         return {
@@ -393,7 +393,43 @@ class SequentialAuction(BaseEnvForVec):
         if stage == 0:
             return (obs_discretization,)
         else:
-            return (obs_discretization, 2)
+            return (2,)
+
+    def get_obs_bin_indices(
+        self,
+        agent_obs: torch.Tensor,
+        agent_id: int,
+        stage: int,
+        obs_discretization: int,
+    ) -> torch.LongTensor:
+        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
+
+        Args:
+            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
+            agent_id (int): 
+            stage (int): 
+            obs_discretization (int): number of discretization points
+
+        Returns:
+            torch.LongTensor: shape=(batch_size, relevant_obs_size)
+        """
+        if stage == 0:
+            relevant_obs_indices = (0,)
+            num_discretization = obs_discretization
+        else:
+            if self.reduced_observation_space:
+                relevant_obs_indices = (2,)
+            else:
+                raise NotImplementedError(
+                    "Needs to be handled differently. Win/lose is given per round here."
+                )
+                relevant_obs_indices = (stage,)
+            num_discretization = 2
+        relevant_new_stage_obs = agent_obs[:, relevant_obs_indices]
+        low = self.observation_spaces[agent_id].low[relevant_obs_indices]
+        high = self.observation_spaces[agent_id].high[relevant_obs_indices]
+        obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
+        return torch.bucketize(relevant_new_stage_obs, obs_grid)
 
     def obs2state(self, observation_dict: dict) -> torch.Tensor:
         """For the verifier, we need to recreate the state from observations."""
