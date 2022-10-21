@@ -310,11 +310,14 @@ class SequentialAuction(BaseEnvForVec):
         ]
 
         # set valuation to zero if we already own the unit
-        has_won_already = self._has_won_already(states, stage)[agent_id]
+        has_won_already = self._has_won_already(states, stage)[agent_id].view_as(
+            payments
+        )
 
         # quasi-linear utility
-        rewards = valuations * allocations - payments
-        rewards[has_won_already] = -payments[has_won_already]
+        rewards = (valuations * allocations) * torch.logical_not(
+            has_won_already
+        ) - payments
 
         return rewards.view(-1)
 

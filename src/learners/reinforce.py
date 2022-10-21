@@ -48,32 +48,13 @@ class Reinforce(SABaseAlgorithm):
         """Fake method to use common base class with PPO."""
         return sa_rewards
 
-    def add_data_to_replay_buffer(
-        self,
-        sa_last_obs,
-        last_episode_starts,
-        sa_actions,
-        sa_rewards,
-        sa_additional_actions_data,
-        agent_id: int,
-    ):
-        sa_values, sa_log_probs = sa_additional_actions_data
-        self.rollout_buffer.add(
-            sa_last_obs,
-            sa_actions,
-            sa_rewards,
-            last_episode_starts,
-            sa_values,
-            sa_log_probs,
-            th.ones(1, dtype=int) * agent_id,
-        )
-
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
-        # Placebo values that have the length needed for `compute_returns`
+        # Placeholder values that have the length needed for `compute_returns`
         if policy_sharing:
             values = {agent_id: None for agent_id in sa_new_obs.keys()}
         else:
             values = {0: None}
+
         self.rollout_buffer.compute_returns(
             last_values=values, dones=dones, policy_sharing=policy_sharing
         )
