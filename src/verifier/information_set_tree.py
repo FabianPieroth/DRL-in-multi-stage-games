@@ -62,16 +62,88 @@ class InformationSetTree(object):
         self.nodes_counts.index_add_(0, flat_indices, counts)
 
     def get_br_utility_estimate(self):
+        """Iteratively compute best-response utility estimate.
+        Shape of self.nodes_utility_estimates = (N_V^1, N_A, ..., N_V^k, N_A).
+        Visitation counts are identical in size. Iterate reversely over stages:
+        1. max over last dim (br given previous trajectory)
+        2. calculate visition probabilities over obs
+        3. weight utilities of br by visitation probabilities
+        """
+        # NOTE: We assume one dimensional action spaces in all rounds!
+        estimated_utilities = self.calc_monte_carlo_utility_estimations()
+        nodes_counts = self.nodes_counts.reshape(self.all_nodes_shape)
+
+        for stage in reversed(range(self.num_rounds_to_play)):
+
+            estimated_utilities, br_indices = torch.max(estimated_utilities, dim=-1)
+
+            visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
+                nodes_counts, br_indices, stage
+            )
+            estimated_utilities = estimated_utilities * visitation_probabilities
+
+            estimated_utilities = estimated_utilities.sum(
+                dim=self._get_stage_obs_summing_dim(stage)
+            )
+
+        return estimated_utilities.item()
+
+    def _calc_visitation_probabilities_and_update_nodes_counts(
+        self, nodes_counts: torch.LongTensor, br_indices: torch.LongTensor, stage: int
+    ) -> Tuple[torch.Tensor, torch.LongTensor]:
+        """
+        1. Calculate the visitation probabilities for each branch of the current stage (=depth in tree). 
+        2. Update the nodes_counts for next iteration (to tree depth - 1)
+        #TODO: Separate these two things without redundant operations.
+        Args:
+            nodes_counts (torch.LongTensor): 
+            br_indices (torch.LongTensor): best-response indices of current stage 
+            stage (int): depth in information tree
+
+        Returns:
+            Tuple[torch.Tensor, torch.LongTensor]: visitation_probabilities, updated_node_counts
+        """
+        nodes_counts = torch.gather(
+            nodes_counts, -1, br_indices.unsqueeze(-1)
+        ).squeeze()
+        summing_dim = self._get_stage_obs_summing_dim(stage)
+        nodes_counts_obs_sum = nodes_counts.sum(summing_dim, keepdim=True)
+        expansion_dim = (
+            tuple(
+                [-1]
+                * (
+                    len(nodes_counts_obs_sum.shape)
+                    - len(self.obs_discretization_shapes[stage])
+                )
+            )
+            + self.obs_discretization_shapes[stage]
+        )
+
+        expanded_nodes_counts_obs_sum = nodes_counts_obs_sum.expand(expansion_dim)
+
+        visitation_probabilities = nodes_counts.float()
+
+        visitation_probabilities[
+            expanded_nodes_counts_obs_sum > 0
+        ] /= expanded_nodes_counts_obs_sum[expanded_nodes_counts_obs_sum > 0]
+
+        return visitation_probabilities, nodes_counts_obs_sum.squeeze()
+
+    def _get_stage_obs_summing_dim(self, stage):
+        return tuple(
+            [-(k + 1) for k in range(len(self.obs_discretization_shapes[stage]))]
+        )
+
+    def calc_monte_carlo_utility_estimations(self):
         averaged_utilities = torch.zeros(
             self.all_nodes_shape, device=self.device
-        )  # TODO: Can we prevent new allocation/copy?
+        ).flatten()  # TODO: Can we prevent new allocation/copy?
         averaged_utilities[self.nodes_counts > 0] = (
             self.nodes_utility_estimates[self.nodes_counts > 0]
             / self.nodes_counts[self.nodes_counts > 0]
         )
-        reshaped_utilities = averaged_utilities.reshape(self.all_nodes_shape)
-        # TODO: determine correct best-response utilities
-        pass
+        averaged_utilities.reshape(self.all_nodes_shape)
+        return averaged_utilities.reshape(self.all_nodes_shape)
 
     def get_best_response_estimate(self):
         pass
