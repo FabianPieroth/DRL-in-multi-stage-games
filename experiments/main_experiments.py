@@ -15,8 +15,8 @@ def run_sequential_sales_experiment():
 
     runs = 3
     total_training_steps = 200_000_000
-    n_steps_per_iteration = 200
-    policy_sharing = True
+    n_steps_per_iteration = 100
+    policy_sharing = False
 
     collapse_symmetric_opponents_options = [True, False]
     num_rounds_to_play_options = [2, 4]
@@ -33,45 +33,44 @@ def run_sequential_sales_experiment():
         collapse_symmetric_opponents, num_rounds_to_play, mechanism_type, algorithm = (
             option
         )
-        config = io_ut.get_config()
+
         for i in range(runs):
             print("=============\nStart new run\n-------------")
 
-            # Configure
-            adapted_config = copy.deepcopy(config)
-            adapted_config["seed"] = i
-            adapted_config["experiment_log_path"] = (
-                adapted_config["experiment_log_path"][:7]
-                + "final/"
-                + adapted_config["experiment_log_path"][7:]
+            # Configure and set hyperparameters
+            overrides = [
+                f"seed={i}",
+                f"policy_sharing={policy_sharing}",
+                f"algorithms=[{algorithm}]",
+                f"total_training_steps=[{total_training_steps}]",
+                f"n_steps_per_iteration=[{n_steps_per_iteration}]",
+                f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
+                f"rl_envs.mechanism_type={mechanism_type}",
+                f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
+                f"rl_envs.num_agents={num_rounds_to_play + 1}",
+            ]
+            config = io_ut.get_config(overrides)
+            config.experiment_log_path = (
+                config.experiment_log_path[:7]
+                + "test/"
+                + config.experiment_log_path[7:]
                 + f"{i}/"
             )
-            # Hyperparameters
-            adapted_config["algorithms"] = algorithm
-            adapted_config["total_training_steps"] = total_training_steps
-            adapted_config["n_steps_per_iteration"] = n_steps_per_iteration
-            adapted_config["rl_envs"][
-                "collapse_symmetric_opponents"
-            ] = collapse_symmetric_opponents
-            adapted_config["rl_envs"]["mechanism_type"] = mechanism_type
-            adapted_config["rl_envs"]["num_rounds_to_play"] = num_rounds_to_play
-            adapted_config["rl_envs"]["num_agents"] = num_rounds_to_play + 1
-            adapted_config["policy_sharing"] = policy_sharing
-            io_ut.store_config_and_set_seed(adapted_config)
+            io_ut.store_config_and_set_seed(config)
 
             # Set up env and learning
-            env = env_ut.get_env(adapted_config)
-            ma_learner = MultiAgentCoordinator(adapted_config, env)
+            env = env_ut.get_env(config)
+            ma_learner = MultiAgentCoordinator(config, env)
             ma_learner.learn(
-                total_timesteps=adapted_config["total_training_steps"],
-                n_steps_per_iteration=adapted_config["n_steps_per_iteration"],
+                total_timesteps=config.total_training_steps,
+                n_steps_per_iteration=config.n_steps_per_iteration,
                 log_interval=1,
-                eval_freq=adapted_config["eval_freq"],
+                eval_freq=config.eval_freq,
                 n_eval_episodes=5,
             )
 
             # Wrap up
-            io_ut.wrap_up_experiment_logging(adapted_config)
+            io_ut.wrap_up_experiment_logging(config)
 
     print("Done!")
 

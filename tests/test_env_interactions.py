@@ -20,17 +20,22 @@ def test_learning_rockpaperscissors():
     """Runs multi agent learning in RPS."""
     hydra.core.global_hydra.GlobalHydra().clear()
     io_ut.set_global_seed(0)
-    config = io_ut.get_config()
-    config["device"] = DEVICE
-    config["total_training_steps"] = 1
-    rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
-        "configs"
-    ]["rl_envs"]
-    rl_envs["num_agents"] = 3
+
     algorithms = ["ppo", "ppo", "ppo"]
-    config["algorithms"] = algorithms
+    overrides = [
+        f"device={DEVICE}",
+        f"algorithms={algorithms}",
+        f"n_steps_per_iteration={1}",
+        f"num_envs={1}",
+        f"iteration_num={1}",
+    ]
+    env_overrides = [f"rl_envs.num_agents={3}"]
+    config = io_ut.get_config(overrides=overrides)
+    config.rl_envs = hydra.compose(
+        "rl_envs/rockpaperscissors.yaml", env_overrides
+    ).rl_envs
     tst_ut.set_specific_algo_configs(config, algorithms, RPS_ALGO_INSTANCE_DICT)
-    config["rl_envs"] = rl_envs
+
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)
 
@@ -62,27 +67,30 @@ def test_learning_sequential_auctions(
     """Runs multi agent learning in sequential auctions for specified parameters."""
     hydra.core.global_hydra.GlobalHydra().clear()
     io_ut.set_global_seed(0)
-    config = io_ut.get_config()
-    config["device"] = DEVICE
-    config["policy_sharing"] = True
-    config["algorithms"] = "ppo"
+
+    algorithms = ["ppo"]
+    overrides = [
+        f"device={DEVICE}",
+        f"algorithms={algorithms}",
+        f"policy_sharing={True}",
+        f"n_steps_per_iteration={1}",
+        f"num_envs={1}",
+        f"iteration_num={1}",
+    ]
+    env_overrides = [
+        f"rl_envs.mechanism_type={mechanism_type}",
+        f"rl_envs.num_agents={num_agents}",
+        f"rl_envs.num_rounds_to_play={num_agents - 1}",
+        f"rl_envs.reduced_observation_space={reduced_observation_space}",
+        f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
+    ]
+    config = io_ut.get_config(overrides=overrides)
+    config.rl_envs = hydra.compose(
+        "rl_envs/sequential_auction.yaml", env_overrides
+    ).rl_envs
     tst_ut.set_specific_algo_configs(
-        config, ["ppo"], SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
+        config, algorithms, SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
     )
-
-    rl_envs = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
-        "configs"
-    ]["rl_envs"]
-    config["rl_envs"] = rl_envs
-
-    config["rl_envs"]["mechanism_type"] = mechanism_type
-    config["rl_envs"]["num_agents"] = num_agents
-    config["rl_envs"]["num_rounds_to_play"] = num_agents - 1
-    config["rl_envs"]["reduced_observation_space"] = reduced_observation_space
-    config["rl_envs"]["collapse_symmetric_opponents"] = collapse_symmetric_opponents
-
-    io_ut.enrich_config(config)
-    config["total_training_steps"] = 1
 
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)
@@ -111,22 +119,27 @@ def test_learning_signaling_contest(information_case, num_agents):
     """Runs multi agent learning in sequential auctions for specified parameters."""
     io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
-    config = io_ut.get_config()
-    config["device"] = DEVICE
-    config["policy_sharing"] = True
-    config["algorithms"] = ["ppo" for _ in range(num_agents)]
-    rl_envs = hydra.compose("../configs/rl_envs/signaling_contest.yaml")[""][""][""][
-        "configs"
-    ]["rl_envs"]
-    rl_envs["information_case"] = information_case
-    config["rl_envs"] = rl_envs
-    tst_ut.set_specific_algo_configs(
-        config, ["ppo"], SIGNALING_CONTEST_ALGO_INSTANCE_DICT
-    )
-    config["rl_envs"]["num_agents"] = num_agents
 
-    io_ut.enrich_config(config)
-    config["total_training_steps"] = 1
+    algorithms = ["ppo" for _ in range(num_agents)]
+    overrides = [
+        f"device={DEVICE}",
+        f"algorithms={algorithms}",
+        f"policy_sharing={True}",
+        f"n_steps_per_iteration={1}",
+        # f"num_envs={1}",
+        f"iteration_num={1}",
+    ]
+    env_overrides = [
+        f"rl_envs.num_agents={num_agents}",
+        f"rl_envs.information_case={information_case}",
+    ]
+    config = io_ut.get_config(overrides=overrides)
+    config.rl_envs = hydra.compose(
+        "rl_envs/signaling_contest.yaml", env_overrides
+    ).rl_envs
+    tst_ut.set_specific_algo_configs(
+        config, algorithms, SIGNALING_CONTEST_ALGO_INSTANCE_DICT
+    )
 
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)

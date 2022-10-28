@@ -195,7 +195,9 @@ class VickreyAuction(Mechanism):
 
 
 class AllPayAuction(Mechanism):
-    def __init__(self, random_tie_break: bool = True, **kwargs):
+    def __init__(
+        self, device: Union[str, int], random_tie_break: bool = True, **kwargs
+    ):
         self.random_tie_break = random_tie_break
         self.device = device
 

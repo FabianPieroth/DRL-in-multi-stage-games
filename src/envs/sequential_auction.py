@@ -16,6 +16,7 @@ from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
 from src.envs.torch_vec_env import BaseEnvForVec
 from src.learners.utils import batched_index_select, tensor_norm
+from src.utils_folder.policy_utils import get_algo_name
 
 
 class SequentialAuction(BaseEnvForVec):
@@ -525,10 +526,7 @@ class SequentialAuction(BaseEnvForVec):
                 actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
                 has_won_already = has_won_already.cpu().numpy()
 
-                if isinstance(config["algorithms"], str):
-                    algo_name = config["algorithms"]
-                else:
-                    algo_name = config["algorithms"][agent_id]
+                algo_name = get_algo_name(agent_id, config)
 
                 # plotting
                 drawing, = ax.plot(

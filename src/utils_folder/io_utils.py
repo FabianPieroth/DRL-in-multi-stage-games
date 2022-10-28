@@ -3,6 +3,7 @@ import os
 import random
 import shutil
 import warnings
+from typing import List
 
 import hydra
 import numpy as np
@@ -27,14 +28,14 @@ def check_path_and_create(path: str):
             print(path + " already exists")
 
 
-def read_hydra_config():
+def read_hydra_config(overrides: List[str] = []):
     hydra.initialize(config_path="../../configs", job_name="run")
-    cfg = hydra.compose(config_name="config")
+    cfg = hydra.compose(config_name="config", overrides=overrides)
     return cfg
 
 
-def get_config() -> DictConfig:
-    config = read_hydra_config()
+def get_config(overrides: List[str] = []) -> DictConfig:
+    config = read_hydra_config(overrides)
     enrich_config(config)
     return config
 
@@ -52,26 +53,30 @@ def store_config_and_set_seed(config: DictConfig):
 
 
 def store_config(config: DictConfig):
-    save_omegaconf_to_yaml(config, "run_config", config["experiment_log_path"])
+    save_omegaconf_to_yaml(config, "run_config", config.experiment_log_path)
 
 
 def enrich_config(config: DictConfig):
-    config["experiment_log_path"] = get_experiment_log_path(config)
-    config["n_steps_per_iteration"] = get_n_steps_per_iteration(config)
-    config["total_training_steps"] = get_total_training_steps(config)
+    config.experiment_log_path = get_experiment_log_path(config)
+    config.n_steps_per_iteration = get_n_steps_per_iteration(config)
+    config.total_training_steps = get_total_training_steps(config)
+    remove_unused_algorithm_settings(config)
 
 
 def get_total_training_steps(config: DictConfig) -> int:
-    return (
-        config["n_steps_per_iteration"] * config["num_envs"] * config["iteration_num"]
-    )
+    return config.n_steps_per_iteration * config.num_envs * config.iteration_num
+
+
+def remove_unused_algorithm_settings(config: DictConfig):
+    algos = config.algorithms
+    config.algorithm_configs = {algo: config.algorithm_configs[algo] for algo in algos}
 
 
 def get_n_steps_per_iteration(config: DictConfig) -> int:
     n_rollout_steps = None
-    for agent_id in range(config["rl_envs"]["num_agents"]):
+    for agent_id in range(config.rl_envs.num_agents):
         algo_name = pl_ut.get_algo_name(agent_id, config)
-        algo_rollout_steps = config["algorithm_configs"][algo_name]["n_rollout_steps"]
+        algo_rollout_steps = config.algorithm_configs[algo_name].n_rollout_steps
         if algo_rollout_steps is not None and n_rollout_steps is None:
             n_rollout_steps = algo_rollout_steps
         elif algo_rollout_steps is not None and n_rollout_steps is not None:
@@ -81,14 +86,14 @@ def get_n_steps_per_iteration(config: DictConfig) -> int:
                     + str(agent_id)
                 )
     if n_rollout_steps is None:
-        return config["rl_envs"]["num_agents"]
+        return config.rl_envs.num_agents
     return n_rollout_steps
 
 
 def get_experiment_log_path(config: DictConfig) -> str:
     return (
-        config["log_path"]
-        + config["rl_envs"]["name"]
+        config.log_path
+        + config.rl_envs.name
         + get_env_log_path_extension(config)
         + "/"
         + datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
@@ -97,25 +102,23 @@ def get_experiment_log_path(config: DictConfig) -> str:
 
 
 def get_env_log_path_extension(config: DictConfig) -> str:
-    if config["rl_envs"]["name"] == "rockpaperscissors":
+    if config.rl_envs.name == "rockpaperscissors":
         return ""
-    elif config["rl_envs"]["name"] == "sequential_auction":
-        return "/" + config["rl_envs"]["mechanism_type"]
-    elif config["rl_envs"]["name"] == "signaling_contest":
-        return "/" + config["rl_envs"]["information_case"]
-    elif config["rl_envs"]["name"] == "simple_soccer":
+    elif config.rl_envs.name == "sequential_auction":
+        return "/" + config.rl_envs.mechanism_type
+    elif config.rl_envs.name == "signaling_contest":
+        return "/" + config.rl_envs.information_case
+    elif config.rl_envs.name == "simple_soccer":
         return ""
     else:
-        warnings.warn(
-            "No env log path extension specified for: " + config["rl_envs"]["name"]
-        )
+        warnings.warn("No env log path extension specified for: " + config.rl_envs.name)
         return ""
 
 
 def wrap_up_experiment_logging(config: DictConfig):
 
-    if config["delete_logs_after_training"]:
-        delete_folder(config["experiment_log_path"])
+    if config.delete_logs_after_training:
+        delete_folder(config.experiment_log_path)
 
     # Clear hydra config
     hydra.core.global_hydra.GlobalHydra.instance().clear()
@@ -126,5 +129,5 @@ def delete_folder(path_to_folder: str):
 
 
 def clean_logs_after_test(config: DictConfig):
-    config["delete_logs_after_training"] = True
+    config.delete_logs_after_training = True
     wrap_up_experiment_logging(config)

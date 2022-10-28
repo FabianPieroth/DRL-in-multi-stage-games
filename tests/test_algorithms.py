@@ -32,17 +32,19 @@ ids, testdata = zip(
 def test_algos_in_rockpaperscissors(algorithms):
     hydra.core.global_hydra.GlobalHydra().clear()
     io_ut.set_global_seed(0)
-    config = io_ut.get_config()
-    config["device"] = DEVICE
-    config["iteration_num"] = 1
-    config["num_envs"] = 32
-    config["policy_sharing"] = False
-    rl_envs = hydra.compose("../configs/rl_envs/rockpaperscissors.yaml")[""][""][""][
-        "configs"
-    ]["rl_envs"]
+
+    overrides = [
+        f"device={DEVICE}",
+        f"algorithms={algorithms}",
+        f"policy_sharing={False}",
+        f"n_steps_per_iteration={1}",
+        f"num_envs={32}",
+        f"iteration_num={1}",
+    ]
+    config = io_ut.get_config(overrides=overrides)
+    config.rl_envs = hydra.compose("rl_envs/rockpaperscissors.yaml").rl_envs
     tst_ut.set_specific_algo_configs(config, algorithms, ALGO_INSTANCE_DICT)
-    config["rl_envs"] = rl_envs
-    config["algorithms"] = algorithms
     io_ut.enrich_config(config)
+
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)

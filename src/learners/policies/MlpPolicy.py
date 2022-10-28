@@ -13,7 +13,9 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         lr_schedule: Callable[[float], float],
-        net_arch: Optional[List[Union[int, Dict[str, List[int]]]]] = None,
+        net_arch: Optional[List[Union[int, Dict[str, List[int]]]]] = [
+            dict(pi=[64, 64], vf=[64, 64])
+        ],
         activation_fn: Type[nn.Module] = nn.Tanh,
         *args,
         **kwargs,
