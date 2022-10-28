@@ -89,8 +89,8 @@ def test_learning_in_sequential_auction(
 
 ids_sc, testdata_sc = zip(
     *[
-        ["symmetric_true_valuations", ("true_valuations", True, 400, 0.15)],
-        ["non_symmetric_true_valuations", ("true_valuations", False, 400, 0.15)],
+        ["symmetric_true_valuations", ("true_valuations", True, 100, 0.1)],
+        ["non_symmetric_true_valuations", ("true_valuations", False, 100, 0.1)],
         # ["symmetric_winning_bids",        ("winning_bids",    True,  300, 0.08)],
         # ["non_symmetric_winning_bids",    ("winning_bids",    False, 300, 0.13)],
     ]
@@ -103,6 +103,7 @@ SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
 }
 
 
+@pytest.mark.skip(reason="instable: unclear which hyperparameters are required")
 @pytest.mark.parametrize(
     "information_case, policy_sharing, iteration_num, error_bound",
     testdata_sc,
@@ -120,14 +121,9 @@ def test_learning_in_signaling_contest(
         f"iteration_num={iteration_num}",
         f"policy_sharing={policy_sharing}",
         f"algorithms=[ppo]",
-        f"num_envs={1024}",
-        f"algorithm_configs.ppo.n_rollout_steps={2}",
         f"eval_freq={iteration_num + 2}",
     ]
-    env_overrides = [
-        f"rl_envs.num_agents={4}",
-        f"rl_envs.information_case={information_case}",
-    ]
+    env_overrides = [f"rl_envs.information_case={information_case}"]
     config = io_ut.get_config(overrides)
     config.rl_envs = hydra.compose(
         "rl_envs/signaling_contest.yaml", env_overrides
