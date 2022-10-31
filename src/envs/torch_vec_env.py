@@ -118,7 +118,7 @@ class BaseEnvForVec(ABC):
             image:
         """
 
-    def obs2state(self, observation_dict: dict) -> torch.Tensor:
+    def obs2state(self, observation_dict: Dict) -> torch.Tensor:
         """For the verifier, we need to recreate the state from observations."""
         raise NotImplementedError
 
