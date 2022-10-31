@@ -110,8 +110,8 @@ class SignalingContest(BaseEnvForVec):
                 - win/loss/not-played first round
                 - bid/valuation of winning opponent
         """
-        low = [self.prior_low] + [-1.0] + [-1.0]
-        high = [self.prior_high] + [1.0] + [np.inf]
+        low = [self.prior_low] + [-1.0] + [self.ACTION_LOWER_BOUND]
+        high = [self.prior_high] + [1.0] + [self.ACTION_UPPER_BOUND]
         return {
             agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
             for agent_id in range(self.num_agents)
@@ -274,6 +274,61 @@ class SignalingContest(BaseEnvForVec):
         data_group_A = torch.concat([allocations_A, w_info_B], axis=2)
         data_group_B = torch.concat([allocations_B, w_info_A], axis=2)
         return torch.concat([data_group_A, data_group_B], axis=1)
+
+    def get_obs_discretization_shape(
+        self, agent_id: int, obs_discretization: int, stage: int
+    ) -> Tuple[int]:
+        """For the verifier, we return a discretized observation space."""
+        if stage == 0:
+            return (obs_discretization,)
+        elif stage == 1:
+            return (2, obs_discretization)
+        else:
+            raise ValueError("The contest is only implemented for two stages!")
+
+    def get_obs_bin_indices(
+        self,
+        agent_obs: torch.Tensor,
+        agent_id: int,
+        stage: int,
+        obs_discretization: int,
+    ) -> torch.LongTensor:
+        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
+
+        Args:
+            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
+            agent_id (int): 
+            stage (int): 
+            obs_discretization (int): number of discretization points
+
+        Returns:
+            torch.LongTensor: shape=(batch_size, )
+        """
+        if stage == 0:
+            relevant_obs_indices = (0,)
+            num_discretization = obs_discretization
+        else:
+            relevant_obs_indices = (1, 2)
+            num_discretization = 2
+        obs_bins = torch.zeros(
+            (agent_obs.shape[0], len(relevant_obs_indices)),
+            dtype=torch.long,
+            device=self.device,
+        )
+        for k, obs_dim in enumerate(relevant_obs_indices):
+            obs_bins[:, k] = self._get_single_dim_obs_bins(
+                agent_obs, agent_id, num_discretization, obs_dim
+            )
+        return obs_bins
+
+    def _get_single_dim_obs_bins(
+        self, agent_obs, agent_id, num_discretization, obs_dim
+    ):
+        low = self.observation_spaces[agent_id].low[obs_dim]
+        high = self.observation_spaces[agent_id].high[obs_dim]
+        obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
+        single_dim_obs_bins = torch.bucketize(agent_obs[:, obs_dim], obs_grid)
+        return single_dim_obs_bins
 
     def _get_info_from_all_pay_auction(
         self, cur_states, low_split_index, high_split_index, action_profile

@@ -140,7 +140,7 @@ class BFVerifier(BaseVerifier):
             new_obs, rewards, dones, new_states = self.env.model.compute_step(
                 flattened_states, combined_actions
             )
-            repeated_agent_rewards = self._repeat_and_flatten_to_full_stage_sim_size(
+            repeated_agent_rewards = self._repeat_rewards_and_flatten_to_full_stage_sim_size(
                 rewards[agent_id], stage + 1
             )
             batch_utilities += repeated_agent_rewards
@@ -248,14 +248,14 @@ class BFVerifier(BaseVerifier):
         obs_bin_indices = self.env.model.get_obs_bin_indices(
             agent_obs, agent_id, stage, self.obs_discretization
         )
-        repeated_obs_bin_indices = self._repeat_and_flatten_to_full_stage_sim_size(
+        repeated_obs_bin_indices = self._repeat_obs_bins_and_flatten_to_full_stage_sim_size(
             obs_bin_indices, stage
-        ).unsqueeze(-1)
+        )
 
         return repeated_obs_bin_indices
 
-    def _repeat_and_flatten_to_full_stage_sim_size(
-        self, data: torch.Tensor, stage: int
+    def _repeat_rewards_and_flatten_to_full_stage_sim_size(
+        self, rewards: torch.Tensor, stage: int
     ) -> torch.Tensor:
         """Repeats a tensor to be the full size of the simulation.
         Args:
@@ -265,12 +265,29 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
-        pos_to_repeat = len(data.shape)
+        pos_to_repeat = len(rewards.shape)
         return self._repeat_tensor_along_new_axis(
-            data=data,
+            data=rewards,
             pos=[pos_to_repeat],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
         ).flatten()
+
+    def _repeat_obs_bins_and_flatten_to_full_stage_sim_size(
+        self, obs_bins: torch.LongTensor, stage: int
+    ) -> torch.Tensor:
+        """Repeats a tensor to be the full size of the simulation.
+        Args:
+            data (torch.Tensor): _description_
+            stage (int): _description_
+
+        Returns:
+            torch.Tensor: shape=(sim_size * sims_to_be_made)
+        """
+        return self._repeat_tensor_along_new_axis(
+            data=obs_bins,
+            pos=[1],
+            repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
+        ).flatten(start_dim=0, end_dim=-2)
 
     def _get_agent_grid_actions(self, agent_id, cur_sim_size):
         agent_grid_actions = self.env.get_action_grid(
