@@ -429,6 +429,7 @@ class SequentialAuction(BaseEnvForVec):
         low = self.observation_spaces[agent_id].low[relevant_obs_indices]
         high = self.observation_spaces[agent_id].high[relevant_obs_indices]
         obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
+        # TODO: Only works for one dimensional additional obs in every stage
         return torch.bucketize(relevant_new_stage_obs, obs_grid)
 
     def obs2state(self, observation_dict: dict) -> torch.Tensor:

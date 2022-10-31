@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import torch
 
@@ -23,12 +23,18 @@ class InformationSetTree(object):
         self.action_dim = env.model.ACTION_DIM
         self.device = self.env.device
 
+        self.stored_br_indices = self._init_stage_to_data_dict()
+        self.best_responses = self._init_stage_to_data_dict()
+
         self.obs_discretization_shapes = self._get_obs_discretization_shapes()
         self.all_nodes_shape = self._get_all_nodes_shape()
         self.nodes_utility_estimates = self._init_nodes_utility_estimates()
         self.nodes_counts = self._init_nodes_utility_estimates().long()
         self.max_nodes_index = self._init_max_nodes_index()
         self.device = device
+
+    def _init_stage_to_data_dict(self):
+        return {stage: None for stage in range(self.num_rounds_to_play)}
 
     def _get_obs_discretization_shapes(self) -> Dict[int, Tuple[int]]:
         return {
@@ -77,6 +83,10 @@ class InformationSetTree(object):
 
             estimated_utilities, br_indices = torch.max(estimated_utilities, dim=-1)
 
+            self.stored_br_indices[
+                stage
+            ] = br_indices.clone()  # TODO: Do I need the clone here?
+
             visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
@@ -85,6 +95,8 @@ class InformationSetTree(object):
             estimated_utilities = estimated_utilities.sum(
                 dim=self._get_stage_obs_summing_dim(stage)
             )
+
+        self._calculate_best_responses()
 
         return estimated_utilities.item()
 
@@ -145,5 +157,40 @@ class InformationSetTree(object):
         averaged_utilities.reshape(self.all_nodes_shape)
         return averaged_utilities.reshape(self.all_nodes_shape)
 
+    def _calculate_best_responses(self):
+        prev_stage_br_slice = None
+        for stage, br_indices in self.stored_br_indices.items():
+            self.best_responses[
+                stage
+            ], prev_stage_br_slice = self._calculate_stage_br_from_indices(
+                stage, br_indices, prev_stage_br_slice
+            )
+
+    def _calculate_stage_br_from_indices(
+        self,
+        stage: int,
+        br_indices: torch.LongTensor,
+        prev_stage_br_slice: torch.LongTensor,
+    ) -> Tuple[Callable, torch.LongTensor]:
+        if stage == 0:
+
+            def best_response(agent_obs: torch.Tensor):
+                # NOTE: This may be highly inefficient as one needs to keep all br_indices in memory!
+                obs_bin_indices = self.env.model.get_obs_bin_indices(
+                    agent_obs, self.agent_id, stage, self.obs_discretization
+                )
+                action_bins = br_indices[obs_bin_indices.squeeze()]
+                agent_grid_actions = self.env.get_action_grid(
+                    self.agent_id, grid_size=self.action_discretization
+                )
+                return agent_grid_actions[action_bins]
+
+        else:
+
+            def best_response(agent_obs: torch.Tensor):
+                pass
+
+        return best_response, prev_stage_br_slice
+
     def get_best_response_estimate(self):
-        pass
+        return self.best_responses

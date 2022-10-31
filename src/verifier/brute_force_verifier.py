@@ -43,25 +43,17 @@ class BFVerifier(BaseVerifier):
 
         self.device = self.env.device
 
-        """if all(isinstance(s, spaces.Box) for s in env.model.action_spaces.values()):
-            self.action_range = [
-                env.model.ACTION_LOWER_BOUND,
-                env.model.ACTION_UPPER_BOUND,
-            ]
-        else:
-            raise ValueError("This verifier is for numeric/continuous actions only.")"""
-
     def verify(self, learners: Dict[int, SABaseAlgorithm]):
-        """Loop over the current player's valuation. This can be done to
-        sequentialize some of the computation for reduced memory consumption.
-        """
         utility_loss = torch.zeros(self.num_agents, device=self.device)
+        best_responses = {agent_id: None for agent_id in range(self.num_agents)}
 
         for agent_id in range(self.num_agents):
-            utility_loss[agent_id] = self._get_agent_utility_loss(learners, agent_id)
-        return utility_loss.cpu().detach().tolist()
+            utility_loss[agent_id], best_responses[
+                agent_id
+            ] = self._get_agent_utility_loss_and_br(learners, agent_id)
+        return utility_loss.cpu().detach().tolist(), best_responses
 
-    def _get_agent_utility_loss(self, learners, agent_id: int) -> float:
+    def _get_agent_utility_loss_and_br(self, learners, agent_id: int) -> float:
         """
         Args:
             learners (_type_): holds agents' strategies
@@ -82,7 +74,10 @@ class BFVerifier(BaseVerifier):
             self._add_simulation_results_to_tree(
                 learners, agent_id, batch_size, information_tree
             )
-        return information_tree.get_br_utility_estimate()
+        return (
+            information_tree.get_br_utility_estimate(),
+            information_tree.get_best_response_estimate(),
+        )
 
     def _get_first_stage_batch_sizes(self) -> List[int]:
         """We check how to distribute the initial draws of
@@ -92,7 +87,7 @@ class BFVerifier(BaseVerifier):
             List[int]: How many envs to create in first stage
         """
         # TODO: Lower the batch sizes if needed. Maybe change outer loop instead of filling in the correct sizes
-        return [4 for _ in range(int(self.num_simulations / 4))]
+        return [8 for _ in range(int(self.num_simulations / 8))]
 
     def _add_simulation_results_to_tree(
         self,
