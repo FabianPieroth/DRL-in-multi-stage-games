@@ -107,11 +107,12 @@ class SignalingContest(BaseEnvForVec):
         Returns:
             Dict[int, Space]: agent_id: observation space
                 - valuation
-                - win/loss/not-played first round
+                - win/loss
+                - stage
                 - bid/valuation of winning opponent
         """
-        low = [self.prior_low] + [-1.0] + [self.ACTION_LOWER_BOUND]
-        high = [self.prior_high] + [1.0] + [self.ACTION_UPPER_BOUND]
+        low = [self.prior_low] + [0.0] + [0.0] + [self.ACTION_LOWER_BOUND]
+        high = [self.prior_high] + [1.0] + [1.0] + [self.ACTION_UPPER_BOUND]
         return {
             agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
             for agent_id in range(self.num_agents)
@@ -135,21 +136,24 @@ class SignalingContest(BaseEnvForVec):
 
     def sample_new_states(self, n: int) -> Any:
         """Samples number n initial states. 
-        [n, valuation + allocation + winning bids + winning valuations]
+        [n, valuation + allocation + stage + winning bids + winning valuations]
         """
         self.group_split_index = int(self.num_agents / 2)
         self.allocation_index = self.valuation_size
-        self.payments_start_index = self.valuation_size + self.allocation_index
+        self.stage_index = self.valuation_size + 1
+        self.payments_start_index = self.valuation_size + self.allocation_index + 1
         states = torch.zeros(
-            (n, self.num_agents, self.valuation_size + 1 + 2 * self.action_size),
+            (n, self.num_agents, self.valuation_size + 1 + 1 + 2 * self.action_size),
             device=self.device,
         )
 
         # ipv symmetric uniform priors
         states[:, :, : self.valuation_size].uniform_(self.prior_low, self.prior_high)
 
-        # No rounds played until now - no allocations
-        states[:, :, self.valuation_size] = -1.0
+        # no allocations
+        states[:, :, self.valuation_size] = 0.0
+        # First stage starting
+        states[:, :, self.stage_index] = 0.0
 
         # dummy prices and winning valuations
         states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY
@@ -176,7 +180,9 @@ class SignalingContest(BaseEnvForVec):
                 cur_states, action_profile
             )
             # store winning_info to new_states
-            new_states[:, :, self.valuation_size :] = winning_info
+            new_states[:, :, self.allocation_index] = winning_info[:, :, 0]
+            new_states[:, :, self.stage_index] += 1.0
+            new_states[:, :, self.payments_start_index :] = winning_info[:, :, 1:]
             dones = torch.zeros((cur_states.shape[0]), device=cur_states.device).bool()
         elif cur_stage == 2:
             allocations_prev_round = cur_states[
@@ -306,10 +312,10 @@ class SignalingContest(BaseEnvForVec):
         """
         if stage == 0:
             relevant_obs_indices = (0,)
-            num_discretization = obs_discretization
+            discretization_nums = (obs_discretization,)
         else:
-            relevant_obs_indices = (1, 2)
-            num_discretization = 2
+            relevant_obs_indices = (1, 3)
+            discretization_nums = (2, obs_discretization)
         obs_bins = torch.zeros(
             (agent_obs.shape[0], len(relevant_obs_indices)),
             dtype=torch.long,
@@ -317,7 +323,7 @@ class SignalingContest(BaseEnvForVec):
         )
         for k, obs_dim in enumerate(relevant_obs_indices):
             obs_bins[:, k] = self._get_single_dim_obs_bins(
-                agent_obs, agent_id, num_discretization, obs_dim
+                agent_obs, agent_id, discretization_nums[k], obs_dim
             )
         return obs_bins
 
@@ -374,16 +380,6 @@ class SignalingContest(BaseEnvForVec):
         winner_info[:, :, 1][winner_mask_env] = rel_cur_states[
             :, :, : self.valuation_size
         ][winner_mask_ind_agent]
-        """if self.config["information_case"] == "true_valuations":
-            winner_info.squeeze()[winner_mask_env] = rel_cur_states[
-                :, :, : self.valuation_size
-            ][winner_mask_ind_agent]
-        elif self.config["information_case"] == "winning_bids":
-            winner_info.squeeze()[winner_mask_env] = (
-                bids[winner_mask_ind_agent].detach().clone()
-            )
-        else:
-            raise ValueError("No valid information case provided!")"""
         return winner_info
 
     def _compute_rewards(
@@ -431,7 +427,7 @@ class SignalingContest(BaseEnvForVec):
         observation_dict = {}
         for agent_id in range(self.num_agents):
             observation_size = (
-                self.valuation_size + self.action_size + self.allocation_index
+                self.valuation_size + self.allocation_index + 1 + self.action_size
             )
             observation_dict[agent_id] = torch.zeros(
                 (batch_size, observation_size), device=states.device
@@ -452,17 +448,19 @@ class SignalingContest(BaseEnvForVec):
             slice_indices = [
                 0,
                 self.valuation_size,
-                self.valuation_size + self.allocation_index + self.action_size,
+                self.stage_index,
+                self.valuation_size + self.allocation_index + 1 + self.action_size,
             ]
         elif information_case == "winning_bids":
             slice_indices = [
                 0,
                 self.valuation_size,
-                self.valuation_size + self.allocation_index,
+                self.stage_index,
+                self.valuation_size + self.allocation_index + 1,
             ]
         else:
             raise ValueError
-        indexing_tensor = torch.Tensor(slice_indices).to(self.device).long()
+        indexing_tensor = torch.tensor(slice_indices, device=self.device)
         return indexing_tensor
 
     def render(self, state):
@@ -472,7 +470,7 @@ class SignalingContest(BaseEnvForVec):
         """Get the current stage from the state."""
         if cur_states.shape[0] == 0:  # empty batch
             stage = -1
-        elif cur_states[0, 0, self.allocation_index].detach().item() == -1.0:
+        elif cur_states[0, 0, self.stage_index].detach().item() == 0.0:
             stage = 1
         else:
             stage = 2
@@ -480,10 +478,14 @@ class SignalingContest(BaseEnvForVec):
 
     def _has_lost_already(self, state: torch.Tensor):
         """Check if player already has lost in previous round."""
-        return {
-            agent_id: state[:, agent_id, self.allocation_index] == 0
-            for agent_id in range(state.shape[1])
-        }
+        lost_already_dict = {}
+        for agent_id in range(state.shape[1]):
+            allocation_true = state[:, agent_id, self.allocation_index] == 0
+            could_have_lost = state[:, agent_id, self.stage_index] > 0
+            lost_already_dict[agent_id] = torch.logical_and(
+                allocation_true, could_have_lost
+            )
+        return lost_already_dict
 
     def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
         """Method is called during training process and allows environment specific logging.
@@ -507,7 +509,7 @@ class SignalingContest(BaseEnvForVec):
                 agent_id, states, "true_valuations"
             )
             agent_vals = agent_true_val_info[:, 0]
-            opponent_vals = agent_true_val_info[:, 2]
+            opponent_vals = agent_true_val_info[:, 3]
             equ_actions[agent_id] = self.equilibrium_strategies[agent_id](
                 round, agent_vals, opponent_vals, has_lost_already[agent_id]
             )
@@ -590,7 +592,7 @@ class SignalingContest(BaseEnvForVec):
 
                 # convert to numpy
                 agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
-                opponent_info = agent_obs[:, 2].detach().cpu().view(-1).numpy()
+                opponent_info = agent_obs[:, 3].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
                 has_lost_already = has_lost_already.cpu().numpy()
