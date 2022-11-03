@@ -118,36 +118,6 @@ class BaseEnvForVec(ABC):
             image:
         """
 
-    def obs2state(self, observation_dict: Dict) -> torch.Tensor:
-        """For the verifier, we need to recreate the state from observations."""
-        raise NotImplementedError
-
-    def get_obs_discretization_shape(
-        self, agent_id: int, obs_discretization: int, stage: int
-    ) -> Tuple[int]:
-        """For the verifier, we return a discretized observation space."""
-        raise NotImplementedError
-
-    def get_obs_bin_indices(
-        self,
-        agent_obs: torch.Tensor,
-        agent_id: int,
-        stage: int,
-        obs_discretization: int,
-    ) -> torch.LongTensor:
-        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
-
-        Args:
-            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
-            agent_id (int): 
-            stage (int): 
-            obs_discretization (int): number of discretization points
-
-        Returns:
-            torch.LongTensor: shape=(batch_size, )
-        """
-        raise NotImplementedError
-
     def custom_evaluation(
         self,
         learners: Dict[int, BaseAlgorithm],
@@ -176,6 +146,38 @@ class BaseEnvForVec(ABC):
         np.random.seed(seed)
         random.seed(seed)
         torch.manual_seed(seed)
+
+
+class VerifiableEnv(ABC):
+    def __init__(self, config: Dict, device) -> None:
+        super().__init__()
+
+    @abstractmethod
+    def get_obs_discretization_shape(
+        self, agent_id: int, obs_discretization: int, stage: int
+    ) -> Tuple[int]:
+        """For the verifier, we return a discretized observation space."""
+
+    @abstractmethod
+    def get_obs_bin_indices(
+        self,
+        agent_obs: torch.Tensor,
+        agent_id: int,
+        stage: int,
+        obs_discretization: int,
+    ) -> torch.LongTensor:
+        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
+
+        Args:
+            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
+            agent_id (int): 
+            stage (int): 
+            obs_discretization (int): number of discretization points
+
+        Returns:
+            torch.LongTensor: shape=(batch_size, )
+        """
+        # TODO: Catch "Index out of bounds" error if the given agent_obs are incorrect.
 
 
 class MATorchVecEnv(VecEnv):
