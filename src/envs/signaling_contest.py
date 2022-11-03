@@ -5,7 +5,6 @@ Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bne
 """
 import time
 import warnings
-from multiprocessing.sharedctypes import Value
 from typing import Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
@@ -15,17 +14,16 @@ from gym import spaces
 from pynverse import inversefunc
 
 from src.envs.equilibria import (
-    equilibrium_fpsb_symmetric_uniform,
     no_signaling_equilibrium,
     np_array_first_round_strategy,
     signaling_equilibrium,
 )
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
-from src.envs.torch_vec_env import BaseEnvForVec
+from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
 from src.learners.utils import tensor_norm
 
 
-class SignalingContest(BaseEnvForVec):
+class SignalingContest(BaseEnvForVec, VerifiableEnv):
     """Two Stage Contest with different information sets.
     """
 

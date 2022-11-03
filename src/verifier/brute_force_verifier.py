@@ -3,7 +3,6 @@ import traceback
 from typing import Dict, List, Tuple
 
 import torch
-from gym import spaces
 from tqdm import tqdm
 
 import src.utils_folder.logging_utils as log_ut
@@ -32,16 +31,15 @@ class BFVerifier(BaseVerifier):
         action_discretization: int,
     ):
         self.env = env
+        self.env_is_compatible_with_verifier = self._check_if_env_is_compatible(env)
         self.num_agents = self.env.model.num_agents
         self.num_simulations = num_simulations
         self.action_discretization = action_discretization
         self.obs_discretization = obs_discretization
-        self.num_rounds_to_play = (
-            self.env.model.num_rounds_to_play
-        )  # TODO: Is this in every (feasible) env?
         self.action_dim = env.model.ACTION_DIM
-
         self.device = self.env.device
+        if self.env_is_compatible_with_verifier:
+            self.num_rounds_to_play = self.env.model.num_rounds_to_play
 
     def verify(self, learners: Dict[int, SABaseAlgorithm]):
         utility_loss = torch.zeros(self.num_agents, device=self.device)
@@ -87,7 +85,7 @@ class BFVerifier(BaseVerifier):
             List[int]: How many envs to create in first stage
         """
         # TODO: Lower the batch sizes if needed. Maybe change outer loop instead of filling in the correct sizes
-        return [8 for _ in range(int(self.num_simulations / 8))]
+        return [1024 for _ in range(int(self.num_simulations / 1024))]
 
     def _add_simulation_results_to_tree(
         self,

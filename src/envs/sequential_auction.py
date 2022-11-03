@@ -14,11 +14,11 @@ from gym import spaces
 
 from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
-from src.envs.torch_vec_env import BaseEnvForVec
+from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
 from src.learners.utils import batched_index_select, tensor_norm
 
 
-class SequentialAuction(BaseEnvForVec):
+class SequentialAuction(BaseEnvForVec, VerifiableEnv):
     """Sequential first price sealed bid auction.
 
     In each stage there is a single item sold.

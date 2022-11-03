@@ -12,6 +12,7 @@ class DiscreteVerifier(BaseVerifier):
 
     def __init__(self, env, num_envs: int = 128):
         self.env = env
+        self.env_is_compatible_with_verifier = self._check_if_env_is_compatible(env)
         self.num_agents = self.env.model.num_agents
         self.action_dim = env.model.ACTION_DIM
 
