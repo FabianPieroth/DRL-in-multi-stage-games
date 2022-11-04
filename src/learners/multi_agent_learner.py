@@ -166,7 +166,7 @@ class MultiAgentCoordinator:
         self, iteration: int, eval_freq: int, n_eval_episodes: int, callbacks: None
     ) -> None:
         """Evaluate current training progress."""
-        if (iteration + 1) % eval_freq == 0:
+        if iteration == 0 or (iteration + 1) % eval_freq == 0:
             log_ut.evaluate_policies(
                 self.learners,
                 self.env,
@@ -180,16 +180,26 @@ class MultiAgentCoordinator:
         self._log_change_in_parameter_space()
 
     def _verify_policies(self, iteration: int, eval_freq: int) -> None:
-        if iteration == 0 or (iteration + 1) % eval_freq == 0:
+        if (
+            (iteration == 0 or (iteration + 1) % eval_freq == 0)
+            and self.verifier.env_is_compatible_with_verifier
+            and self.config["verify_br"]
+        ):
             utility_loss, best_responses = self.verifier.verify(self.learners)
             for agent_id, learner in self.learners.items():
                 learner.logger.record("eval/utility_loss", utility_loss[agent_id])
-                # self._plot_first_stage_br(agent_id, best_responses[agent_id])
+                self._plot_first_stage_br(agent_id, best_responses[agent_id], iteration)
 
-    def _plot_first_stage_br(self, agent_id: int, agent_br: Dict[int, Callable]):
-        valuations = torch.linspace(0.0, 1.0, 32, device=2)
+    def _plot_first_stage_br(
+        self, agent_id: int, agent_br: Dict[int, Callable], iteration: int
+    ):
+        valuations = torch.linspace(1.0, 1.5, 64, device=self.config["device"])
         agent_obs = torch.cat(
-            (valuations.unsqueeze(-1), torch.zeros((32, 2), device=2)), dim=1
+            (
+                valuations.unsqueeze(-1),
+                0.0 * torch.ones((64, 3), device=self.config["device"]),
+            ),
+            dim=1,
         )
         agent_actions = agent_br[0](agent_obs)
         xs = valuations.detach().cpu().numpy()
@@ -198,10 +208,12 @@ class MultiAgentCoordinator:
 
         fig = plt.figure()
         ax = plt.axes()
-        ax.set_xlim([0, 1])
-        ax.set_ylim([-0.05, 1.05])
+        # ax.set_xlim([0, 1])
+        # ax.set_ylim([-0.05, 1.05])
         ax.plot(xs, ys)
-        plt.savefig("./logs/br_agent_" + str(agent_id) + ".png")
+        plt.savefig(
+            "./logs/br_agent_" + str(agent_id) + "_iteration_" + str(iteration) + ".png"
+        )
 
     def _log_change_in_parameter_space(self):
         prev_parameters = self.current_parameters
