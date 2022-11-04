@@ -1,0 +1,3 @@
+num_simulations: 64_000_000
+action_discretization: 64
+obs_discretization: 64
