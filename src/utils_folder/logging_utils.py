@@ -4,6 +4,7 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import imageio
+import matplotlib.pyplot as plt
 import torch
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -11,6 +12,7 @@ from stable_baselines3.common.vec_env import (
     VecMonitor,
     is_vecenv_wrapped,
 )
+from torch.utils.tensorboard import SummaryWriter
 
 from src.envs.torch_vec_env import MATorchVecEnv
 
@@ -169,3 +171,17 @@ def get_eval_ma_actions(
                 deterministic=deterministic,
             )
     return actions
+
+
+def log_data_dict_to_learner_loggers(
+    learners, data_dict: Dict[int, float], data_name: str
+):
+    for agent_id, learner in learners.items():
+        learner.logger.record(data_name, data_dict[agent_id])
+
+
+def log_figure_to_writer(
+    writer: SummaryWriter, fig: plt.Figure, iteration: int, name: str
+):
+    if fig is not None:
+        writer.add_figure(name, fig, iteration)

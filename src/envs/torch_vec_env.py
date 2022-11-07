@@ -1,9 +1,21 @@
 """Base classes for vectorized Gym environments"""
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete, Space
@@ -178,6 +190,11 @@ class VerifiableEnv(ABC):
             torch.LongTensor: shape=(batch_size, )
         """
         # TODO: Catch "Index out of bounds" error if the given agent_obs are incorrect.
+
+    def plot_br_strategy(
+        self, br_strategies: Dict[int, Callable]
+    ) -> Optional[plt.Figure]:
+        return None
 
 
 class MATorchVecEnv(VecEnv):

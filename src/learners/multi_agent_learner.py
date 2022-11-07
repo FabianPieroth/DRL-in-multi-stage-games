@@ -186,34 +186,15 @@ class MultiAgentCoordinator:
             and self.config["verify_br"]
         ):
             utility_loss, best_responses = self.verifier.verify(self.learners)
-            for agent_id, learner in self.learners.items():
-                learner.logger.record("eval/utility_loss", utility_loss[agent_id])
-                self._plot_first_stage_br(agent_id, best_responses[agent_id], iteration)
-
-    def _plot_first_stage_br(
-        self, agent_id: int, agent_br: Dict[int, Callable], iteration: int
-    ):
-        valuations = torch.linspace(1.0, 1.5, 64, device=self.config["device"])
-        agent_obs = torch.cat(
-            (
-                valuations.unsqueeze(-1),
-                0.0 * torch.ones((64, 3), device=self.config["device"]),
-            ),
-            dim=1,
-        )
-        agent_actions = agent_br[0](agent_obs)
-        xs = valuations.detach().cpu().numpy()
-        ys = agent_actions.squeeze().detach().cpu().numpy()
-        import matplotlib.pyplot as plt
-
-        fig = plt.figure()
-        ax = plt.axes()
-        # ax.set_xlim([0, 1])
-        # ax.set_ylim([-0.05, 1.05])
-        ax.plot(xs, ys)
-        plt.savefig(
-            "./logs/br_agent_" + str(agent_id) + "_iteration_" + str(iteration) + ".png"
-        )
+            log_ut.log_data_dict_to_learner_loggers(
+                self.learners, utility_loss, "eval/utility_loss"
+            )
+            log_ut.log_figure_to_writer(
+                self.writer,
+                self.env.model.plot_br_strategy(best_responses),
+                iteration,
+                "estimated_br_strategies",
+            )
 
     def _log_change_in_parameter_space(self):
         prev_parameters = self.current_parameters
