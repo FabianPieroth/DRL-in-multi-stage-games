@@ -321,18 +321,31 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         )
         for k, obs_dim in enumerate(relevant_obs_indices):
             obs_bins[:, k] = self._get_single_dim_obs_bins(
-                agent_obs, agent_id, discretization_nums[k], obs_dim
+                agent_obs, agent_id, discretization_nums[k], obs_dim, stage
             )
         return obs_bins
 
     def _get_single_dim_obs_bins(
-        self, agent_obs, agent_id, num_discretization, obs_dim
-    ):
-        low = self.observation_spaces[agent_id].low[obs_dim]
-        high = self.observation_spaces[agent_id].high[obs_dim]
+        self, agent_obs, agent_id, num_discretization, obs_dim, stage: int
+    ) -> torch.LongTensor:
+        low, high = self._get_bounds_for_obs_bins(agent_id, obs_dim, stage)
         obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
         single_dim_obs_bins = torch.bucketize(agent_obs[:, obs_dim], obs_grid)
         return single_dim_obs_bins
+
+    def _get_bounds_for_obs_bins(
+        self, agent_id: int, obs_dim: int, stage: int
+    ) -> Tuple[float]:
+        low = self.observation_spaces[agent_id].low[obs_dim]
+        high = self.observation_spaces[agent_id].high[obs_dim]
+        if stage > 0 and obs_dim == 3:
+            if self.config["information_case"] == "true_valuations":
+                low, high = self.prior_low, self.prior_high
+            elif self.config["information_case"] == "winning_bids":
+                low, high = 0.0, 0.5 * self.prior_high
+            else:
+                raise ValueError("Unknown information case!")
+        return low, high
 
     def _get_info_from_all_pay_auction(
         self, cur_states, low_split_index, high_split_index, action_profile
