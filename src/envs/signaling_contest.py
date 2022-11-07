@@ -5,7 +5,7 @@ Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bne
 """
 import time
 import warnings
-from typing import Any, Dict, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -860,6 +860,54 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     ):
         for agent_id, learner in learners.items():
             learner.logger.record(key_prefix, metric_dict[agent_id])
+
+    def plot_br_strategy(
+        self, br_strategies: Dict[int, Callable]
+    ) -> Optional[plt.Figure]:
+        num_vals = 128
+        valuations = torch.linspace(
+            self.prior_low, self.prior_high, num_vals, device=self.device
+        )
+        agent_obs = torch.cat(
+            (valuations.unsqueeze(-1), torch.zeros((num_vals, 3), device=self.device)),
+            dim=1,
+        )
+        plt.style.use("ggplot")
+        fig = plt.figure(figsize=(4.5, 4.5), clear=True)
+        ax = fig.add_subplot(111)
+        ax.set_xlabel("valuation $v$")
+        ax.set_ylabel("bid $b$")
+        ax.set_xlim([self.prior_low, self.prior_high])
+        ax.set_ylim([-0.05, self.prior_high * 1 / 3])
+
+        colors = [
+            (0 / 255.0, 150 / 255.0, 196 / 255.0),
+            (248 / 255.0, 118 / 255.0, 109 / 255.0),
+            (150 / 255.0, 120 / 255.0, 170 / 255.0),
+            (255 / 255.0, 215 / 255.0, 130 / 255.0),
+        ]
+        line_types = ["-", "--", "-.", ":"]
+
+        for agent_id, agent_br in br_strategies.items():
+            if agent_id > 3:
+                color = (0 / 255.0, 150 / 255.0, 196 / 255.0)
+                line_type = "-"
+            else:
+                color = colors[agent_id]
+                line_type = line_types[agent_id]
+            agent_actions = agent_br[0](agent_obs)
+            xs = valuations.detach().cpu().numpy()
+            ys = agent_actions.squeeze().detach().cpu().numpy()
+            ax.plot(
+                xs,
+                ys,
+                label="BR agent " + str(agent_id),
+                linestyle=line_type,
+                color=color,
+            )
+        plt.legend()
+        ax.set_aspect(1)
+        return fig
 
     def __str__(self):
         return "SignalingContest"
