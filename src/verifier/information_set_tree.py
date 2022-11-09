@@ -21,17 +21,16 @@ class InformationSetTree(object):
         self.action_discretization = action_discretization
         self.num_rounds_to_play = self.env.model.num_rounds_to_play
         self.action_dim = env.model.ACTION_DIM
-        self.device = self.env.device
+        self.device = device
 
         self.stored_br_indices = self._init_stage_to_data_dict()
         self.best_responses = self._init_stage_to_data_dict()
 
         self.obs_discretization_shapes = self._get_obs_discretization_shapes()
         self.all_nodes_shape = self._get_all_nodes_shape()
-        self.nodes_utility_estimates = self._init_nodes_utility_estimates()
+        self.nodes_utility_estimates: torch.Tensor = self._init_nodes_utility_estimates()
         self.nodes_counts = self._init_nodes_utility_estimates().long()
         self.max_nodes_index = self._init_max_nodes_index()
-        self.device = device
 
     def _init_stage_to_data_dict(self):
         return {stage: None for stage in range(self.num_rounds_to_play)}
@@ -90,7 +89,7 @@ class InformationSetTree(object):
             visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
-            estimated_utilities = estimated_utilities * visitation_probabilities
+            estimated_utilities *= visitation_probabilities
 
             estimated_utilities = estimated_utilities.sum(
                 dim=self._get_stage_obs_summing_dim(stage)
@@ -154,7 +153,6 @@ class InformationSetTree(object):
             self.nodes_utility_estimates[self.nodes_counts > 0]
             / self.nodes_counts[self.nodes_counts > 0]
         )
-        averaged_utilities.reshape(self.all_nodes_shape)
         return averaged_utilities.reshape(self.all_nodes_shape)
 
     def _calculate_best_responses(self):
