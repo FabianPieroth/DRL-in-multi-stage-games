@@ -70,7 +70,7 @@ class BFVerifier(BaseVerifier):
             self.device,
         )
         num_done_sims = 0
-        batch_size = 2 ** 15
+        batch_size = min(self.num_simulations, 2 ** 15)
         while num_done_sims <= self.num_simulations:
             try:
                 self._add_simulation_results_to_tree(
