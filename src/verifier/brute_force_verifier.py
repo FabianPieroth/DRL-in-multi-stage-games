@@ -5,9 +5,10 @@ from typing import Dict, List, Tuple
 import torch
 from tqdm import tqdm
 
-import src.utils_folder.io_utils as io_ut
-import src.utils_folder.logging_utils as log_ut
+import src.utils.io_utils as io_ut
+import src.utils.logging_utils as log_ut
 from src.learners.base_learner import SABaseAlgorithm
+from src.utils.torch_utils import repeat_tensor_along_new_axis
 from src.verifier.base_verifier import BaseVerifier
 from src.verifier.information_set_tree import InformationSetTree
 
@@ -227,7 +228,7 @@ class BFVerifier(BaseVerifier):
             episode_starts, learners, agent_id, opp_obs
         )
         for opp_agent, opp_action in opp_actions.items():
-            opp_actions[opp_agent] = self._repeat_tensor_along_new_axis(
+            opp_actions[opp_agent] = repeat_tensor_along_new_axis(
                 data=opp_action, pos=[1], repeats=[self.action_discretization]
             )
         return opp_actions
@@ -240,7 +241,7 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape: (sim_size, action_discretization)
         """
-        sim_size_states = self._repeat_tensor_along_new_axis(
+        sim_size_states = repeat_tensor_along_new_axis(
             data=states, pos=[1], repeats=[self.action_discretization]
         )
 
@@ -257,7 +258,7 @@ class BFVerifier(BaseVerifier):
         """
         action_bins = torch.arange(self.action_discretization, device=self.device)
         repeated_action_bins = (
-            self._repeat_tensor_along_new_axis(
+            repeat_tensor_along_new_axis(
                 data=action_bins,
                 pos=[0, 2],
                 repeats=[
@@ -307,7 +308,7 @@ class BFVerifier(BaseVerifier):
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
         pos_to_repeat = len(rewards.shape)
-        return self._repeat_tensor_along_new_axis(
+        return repeat_tensor_along_new_axis(
             data=rewards,
             pos=[pos_to_repeat],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -324,7 +325,7 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
-        return self._repeat_tensor_along_new_axis(
+        return repeat_tensor_along_new_axis(
             data=obs_bins,
             pos=[1],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -344,7 +345,7 @@ class BFVerifier(BaseVerifier):
         agent_grid_actions = self.env.get_action_grid(
             agent_id, grid_size=self.action_discretization
         )
-        repeated_grid_actions = self._repeat_tensor_along_new_axis(
+        repeated_grid_actions = repeat_tensor_along_new_axis(
             data=agent_grid_actions, pos=[0], repeats=[cur_sim_size]
         )
 
@@ -364,34 +365,6 @@ class BFVerifier(BaseVerifier):
         )
 
         return opp_actions
-
-    @staticmethod
-    def _repeat_tensor_along_new_axis(
-        data: torch.Tensor, pos: List[int], repeats: List[int]
-    ) -> torch.Tensor:
-        """Add additional dimensions as pos and repeat it for repeats along these dimensions.
-
-        Args:
-            data (torch.Tensor): tensor to be repeated
-            pos (List[int]): strictly increasing order of positions where repeats should be in out-tensor
-            repeats (List[int]): number of repeats of dimensions
-
-        Returns:
-            torch.Tensor: repeated tensor
-        Example:
-        data.shape = (2, 3)
-        pos = [1, 2]
-        repeats = [11, 7]
-        out.shape = (2, 11, 7, 3)
-        """
-        # TODO: Check if torch.expand() instead of torch.repeat() is feasible!
-        assert len(pos) == len(repeats), "Each pos needs a specified repeat!"
-        for single_pos in pos:
-            data = data.unsqueeze(single_pos)
-        dims_to_be_repeated = [1 for i in range(len(data.shape))]
-        for k, repeat in enumerate(repeats):
-            dims_to_be_repeated[pos[k]] = repeat
-        return data.repeat(tuple(dims_to_be_repeated))
 
     def _total_utilities_shape_for_batch(self, batch_size: int) -> Tuple[int]:
         """Gives the shape of total utilities to be estimated in a single batch rollout.

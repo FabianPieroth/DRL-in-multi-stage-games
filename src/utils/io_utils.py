@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-import src.utils_folder.policy_utils as pl_ut
+import src.utils.policy_utils as pl_ut
 
 
 def save_omegaconf_to_yaml(file: DictConfig, filename: str, path: str = "./"):

@@ -2,7 +2,7 @@ from typing import Callable, Dict, List, Tuple
 
 import torch
 
-import src.utils_folder.spaces_utils as sp_ut
+import src.utils.spaces_utils as sp_ut
 
 
 class InformationSetTree(object):

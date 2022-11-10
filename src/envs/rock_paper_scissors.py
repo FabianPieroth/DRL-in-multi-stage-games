@@ -4,7 +4,7 @@ import torch
 from gym import spaces
 from gym.spaces import Space
 
-import src.utils_folder.logging_utils as log_ut
+import src.utils.logging_utils as log_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 ROCK = 0
