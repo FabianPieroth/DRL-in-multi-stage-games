@@ -92,6 +92,7 @@ class InformationSetTree(object):
             self.env.model.ACTION_DIM == 1
         ), "We assume one dimensional action spaces in all rounds!"
 
+        # Utility estimate at last/terminal stage for all simulations
         estimated_utilities = self.calc_monte_carlo_utility_estimations()
         nodes_counts = self.nodes_counts.view(self.all_nodes_shape)
 
@@ -104,13 +105,15 @@ class InformationSetTree(object):
             self.stored_br_indices[stage] = br_indices.clone()
             # TODO: Do I need the clone here?
 
-            # Weight the cumulative utilities by their reach probabilities
+            # Weight the utilities by their reach probabilities (sample mean of
+            # utility for previous stage following the BR actions)
             visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
             estimated_utilities *= visitation_probabilities
 
-            # Sum over all possible states of this stage
+            # Sum over all possible states of this stage (chance node in
+            # game tree)
             estimated_utilities = estimated_utilities.sum(
                 dim=self._get_stage_obs_summing_dim(stage)
             )
@@ -125,7 +128,7 @@ class InformationSetTree(object):
         """
         1. Calculate the visitation probabilities for each branch of the current stage (=depth in tree). 
         2. Update the nodes_counts for next iteration (to tree depth - 1)
-        #TODO: Separate these two things without redundant operations.
+        # TODO: Separate these two things without redundant operations.
         Args:
             nodes_counts (torch.LongTensor): 
             br_indices (torch.LongTensor): best-response indices of current stage 
@@ -134,11 +137,18 @@ class InformationSetTree(object):
         Returns:
             Tuple[torch.Tensor, torch.LongTensor]: visitation_probabilities, updated_node_counts
         """
+
+        # Subselect the counts for the paths reaching the BR action
         nodes_counts = torch.gather(
             nodes_counts, -1, br_indices.unsqueeze(-1)
         ).squeeze()
+
+        # Sum counts over all states for counts of taking actions iny previous stage
         summing_dim = self._get_stage_obs_summing_dim(stage)
         nodes_counts_obs_sum = nodes_counts.sum(summing_dim, keepdim=True)
+
+        # Calculate visitation probabilities
+        # TODO: Possibly cleaner with Einstein notation and no expansion(?)
         expansion_dim = (
             tuple(
                 [-1]
@@ -149,7 +159,6 @@ class InformationSetTree(object):
             )
             + self.obs_discretization_shapes[stage]
         )
-
         expanded_nodes_counts_obs_sum = nodes_counts_obs_sum.expand(expansion_dim)
 
         mask = expanded_nodes_counts_obs_sum > 0
