@@ -3,9 +3,9 @@ import hydra
 import pytest
 import torch
 
-import src.utils_folder.io_utils as io_ut
-import src.utils_folder.logging_utils as log_ut
-import src.utils_folder.test_utils as tst_ut
+import src.utils.io_utils as io_ut
+import src.utils.logging_utils as log_ut
+import src.utils.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
