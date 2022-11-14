@@ -31,9 +31,7 @@ def test_sequential_auction_in_bne():
     for stage in range(env.num_rounds_to_play):
 
         has_won_already = env._has_won_already(states, stage)
-        actions = env.get_equilibrium_actions(
-            stage, env.strategies_bne, observations, has_won_already
-        )
+        actions = self.get_ma_equilibrium_actions(observations)
 
         observations, rewards, _, states = env.compute_step(states, actions)
 

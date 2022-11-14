@@ -1,11 +1,9 @@
 """
-Simple sequential auction game following Krishna.
-
-Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
+Simple signaling contest with two stages and four player.
 """
 import time
 import warnings
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -424,7 +422,12 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             rewards = sa_valuations * sa_allocations - sa_payments
         return rewards
 
-    def get_observations(self, states: torch.Tensor) -> torch.Tensor:
+    def get_observations(
+        self,
+        states: torch.Tensor,
+        player_positions: List = None,
+        information_case: str = None,
+    ) -> torch.Tensor:
         """Return the observations at the player at `player_position`.
 
         :param states: The current states of shape (num_env, num_agents,
@@ -435,24 +438,29 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             + obs_public_dim)
         """
         batch_size = states.shape[0]
-        observation_dict = {}
-        for agent_id in range(self.num_agents):
-            observation_size = (
-                self.valuation_size + self.allocation_index + 1 + self.action_size
-            )
-            observation_dict[agent_id] = torch.zeros(
-                (batch_size, observation_size), device=states.device
-            )
-            observation_dict[agent_id] = self._get_obs_info_from_state(
-                agent_id, states, self.config["information_case"]
-            ).detach()
-        return observation_dict
+        player_positions = (
+            list(range(self.num_agents))
+            if player_positions is None
+            else player_positions
+        )
+        information_case = (
+            self.config.information_case
+            if information_case is None
+            else information_case
+        )
 
-    def _get_obs_info_from_state(
-        self, agent_id: int, states: torch.Tensor, information_case: str
-    ) -> torch.Tensor:
-        slicing_indices = self._get_obs_slicing_indices(information_case)
-        return states[:, agent_id, :].index_select(1, slicing_indices)
+        observation_dict = {}
+        for agent_id in player_positions:
+            slicing_indices = self._get_obs_slicing_indices(information_case)
+            # shape = (batch_size, valuation_size + allocation_index + 1 + action_size)
+            observation_dict[agent_id] = (
+                states[:, agent_id, :]
+                .index_select(1, slicing_indices)
+                .to(device=states.device)
+                .detach()
+            )
+
+        return observation_dict
 
     def _get_obs_slicing_indices(self, information_case: str):
         if information_case == "true_valuations":
@@ -477,22 +485,51 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     def render(self, state):
         return state
 
-    def _state2stage(self, cur_states):
+    def _state2stage(self, states):
         """Get the current stage from the state."""
-        if cur_states.shape[0] == 0:  # empty batch
+        if states.shape[0] == 0:  # empty batch
             stage = -1
-        elif cur_states[0, 0, self.stage_index].detach().item() == 0.0:
+        elif states[0, 0, self.stage_index].detach().item() == 0:
             stage = 1
         else:
             stage = 2
         return stage
 
-    def _has_lost_already(self, state: torch.Tensor):
-        """Check if player already has lost in previous round."""
+    def _obs2stage(self, obs):
+        """Get the current stage from the observation."""
+        if obs.shape[0] == 0:  # empty batch
+            stage = -1
+        elif obs[0, self.stage_index].detach().item() == 0:
+            stage = 1
+        else:
+            stage = 2
+        return stage
+
+    def _has_lost_already_from_state(
+        self, state: torch.Tensor
+    ) -> Dict[int, torch.Tensor]:
+        """Check if all players already have lost in previous round based on
+        current state.
+        """
         lost_already_dict = {}
-        for agent_id in range(state.shape[1]):
+        for agent_id in range(self.num_agents):
             allocation_true = state[:, agent_id, self.allocation_index] == 0
             could_have_lost = state[:, agent_id, self.stage_index] > 0
+            lost_already_dict[agent_id] = torch.logical_and(
+                allocation_true, could_have_lost
+            )
+        return lost_already_dict
+
+    def _has_lost_already_from_obs(
+        self, obs: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        """Check if player already has lost in previous round based on his or
+        her observation.
+        """
+        lost_already_dict = {}
+        for agent_id in obs.keys():
+            allocation_true = obs[agent_id][:, self.allocation_index] == 0
+            could_have_lost = obs[agent_id][:, self.stage_index] > 0
             lost_already_dict[agent_id] = torch.logical_and(
                 allocation_true, could_have_lost
             )
@@ -511,18 +548,16 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.log_metrics_to_equilibrium(learners)
 
     def get_ma_equilibrium_actions(
-        self, round: int, states: torch.Tensor
+        self, observations: Dict[int, torch.Tensor]
     ) -> torch.Tensor:
         equ_actions = {}
-        has_lost_already = self._has_lost_already(states)
-        for agent_id in range(states.shape[1]):
-            agent_true_val_info = self._get_obs_info_from_state(
-                agent_id, states, "true_valuations"
-            )
-            agent_vals = agent_true_val_info[:, 0]
-            opponent_vals = agent_true_val_info[:, 3]
+        player_positions = list(observations.keys())
+        stage = self._obs2stage(observations[player_positions[0]])
+        has_lost_already = self._has_lost_already_from_obs(observations)
+        for agent_id, obs in observations.items():
+            agent_vals, opponent_vals = obs[:, 0], obs[:, 3]
             equ_actions[agent_id] = self.equilibrium_strategies[agent_id](
-                round, agent_vals, opponent_vals, has_lost_already[agent_id]
+                stage, agent_vals, opponent_vals, has_lost_already[agent_id]
             )
         return equ_actions
 
@@ -592,10 +627,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 # sort
                 agent_obs = agent_obs[increasing_order]
 
-                has_lost_already = self._has_lost_already(states[increasing_order])[
-                    agent_id
-                ]
-
+                has_lost_already = self._has_lost_already_from_obs(
+                    {agent_id: agent_obs}
+                )[agent_id]
                 deterministic_actions = ma_deterministic_actions[agent_id][
                     increasing_order
                 ]
@@ -808,8 +842,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         num_rounds = 2
         actual_states = self.sample_new_states(num_samples)
         actual_observations = self.get_observations(actual_states)
-
         equ_states = actual_states.clone()
+        equ_observations = self.get_observations(equ_states)
 
         l2_distances = {i: [None] * num_rounds for i in learners.keys()}
         actual_rewards_total = {i: 0 for i in learners.keys()}
@@ -818,12 +852,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         for round_iter in range(num_rounds):
 
             equ_actions_in_actual_play = self.get_ma_equilibrium_actions(
-                round_iter + 1, actual_states
+                actual_observations
             )
 
-            equ_actions_in_equ = self.get_ma_equilibrium_actions(
-                round_iter + 1, equ_states
-            )
+            equ_actions_in_equ = self.get_ma_equilibrium_actions(equ_observations)
 
             actual_actions = self.get_ma_learner_predictions(
                 learners, actual_observations, True, clip_negativ_bids=True
@@ -832,7 +864,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions
             )
-            _, equ_rewards, _, equ_states = self.compute_step(
+            equ_observations, equ_rewards, _, equ_states = self.compute_step(
                 equ_states, equ_actions_in_equ
             )
 

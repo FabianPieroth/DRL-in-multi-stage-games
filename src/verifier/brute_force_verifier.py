@@ -7,16 +7,16 @@ from tqdm import tqdm
 
 import src.utils.io_utils as io_ut
 import src.utils.logging_utils as log_ut
+from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
 from src.learners.base_learner import SABaseAlgorithm
 from src.utils.torch_utils import repeat_tensor_along_new_axis
-from src.verifier.base_verifier import BaseVerifier
 from src.verifier.information_set_tree import InformationSetTree
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM!"
 
 
-class BFVerifier(BaseVerifier):
+class BFVerifier:
     """Verifier that tries out a grid of alternative actions and choses the
     best combination as approximation to a best response.
     Assumptions:
@@ -33,7 +33,7 @@ class BFVerifier(BaseVerifier):
         action_discretization: int,
     ):
         self.env = env
-        self.env_is_compatible_with_verifier = self._check_if_env_is_compatible(env)
+        self.env_is_compatible_with_verifier = isinstance(env.model, VerifiableEnv)
         self.num_agents = self.env.model.num_agents
         self.num_simulations = num_simulations
         self.action_discretization = action_discretization
@@ -43,15 +43,18 @@ class BFVerifier(BaseVerifier):
         if self.env_is_compatible_with_verifier:
             self.num_rounds_to_play = self.env.model.num_rounds_to_play
 
-    def verify(self, learners: Dict[int, SABaseAlgorithm]):
-        utility_loss = torch.zeros(self.num_agents, device=self.device)
-        best_responses = {agent_id: None for agent_id in range(self.num_agents)}
+    def verify(
+        self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
+    ):
+        agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
+        br_utilities = {agent_id: 0 for agent_id in agent_ids}
+        br_actions = {agent_id: None for agent_id in agent_ids}
 
-        for agent_id in range(self.num_agents):
-            utility_loss[agent_id], best_responses[
-                agent_id
-            ] = self._get_agent_utility_loss_and_br(learners, agent_id)
-        return utility_loss.cpu().detach().tolist(), best_responses
+        for agent_id in agent_ids:
+            utility, action = self._get_agent_utility_loss_and_br(strategies, agent_id)
+            br_utilities[agent_id], br_actions[agent_id] = utility, action
+
+        return br_utilities, br_actions
 
     def _get_agent_utility_loss_and_br(self, learners, agent_id: int) -> float:
         """

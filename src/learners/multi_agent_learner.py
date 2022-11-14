@@ -2,6 +2,7 @@
 import time
 from typing import Callable, Dict, List
 
+import matplotlib.pyplot as plt
 import torch
 from gym import spaces
 from stable_baselines3.common.type_aliases import MaybeCallback
@@ -11,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 import src.utils.logging_utils as log_ut
 import src.utils.policy_utils as pl_ut
 from src.learners.utils import tensor_norm
-from src.verifier import BFVerifier, DiscreteVerifier
+from src.verifier import BFVerifier
 
 
 class MultiAgentCoordinator:
@@ -189,12 +190,48 @@ class MultiAgentCoordinator:
             log_ut.log_data_dict_to_learner_loggers(
                 self.learners, utility_loss, "eval/utility_loss"
             )
+            br_plot = self.env.model.plot_br_strategy(best_responses)
             log_ut.log_figure_to_writer(
-                self.writer,
-                self.env.model.plot_br_strategy(best_responses),
-                iteration,
-                "estimated_br_strategies",
+                self.writer, br_plot, iteration, "estimated_br_strategies"
             )
+            plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
+
+    def verify_in_BNE(self) -> None:
+        if not self.verifier.env_is_compatible_with_verifier:
+            return None
+
+        num_agents = self.env.model.num_agents
+        strategies = {agent_id: None for agent_id in range(num_agents)}
+        utility_losses = {agent_id: 0 for agent_id in range(num_agents)}
+
+        for agent_id in range(num_agents):
+            for opp_id in range(num_agents):
+                if opp_id == agent_id:
+                    # TODO: should not be needed
+                    strategies[opp_id] = self.learners[opp_id]
+                else:
+                    # Create a wrapper such that the BNE strategies provide
+                    # the same interface as the learners
+                    class EquilibriumStrategy:
+                        @staticmethod
+                        def predict(
+                            observations, states, episode_start, deterministic=True
+                        ):
+                            strategy = self.env.model.get_ma_equilibrium_actions
+                            return strategy({opp_id: observations})[opp_id], None
+
+                    strategies[opp_id] = EquilibriumStrategy()
+
+            utility_loss, best_response = self.verifier.verify(
+                strategies, agent_ids=[agent_id]
+            )
+            utility_losses[agent_id] = utility_loss[agent_id]
+
+            # Debug plotting
+            self.env.model.plot_br_strategy(best_response)
+            plt.savefig(f"./logs/{self.env.model}_{agent_id}_br.png")
+
+        return utility_losses
 
     def _log_change_in_parameter_space(self):
         prev_parameters = self.current_parameters
