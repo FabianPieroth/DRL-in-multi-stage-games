@@ -29,6 +29,7 @@ def test_verifier_in_bne(environment, utility_in_BNE):
     environment by playing the BNE strategy. Collect the total rewards and
     compare with the analytic expected utility.
     """
+    hydra.core.global_hydra.GlobalHydra().clear()
     io_ut.set_global_seed(0)
 
     config = io_ut.get_config()
