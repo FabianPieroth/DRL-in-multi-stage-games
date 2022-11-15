@@ -19,6 +19,7 @@ from src.envs.equilibria import (
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
 from src.learners.utils import tensor_norm
+from src.utils.policy_utils import get_algo_name
 
 
 class SignalingContest(BaseEnvForVec, VerifiableEnv):
@@ -642,10 +643,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
                 has_lost_already = has_lost_already.cpu().numpy()
 
-                if isinstance(config["algorithms"], str):
-                    algo_name = config["algorithms"]
-                else:
-                    algo_name = config["algorithms"][agent_id]
+                algo_name = get_algo_name(agent_id, config)
 
                 if round == 1:
                     self._plot_first_round_strategy(

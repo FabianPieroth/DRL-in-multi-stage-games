@@ -5,12 +5,14 @@ from typing import Callable, Dict, List
 import matplotlib.pyplot as plt
 import torch
 from gym import spaces
+from stable_baselines3.common.policies import register_policy
 from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils.logging_utils as log_ut
 import src.utils.policy_utils as pl_ut
+from src.learners.policies.MlpPolicy import *
 from src.learners.utils import tensor_norm
 from src.verifier import BFVerifier
 
@@ -19,12 +21,16 @@ class MultiAgentCoordinator:
     """Coordinates simultaneous learning of multiple learners."""
 
     def __init__(self, config: Dict, env):
+
+        # Register any custom policy
+        register_policy("CustomActorCriticPolicy", CustomActorCriticPolicy)
+
         self.config = config
         self.env = env
         self.n_step = 0
 
         self.learners = pl_ut.get_policies(config, env)
-        self.writer = SummaryWriter(log_dir=config["experiment_log_path"])
+        self.writer = SummaryWriter(log_dir=config.experiment_log_path)
 
         # TODO Nils: This is needed, unfortunately, for `collapse_symmetric_opponents`
         self.env.model.learners = self.learners
@@ -46,27 +52,17 @@ class MultiAgentCoordinator:
                     [_ for _ in learner.policy.parameters()]
                 )
             else:
-                param_dict[agent_id] = torch.zeros(1, device=self.config["device"])
+                param_dict[agent_id] = torch.zeros(1, device=self.config.device)
         return param_dict
 
     def _setup_verifier(self):
         """Use appropriate verifier."""
-        if all(
-            isinstance(s, spaces.Box) for s in self.env.model.action_spaces.values()
-        ):
-            verifier = BFVerifier(
-                num_simulations=self.config["verifier"]["num_simulations"],
-                obs_discretization=self.config["verifier"]["obs_discretization"],
-                action_discretization=self.config["verifier"]["action_discretization"],
-                env=self.env,
-            )
-        elif all(
-            isinstance(s, spaces.Discrete)
-            for s in self.env.model.action_spaces.values()
-        ):
-            verifier = DiscreteVerifier(env=self.env)
-        else:
-            raise NotImplementedError("Could not infer verifier for this game.")
+        verifier = BFVerifier(
+            num_simulations=self.config.verifier.num_simulations,
+            obs_discretization=self.config.verifier.obs_discretization,
+            action_discretization=self.config.verifier.action_discretization,
+            env=self.env,
+        )
         return verifier
 
     def get_ma_action(self, obs: Dict[int, torch.Tensor]):
@@ -115,7 +111,7 @@ class MultiAgentCoordinator:
         """If all agents share the same policy, we only train the one at 
         index 0.
         """
-        return self.config["policy_sharing"] and agent_id > 0
+        return self.config.policy_sharing and agent_id > 0
 
     def _display_and_log_training_progress(self, iteration, log_interval):
         if log_interval is not None and iteration % log_interval == 0:
@@ -172,11 +168,14 @@ class MultiAgentCoordinator:
                 self.learners,
                 self.env,
                 callbacks=callbacks,
-                device=self.config["device"],
+                device=self.config.device,
                 n_eval_episodes=n_eval_episodes,
             )
+            learners = (
+                {0: self.learners[0]} if self.config.policy_sharing else self.learners
+            )
             self.env.model.custom_evaluation(
-                self.learners, self.env, self.writer, iteration + 1, self.config
+                learners, self.env, self.writer, iteration + 1, self.config
             )
         self._log_change_in_parameter_space()
 
@@ -184,7 +183,7 @@ class MultiAgentCoordinator:
         if (
             (iteration == 0 or (iteration + 1) % eval_freq == 0)
             and self.verifier.env_is_compatible_with_verifier
-            and self.config["verify_br"]
+            and self.config.verify_br
         ):
             utility_loss, best_responses = self.verifier.verify(self.learners)
             log_ut.log_data_dict_to_learner_loggers(
@@ -303,7 +302,7 @@ class MultiAgentCoordinator:
                 dones,
                 infos,
                 new_obs,
-                self.config["policy_sharing"],
+                self.config.policy_sharing,
                 callbacks,
             )
 
@@ -348,7 +347,7 @@ class MultiAgentCoordinator:
                 callback=callbacks[agent_id],
                 eval_freq=eval_freq,
                 n_eval_episodes=n_eval_episodes,
-                log_path=self.config["experiment_log_path"],
+                log_path=self.config.experiment_log_path,
                 reset_num_timesteps=reset_num_timesteps,
             )
             callbacks[agent_id].on_training_start(locals(), globals())
