@@ -10,6 +10,26 @@ RELU_LAYER = torch.nn.ReLU()
 precision errors. See https://discuss.pytorch.org/t/numerical-error-between-batch-and-single-instance-computation/56735/4"""
 
 
+class EquilibriumStrategy:
+    """Wrapper such that the BNE strategies provide # the same interface as the
+    learners.
+    """
+
+    def __init__(self, env, agent_id: int):
+        self.env = env
+        self.agent_id = agent_id
+
+    def predict(
+        self,
+        observations: torch.Tensor,
+        states: torch.Tensor,
+        episode_start: torch.Tensor,
+        deterministic: bool = True,
+    ) -> torch.Tensor:
+        strategy = self.env.model.get_ma_equilibrium_actions
+        return strategy({self.agent_id: observations})[self.agent_id], None
+
+
 def equilibrium_fpsb_symmetric_uniform(
     num_agents: int, num_units: int, player_position: int = 0
 ):

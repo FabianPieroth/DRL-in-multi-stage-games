@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import src.utils.logging_utils as log_ut
 import src.utils.policy_utils as pl_ut
+from src.envs.equilibria import EquilibriumStrategy
 from src.learners.policies.MlpPolicy import *
 from src.learners.utils import tensor_norm
 from src.verifier import BFVerifier
@@ -200,27 +201,13 @@ class MultiAgentCoordinator:
             return None
 
         num_agents = self.env.model.num_agents
-        strategies = {agent_id: None for agent_id in range(num_agents)}
-        utility_losses = {agent_id: 0 for agent_id in range(num_agents)}
+        strategies = {
+            agent_id: EquilibriumStrategy(self.env, agent_id)
+            for agent_id in range(num_agents)
+        }
 
+        utility_losses = {agent_id: None for agent_id in range(num_agents)}
         for agent_id in range(num_agents):
-            for opp_id in range(num_agents):
-                if opp_id == agent_id:
-                    # TODO: should not be needed
-                    strategies[opp_id] = self.learners[opp_id]
-                else:
-                    # Create a wrapper such that the BNE strategies provide
-                    # the same interface as the learners
-                    class EquilibriumStrategy:
-                        @staticmethod
-                        def predict(
-                            observations, states, episode_start, deterministic=True
-                        ):
-                            strategy = self.env.model.get_ma_equilibrium_actions
-                            return strategy({opp_id: observations})[opp_id], None
-
-                    strategies[opp_id] = EquilibriumStrategy()
-
             utility_loss, best_response = self.verifier.verify(
                 strategies, agent_ids=[agent_id]
             )

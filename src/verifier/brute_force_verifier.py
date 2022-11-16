@@ -47,14 +47,14 @@ class BFVerifier:
         self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
     ):
         agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
-        br_utilities = {agent_id: 0 for agent_id in agent_ids}
-        br_actions = {agent_id: None for agent_id in agent_ids}
+        utility_losses = {agent_id: 0 for agent_id in agent_ids}
+        best_responses = {agent_id: None for agent_id in agent_ids}
 
         for agent_id in agent_ids:
-            utility, action = self._get_agent_utility_loss_and_br(strategies, agent_id)
-            br_utilities[agent_id], br_actions[agent_id] = utility, action
+            ul, br = self._get_agent_utility_loss_and_br(strategies, agent_id)
+            utility_losses[agent_id], best_responses[agent_id] = ul, br
 
-        return br_utilities, br_actions
+        return utility_losses, best_responses
 
     def _get_agent_utility_loss_and_br(self, learners, agent_id: int) -> float:
         """
@@ -90,12 +90,14 @@ class BFVerifier:
                     num_done_sims, self.num_simulations, progress_message
                 )
             except RuntimeError as e:
-                """ TODO: Some data seems to remain on the GPU if allocation fails. If initial batch size = 2**18,
-                then working batch_size = 1024. If inital batch size = 2**15, working batch size = 4096 for signaling contest!"""
+                """TODO: Some data seems to remain on the GPU if allocation
+                fails. If initial batch size = 2**18, then working batch_size =
+                1024. If initial batch size = 2**15, working batch size = 4096
+                for signaling contest!"""
                 self._catch_failed_simulation(batch_size, e)
                 batch_size = int(batch_size / 2)
         return (
-            information_tree.get_br_utility_estimate(),
+            information_tree.get_utility_loss_estimate(),
             information_tree.get_best_response_estimate(),
         )
 
@@ -105,6 +107,29 @@ class BFVerifier:
         if batch_size <= 1:
             traceback.print_exc()
             raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
+
+    def get_actual_utility(
+        self, states: torch.Tensor, learners: Dict[int, "Strategy"], agent_id: int
+    ):
+        batch_size, device = states.shape[0], states.device
+
+        episode_starts = torch.ones((batch_size,), dtype=bool, device=device)
+        actual_utility = torch.zeros((batch_size,), device=device)
+
+        for stage in range(self.num_rounds_to_play):
+            obs = self.env.model.get_observations(states)
+            actions = log_ut.get_eval_ma_actions(
+                learners=learners,
+                observations=obs,
+                states=states,
+                episode_starts=episode_starts,
+            )
+            obs, rewards, episode_starts, states = self.env.model.compute_step(
+                states, actions
+            )
+            actual_utility += rewards[agent_id]
+
+        return actual_utility.mean()
 
     def _add_simulation_results_to_tree(
         self,
@@ -123,13 +148,17 @@ class BFVerifier:
             information_tree (InformationSetTree): game tree
         """
 
-        batch_utilities = torch.zeros(
+        # shape = (sim_size, *state_size)
+        states = self.env.model.sample_new_states(batch_size)
+
+        # A. Sample actual utility
+        actual_utility = self.get_actual_utility(states.clone(), learners, agent_id)
+
+        # B. Calculate best response utility
+        best_response_utilities = torch.zeros(
             self._total_utilities_shape_for_batch(batch_size), device=self.device
         ).flatten()
         sim_size = batch_size  # The current size of the simulation
-
-        # shape = (sim_size, *state_size)
-        states = self.env.model.sample_new_states(batch_size)
 
         agent_obs, opp_obs = self._split_obs(
             agent_id, self.env.model.get_observations(states)
@@ -184,7 +213,7 @@ class BFVerifier:
             repeated_agent_rewards = self._repeat_rewards_and_flatten_to_full_stage_sim_size(
                 rewards[agent_id], stage + 1
             )
-            batch_utilities += repeated_agent_rewards
+            best_response_utilities += repeated_agent_rewards
 
             # Update variables for next game stage
             episode_starts = dones
@@ -198,7 +227,9 @@ class BFVerifier:
         assert (
             torch.all(dones).cpu().item()
         ), "All games should have ended after playing all rounds! Check num_rounds_to_play of env!"
-        information_tree.add_simulation_results(batch_utilities, sim_batch_indices)
+        information_tree.add_simulation_results(
+            best_response_utilities - actual_utility, sim_batch_indices
+        )
 
     def _get_combined_actions(self, agent_id, sim_size_grid_actions, opp_actions):
         combined_actions = {}

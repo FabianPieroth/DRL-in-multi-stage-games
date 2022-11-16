@@ -80,7 +80,7 @@ class InformationSetTree(object):
         )  # TODO: expand instead creating big tensor
         self.nodes_counts.index_add_(0, flat_indices, counts)
 
-    def get_br_utility_estimate(self):
+    def get_utility_loss_estimate(self):
         """Iteratively compute best-response utility estimate.
         Shape of self.nodes_utility_estimates = (N_V^1, N_A, ..., N_V^k, N_A).
         Visitation counts are identical in size. Iterate reversely over stages:
@@ -93,14 +93,16 @@ class InformationSetTree(object):
         ), "We assume one dimensional action spaces in all rounds!"
 
         # Utility estimate at last/terminal stage for all simulations
-        estimated_utilities = self.calc_monte_carlo_utility_estimations()
+        estimated_utility_losses = self.calc_monte_carlo_utility_estimations()
         nodes_counts = self.nodes_counts.view(self.all_nodes_shape)
 
         # Backwards traversal of game tree
         for stage in reversed(range(self.num_rounds_to_play)):
 
             # Select action with highest utility
-            estimated_utilities, br_indices = torch.max(estimated_utilities, dim=-1)
+            estimated_utility_losses, br_indices = torch.max(
+                estimated_utility_losses, dim=-1
+            )
 
             self.stored_br_indices[stage] = br_indices.clone()
             # TODO: Do I need the clone here?
@@ -110,17 +112,17 @@ class InformationSetTree(object):
             visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
-            estimated_utilities *= visitation_probabilities
+            estimated_utility_losses *= visitation_probabilities
 
             # Sum over all possible states of this stage (chance node in
             # game tree)
-            estimated_utilities = estimated_utilities.sum(
+            estimated_utility_losses = estimated_utility_losses.sum(
                 dim=self._get_stage_obs_summing_dim(stage)
             )
 
         # Now we have a scalar estimate of the utility when playing the BR
         self._calculate_best_responses()
-        return estimated_utilities.item()
+        return estimated_utility_losses.item()
 
     def _calc_visitation_probabilities_and_update_nodes_counts(
         self, nodes_counts: torch.LongTensor, br_indices: torch.LongTensor, stage: int

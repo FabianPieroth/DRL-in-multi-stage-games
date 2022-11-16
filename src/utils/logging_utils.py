@@ -157,14 +157,21 @@ def evaluate_policies(
 
 
 def get_eval_ma_actions(
-    learners, observations, states, episode_starts, deterministic, excluded_agents=None
+    learners,
+    observations: Dict[int, torch.Tensor],
+    states: torch.Tensor,
+    episode_starts: torch.Tensor,
+    deterministic: bool = True,
+    excluded_agents: List = None,
 ):
+    # TODO: Nils @ Fabian: (1) Why isn't this method in the env class?
+    # (2) It should be independent of states, episode_starts.
     if excluded_agents is None:
         excluded_agents = []
     actions = {}
     for agent_id, learner in learners.items():
         if agent_id not in excluded_agents:
-            actions[agent_id], states[agent_id] = learner.predict(
+            actions[agent_id], _ = learner.predict(
                 observations[agent_id],
                 states[agent_id],
                 episode_start=episode_starts,
