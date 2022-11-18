@@ -154,7 +154,6 @@ class InformationSetTree(object):
             self.nodes_utility_estimates[self.nodes_counts > 0]
             / self.nodes_counts[self.nodes_counts > 0]
         )
-        averaged_utilities.reshape(self.all_nodes_shape)
         return averaged_utilities.reshape(self.all_nodes_shape)
 
     def _calculate_best_responses(self):
