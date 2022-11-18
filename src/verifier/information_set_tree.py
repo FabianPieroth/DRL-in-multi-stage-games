@@ -2,7 +2,7 @@ from typing import Callable, Dict, List, Tuple
 
 import torch
 
-import src.utils_folder.spaces_utils as sp_ut
+import src.utils.spaces_utils as sp_ut
 
 
 class InformationSetTree(object):
@@ -21,17 +21,26 @@ class InformationSetTree(object):
         self.action_discretization = action_discretization
         self.num_rounds_to_play = self.env.model.num_rounds_to_play
         self.action_dim = env.model.ACTION_DIM
-        self.device = self.env.device
+        self.device = device
 
         self.stored_br_indices = self._init_stage_to_data_dict()
         self.best_responses = self._init_stage_to_data_dict()
 
+        # Dict of obs shapes for all stages
         self.obs_discretization_shapes = self._get_obs_discretization_shapes()
+
+        # Expand to account for all possible actions
         self.all_nodes_shape = self._get_all_nodes_shape()
-        self.nodes_utility_estimates = self._init_nodes_utility_estimates()
+
+        # Initialize all game tree node utilities & visitation counts to zero
+        self.nodes_utility_estimates: torch.Tensor = self._init_nodes_utility_estimates()
         self.nodes_counts = self._init_nodes_utility_estimates().long()
-        self.max_nodes_index = self._init_max_nodes_index()
-        self.device = device
+
+        self.max_nodes_index = self.nodes_counts.shape[0]
+        assert (
+            self.max_nodes_index
+            == torch.prod(torch.tensor(list(self.all_nodes_shape))).item()
+        )
 
     def _init_stage_to_data_dict(self):
         return {stage: None for stage in range(self.num_rounds_to_play)}
@@ -59,12 +68,16 @@ class InformationSetTree(object):
     def add_simulation_results(
         self, utilities: torch.Tensor, indices: torch.LongTensor
     ):
+        # Ravel the stage-wise observation indices to indexing the whole game tree
         flat_indices = sp_ut.ravel_multi_index(indices, self.all_nodes_shape)
+
+        # Add utilities to cumulative utilities
         self.nodes_utility_estimates.index_add_(0, flat_indices, utilities)
 
+        # Increment visitation counts
         counts = torch.ones(
-            flat_indices.shape, device=self.device
-        ).long()  # TODO: expand instead creating big tensor
+            flat_indices.shape, device=self.device, dtype=torch.long
+        )  # TODO: expand instead creating big tensor
         self.nodes_counts.index_add_(0, flat_indices, counts)
 
     def get_br_utility_estimate(self):
@@ -72,32 +85,41 @@ class InformationSetTree(object):
         Shape of self.nodes_utility_estimates = (N_V^1, N_A, ..., N_V^k, N_A).
         Visitation counts are identical in size. Iterate reversely over stages:
         1. max over last dim (br given previous trajectory)
-        2. calculate visition probabilities over obs
+        2. calculate visitation probabilities over obs
         3. weight utilities of br by visitation probabilities
         """
-        # NOTE: We assume one dimensional action spaces in all rounds!
-        estimated_utilities = self.calc_monte_carlo_utility_estimations()
-        nodes_counts = self.nodes_counts.reshape(self.all_nodes_shape)
+        assert (
+            self.env.model.ACTION_DIM == 1
+        ), "We assume one dimensional action spaces in all rounds!"
 
+        # Utility estimate at last/terminal stage for all simulations
+        estimated_utilities = self.calc_monte_carlo_utility_estimations()
+        nodes_counts = self.nodes_counts.view(self.all_nodes_shape)
+
+        # Backwards traversal of game tree
         for stage in reversed(range(self.num_rounds_to_play)):
 
+            # Select action with highest utility
             estimated_utilities, br_indices = torch.max(estimated_utilities, dim=-1)
 
-            self.stored_br_indices[
-                stage
-            ] = br_indices.clone()  # TODO: Do I need the clone here?
+            self.stored_br_indices[stage] = br_indices.clone()
+            # TODO: Do I need the clone here?
 
+            # Weight the utilities by their reach probabilities (sample mean of
+            # utility for previous stage following the BR actions)
             visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
-            estimated_utilities = estimated_utilities * visitation_probabilities
+            estimated_utilities *= visitation_probabilities
 
+            # Sum over all possible states of this stage (chance node in
+            # game tree)
             estimated_utilities = estimated_utilities.sum(
                 dim=self._get_stage_obs_summing_dim(stage)
             )
 
+        # Now we have a scalar estimate of the utility when playing the BR
         self._calculate_best_responses()
-
         return estimated_utilities.item()
 
     def _calc_visitation_probabilities_and_update_nodes_counts(
@@ -106,7 +128,7 @@ class InformationSetTree(object):
         """
         1. Calculate the visitation probabilities for each branch of the current stage (=depth in tree). 
         2. Update the nodes_counts for next iteration (to tree depth - 1)
-        #TODO: Separate these two things without redundant operations.
+        # TODO: Separate these two things without redundant operations.
         Args:
             nodes_counts (torch.LongTensor): 
             br_indices (torch.LongTensor): best-response indices of current stage 
@@ -115,11 +137,18 @@ class InformationSetTree(object):
         Returns:
             Tuple[torch.Tensor, torch.LongTensor]: visitation_probabilities, updated_node_counts
         """
+
+        # Subselect the counts for the paths reaching the BR action
         nodes_counts = torch.gather(
             nodes_counts, -1, br_indices.unsqueeze(-1)
         ).squeeze()
+
+        # Sum counts over all states for counts of taking actions iny previous stage
         summing_dim = self._get_stage_obs_summing_dim(stage)
         nodes_counts_obs_sum = nodes_counts.sum(summing_dim, keepdim=True)
+
+        # Calculate visitation probabilities
+        # TODO: Possibly cleaner with Einstein notation and no expansion(?)
         expansion_dim = (
             tuple(
                 [-1]
@@ -130,14 +159,11 @@ class InformationSetTree(object):
             )
             + self.obs_discretization_shapes[stage]
         )
-
         expanded_nodes_counts_obs_sum = nodes_counts_obs_sum.expand(expansion_dim)
 
+        mask = expanded_nodes_counts_obs_sum > 0
         visitation_probabilities = nodes_counts.float()
-
-        visitation_probabilities[
-            expanded_nodes_counts_obs_sum > 0
-        ] /= expanded_nodes_counts_obs_sum[expanded_nodes_counts_obs_sum > 0]
+        visitation_probabilities[mask] /= expanded_nodes_counts_obs_sum[mask]
 
         return visitation_probabilities, nodes_counts_obs_sum.squeeze()
 
@@ -150,11 +176,11 @@ class InformationSetTree(object):
         averaged_utilities = torch.zeros(
             self.all_nodes_shape, device=self.device
         ).flatten()  # TODO: Can we prevent new allocation/copy?
-        averaged_utilities[self.nodes_counts > 0] = (
-            self.nodes_utility_estimates[self.nodes_counts > 0]
-            / self.nodes_counts[self.nodes_counts > 0]
+        mask = self.nodes_counts > 0
+        averaged_utilities[mask] = (
+            self.nodes_utility_estimates[mask] / self.nodes_counts[mask]
         )
-        return averaged_utilities.reshape(self.all_nodes_shape)
+        return averaged_utilities.view(self.all_nodes_shape)
 
     def _calculate_best_responses(self):
         prev_stage_br_slice = None

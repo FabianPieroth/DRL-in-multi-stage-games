@@ -9,7 +9,7 @@ import hydra
 import numpy as np
 import torch
 
-import src.utils_folder.spaces_utils as sp_ut
+import src.utils.spaces_utils as sp_ut
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.torch_vec_env import MATorchVecEnv
 

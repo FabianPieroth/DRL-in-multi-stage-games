@@ -1,7 +1,7 @@
 import copy
 
-import src.utils_folder.env_utils as env_ut
-import src.utils_folder.io_utils as io_ut
+import src.utils.env_utils as env_ut
+import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 

@@ -5,9 +5,10 @@ from typing import Dict, List, Tuple
 import torch
 from tqdm import tqdm
 
-import src.utils_folder.io_utils as io_ut
-import src.utils_folder.logging_utils as log_ut
+import src.utils.io_utils as io_ut
+import src.utils.logging_utils as log_ut
 from src.learners.base_learner import SABaseAlgorithm
+from src.utils.torch_utils import repeat_tensor_along_new_axis
 from src.verifier.base_verifier import BaseVerifier
 from src.verifier.information_set_tree import InformationSetTree
 
@@ -69,7 +70,7 @@ class BFVerifier(BaseVerifier):
             self.device,
         )
         num_done_sims = 0
-        batch_size = 2 ** 15
+        batch_size = min(self.num_simulations, 2 ** 15)
         while num_done_sims <= self.num_simulations:
             try:
                 self._add_simulation_results_to_tree(
@@ -124,6 +125,7 @@ class BFVerifier(BaseVerifier):
         ).flatten()
         sim_size = batch_size  # The current size of the simulation
 
+        # shape = (sim_size, *state_size)
         states = self.env.model.sample_new_states(batch_size)
 
         agent_obs, opp_obs = self._split_obs(
@@ -133,34 +135,61 @@ class BFVerifier(BaseVerifier):
         sim_batch_indices = torch.tensor([], device=self.device).long()
 
         for stage in range(self.num_rounds_to_play):
+
+            # Repeat states such that we can try out all discrete actions in
+            # all states
+            # shape = (sim_size, action_discretization, *state_size)
             sim_size_states = self._get_sim_size_states(states)
+
+            # Repeat all discrete actions for all states / observations
+            # shape = (sim_size, action_discretization, *action_size)
+            sim_size_grid_actions = self._get_agent_grid_actions(agent_id, sim_size)
+
+            # Dict with opp actions where their actions are repeated such that
+            # the current player can try out all discrete actions against them
+            # shape = (sim_size, action_discretization, *action_size)
+            opp_actions = self._get_sim_size_opp_actions(
+                learners, agent_id, opp_obs, episode_starts
+            )
+
+            # Combine and flatten actions
+            combined_actions = self._get_combined_actions(
+                agent_id, sim_size_grid_actions, opp_actions
+            )
+
+            # Create bins / indices for keeping track of observations & actions
+            # shape = (sim_size * sims_to_be_made, 1)
+            # where sims_to_be_made = action_discretization ** (num_rounds_to_play
+            #   - stage)
             sim_size_obs_bins = self._get_sim_size_obs_bins(agent_id, agent_obs, stage)
             sim_size_action_bins = self._get_sim_size_action_bins(sim_size, stage)
             sim_batch_indices = torch.cat(
                 (sim_batch_indices, sim_size_obs_bins, sim_size_action_bins), dim=-1
             )
-            sim_size_grid_actions = self._get_agent_grid_actions(agent_id, sim_size)
 
-            opp_actions = self._get_sim_size_opp_actions(
-                learners, agent_id, opp_obs, episode_starts
-            )
-
-            combined_actions = self._get_combined_actions(
-                agent_id, sim_size_grid_actions, opp_actions
-            )
-
+            # Flatten all simulations
+            # shape = (sim_size * action_discretization, *state_size)
             flattened_states = sim_size_states.flatten(end_dim=1)
+
+            # Simulate environment
             new_obs, rewards, dones, new_states = self.env.model.compute_step(
                 flattened_states, combined_actions
             )
+            # shape = (sim_size * self.action_discretization * sims_to_be_made)
+            # where sims_to_be_made = action_discretization **
+            #   (num_rounds_to_play - (stage + 1))
             repeated_agent_rewards = self._repeat_rewards_and_flatten_to_full_stage_sim_size(
                 rewards[agent_id], stage + 1
             )
             batch_utilities += repeated_agent_rewards
 
+            # Update variables for next game stage
             episode_starts = dones
             agent_obs, opp_obs = self._split_obs(agent_id, new_obs)
             states = new_states
+
+            # sim_size increases by no. of alternative actions we try out
+            # (branching factor of game tree)
             sim_size *= self.action_discretization
 
         assert (
@@ -199,7 +228,7 @@ class BFVerifier(BaseVerifier):
             episode_starts, learners, agent_id, opp_obs
         )
         for opp_agent, opp_action in opp_actions.items():
-            opp_actions[opp_agent] = self._repeat_tensor_along_new_axis(
+            opp_actions[opp_agent] = repeat_tensor_along_new_axis(
                 data=opp_action, pos=[1], repeats=[self.action_discretization]
             )
         return opp_actions
@@ -212,7 +241,7 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape: (sim_size, action_discretization)
         """
-        sim_size_states = self._repeat_tensor_along_new_axis(
+        sim_size_states = repeat_tensor_along_new_axis(
             data=states, pos=[1], repeats=[self.action_discretization]
         )
 
@@ -229,7 +258,7 @@ class BFVerifier(BaseVerifier):
         """
         action_bins = torch.arange(self.action_discretization, device=self.device)
         repeated_action_bins = (
-            self._repeat_tensor_along_new_axis(
+            repeat_tensor_along_new_axis(
                 data=action_bins,
                 pos=[0, 2],
                 repeats=[
@@ -279,7 +308,7 @@ class BFVerifier(BaseVerifier):
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
         pos_to_repeat = len(rewards.shape)
-        return self._repeat_tensor_along_new_axis(
+        return repeat_tensor_along_new_axis(
             data=rewards,
             pos=[pos_to_repeat],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -296,17 +325,27 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
-        return self._repeat_tensor_along_new_axis(
+        return repeat_tensor_along_new_axis(
             data=obs_bins,
             pos=[1],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
         ).flatten(start_dim=0, end_dim=-2)
 
     def _get_agent_grid_actions(self, agent_id, cur_sim_size):
+        """Repeats all grid actions from the environment to a size of
+        `cur_sim_size`.
+        Args:
+            agent_id (int): agent ID
+            cur_sim_size (int): simulation size
+
+        Returns:
+            torch.Tensor: shape=(cur_sim_size, action_discretization,
+                *(env.action_size))
+        """
         agent_grid_actions = self.env.get_action_grid(
             agent_id, grid_size=self.action_discretization
         )
-        repeated_grid_actions = self._repeat_tensor_along_new_axis(
+        repeated_grid_actions = repeat_tensor_along_new_axis(
             data=agent_grid_actions, pos=[0], repeats=[cur_sim_size]
         )
 
@@ -326,34 +365,6 @@ class BFVerifier(BaseVerifier):
         )
 
         return opp_actions
-
-    @staticmethod
-    def _repeat_tensor_along_new_axis(
-        data: torch.Tensor, pos: List[int], repeats: List[int]
-    ) -> torch.Tensor:
-        """Add additional dimensions as pos and repeat it for repeats along these dimensions.
-
-        Args:
-            data (torch.Tensor): tensor to be repeated
-            pos (List[int]): strictly increasing order of positions where repeats should be in out-tensor
-            repeats (List[int]): number of repeats of dimensions
-
-        Returns:
-            torch.Tensor: repeated tensor
-        Example:
-        data.shape = (2, 3)
-        pos = [1, 2]
-        repeats = [11, 7]
-        out.shape = (2, 11, 7, 3)
-        """
-        # TODO: Check if torch.expand() instead of torch.repeat() is feasible!
-        assert len(pos) == len(repeats), "Each pos needs a specified repeat!"
-        for single_pos in pos:
-            data = data.unsqueeze(single_pos)
-        dims_to_be_repeated = [1 for i in range(len(data.shape))]
-        for k, repeat in enumerate(repeats):
-            dims_to_be_repeated[pos[k]] = repeat
-        return data.repeat(tuple(dims_to_be_repeated))
 
     def _total_utilities_shape_for_batch(self, batch_size: int) -> Tuple[int]:
         """Gives the shape of total utilities to be estimated in a single batch rollout.

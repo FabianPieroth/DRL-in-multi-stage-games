@@ -2,7 +2,7 @@
 import hydra
 import torch
 
-import src.utils_folder.io_utils as io_ut
+import src.utils.io_utils as io_ut
 from src.envs.sequential_auction import SequentialAuction
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"

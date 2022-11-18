@@ -17,7 +17,7 @@ from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 from src.learners.ppo import VecPPO
 from src.learners.utils import new_log_path
-from src.utils_folder.logging_utils import logging_plots_to_gif
+from src.utils.logging_utils import logging_plots_to_gif
 
 
 def get_config():
