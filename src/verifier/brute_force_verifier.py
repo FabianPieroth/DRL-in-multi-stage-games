@@ -3,13 +3,12 @@ import traceback
 from typing import Dict, List, Tuple
 
 import torch
-from tqdm import tqdm
 
 import src.utils.io_utils as io_ut
 import src.utils.logging_utils as log_ut
-from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
+import src.utils.torch_utils as th_ut
+from src.envs.torch_vec_env import VerifiableEnv
 from src.learners.base_learner import SABaseAlgorithm
-from src.utils.torch_utils import repeat_tensor_along_new_axis
 from src.verifier.information_set_tree import InformationSetTree
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
@@ -262,7 +261,7 @@ class BFVerifier:
             episode_starts, learners, agent_id, opp_obs
         )
         for opp_agent, opp_action in opp_actions.items():
-            opp_actions[opp_agent] = repeat_tensor_along_new_axis(
+            opp_actions[opp_agent] = th_ut.repeat_tensor_along_new_axis(
                 data=opp_action, pos=[1], repeats=[self.action_discretization]
             )
         return opp_actions
@@ -275,7 +274,7 @@ class BFVerifier:
         Returns:
             torch.Tensor: shape: (sim_size, action_discretization)
         """
-        sim_size_states = repeat_tensor_along_new_axis(
+        sim_size_states = th_ut.repeat_tensor_along_new_axis(
             data=states, pos=[1], repeats=[self.action_discretization]
         )
 
@@ -292,7 +291,7 @@ class BFVerifier:
         """
         action_bins = torch.arange(self.action_discretization, device=self.device)
         repeated_action_bins = (
-            repeat_tensor_along_new_axis(
+            th_ut.repeat_tensor_along_new_axis(
                 data=action_bins,
                 pos=[0, 2],
                 repeats=[
@@ -342,7 +341,7 @@ class BFVerifier:
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
         pos_to_repeat = len(rewards.shape)
-        return repeat_tensor_along_new_axis(
+        return th_ut.repeat_tensor_along_new_axis(
             data=rewards,
             pos=[pos_to_repeat],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -359,7 +358,7 @@ class BFVerifier:
         Returns:
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
-        return repeat_tensor_along_new_axis(
+        return th_ut.repeat_tensor_along_new_axis(
             data=obs_bins,
             pos=[1],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -379,7 +378,7 @@ class BFVerifier:
         agent_grid_actions = self.env.get_action_grid(
             agent_id, grid_size=self.action_discretization
         )
-        repeated_grid_actions = repeat_tensor_along_new_axis(
+        repeated_grid_actions = th_ut.repeat_tensor_along_new_axis(
             data=agent_grid_actions, pos=[0], repeats=[cur_sim_size]
         )
 
