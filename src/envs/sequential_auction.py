@@ -818,7 +818,6 @@ class SequentialAuction(BaseEnvForVec, VerifiableEnv):
                 linestyle=line_type,
                 color=color,
             )
-        plt.tight_layout()
         plt.legend()
         ax.set_aspect(1)
         return fig
