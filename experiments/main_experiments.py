@@ -1,16 +1,19 @@
-import copy
 import os
 import sys
 from itertools import product
 
 import hydra
+import numpy as np
+import pandas as pd
 
 sys.path.append(os.path.realpath("."))
 
-import src.utils_folder.env_utils as env_ut
-import src.utils_folder.io_utils as io_ut
-from experiments.evaluation_utils import *
+import experiments.evaluation_utils as ex_ut
+import src.utils.env_utils as env_ut
+import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
+
+# TODO: Check params for all experiments - especially total_training_steps -> iteration_num
 
 
 def run_sequential_sales_experiment():
@@ -134,7 +137,7 @@ def run_signaling_contest_experiment():
 
 def evaluate_sequential_sales_experiment():
     path = "/home/kohring/sequential-auction-on-gpu/logs/final/sequential_auction"
-    df = get_log_df(path)
+    df = ex_ut.get_log_df(path)
 
     metrics = [
         "eval/action_equ_L2_distance_stage_0",
@@ -146,7 +149,7 @@ def evaluate_sequential_sales_experiment():
     # 1. Scalability in terms of rounds to play
     df_select = df[df.metric.isin(metrics)]
     df_select = df_select[df_select.time_step == max(df_select.time_step)]
-    df_select.metric = df_select.metric.apply(metric_python2latex)
+    df_select.metric = df_select.metric.apply(ex_ut.metric_python2latex)
     df_select = df_select[
         df_select.index.get_level_values("collapse_symmetric_opponents") == False
     ]
@@ -158,7 +161,7 @@ def evaluate_sequential_sales_experiment():
     reduced_index.append("metric")
     df_select = df_select.reset_index()
     df_select = df_select.set_index(reduced_index)
-    df_select.algorithms = df_select.algorithms.apply(metric_python2latex)
+    df_select.algorithms = df_select.algorithms.apply(ex_ut.metric_python2latex)
 
     aggregate_df = pd.pivot_table(
         df_select,
@@ -183,7 +186,7 @@ def evaluate_sequential_sales_experiment():
         )
 
     # Write to disk
-    df_to_tex(
+    ex_ut.df_to_tex(
         df=final_df,
         name="table_sequential_sales.tex",
         label="tab:table_sequential_sales",
