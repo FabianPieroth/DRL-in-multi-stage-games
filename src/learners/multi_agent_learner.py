@@ -4,7 +4,6 @@ from typing import Callable, Dict, List
 
 import matplotlib.pyplot as plt
 import torch
-from gym import spaces
 from stable_baselines3.common.policies import register_policy
 from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.nn.utils import parameters_to_vector
@@ -13,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 import src.utils.logging_utils as log_ut
 import src.utils.policy_utils as pl_ut
 from src.envs.equilibria import EquilibriumStrategy
-from src.learners.policies.MlpPolicy import *
+from src.learners.policies.MlpPolicy import CustomActorCriticPolicy
 from src.learners.utils import tensor_norm
 from src.verifier import BFVerifier
 
