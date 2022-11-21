@@ -197,6 +197,7 @@ class MultiAgentCoordinator:
             plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
 
     def verify_in_BNE(self) -> None:
+        # TODO: @Nils: Move the logic into the verifier - check if loop is necessary.
         if not self.verifier.env_is_compatible_with_verifier:
             return None
 
