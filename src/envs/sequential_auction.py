@@ -458,45 +458,6 @@ class SequentialAuction(BaseEnvForVec, VerifiableEnv):
         # TODO: Only works for one dimensional additional obs in every stage
         return torch.bucketize(relevant_new_stage_obs, obs_grid)
 
-    def obs2state(self, observation_dict: dict) -> torch.Tensor:
-        """For the verifier, we need to recreate the state from observations."""
-        batch_size = observation_dict[0].shape[0]
-        states = -torch.ones(
-            (
-                batch_size,
-                self.num_opponents + 1,
-                self.payments_start_index + self.num_rounds_to_play,
-            ),
-            device=self.device,
-        )
-
-        if self.reduced_observation_space:
-            stage = self._obs2stage(observation_dict[0])
-            states[:, :, 1] = stage
-            for agent_id in range(self.num_agents):
-                states[
-                    :,
-                    agent_id,
-                    self.valuations_start_index : self.valuations_start_index
-                    + self.valuation_size,
-                ] = observation_dict[agent_id][
-                    :,
-                    self.valuations_start_index : self.valuations_start_index
-                    + self.valuation_size,
-                ]
-
-                won = observation_dict[agent_id][:, 2]
-                # states[:, agent_id, ???] = won
-                raise NotImplementedError("We don't know when the agent won!")
-
-        else:
-            for agent_id in range(self.num_agents):
-                states[:, agent_id, :] = observation_dict[agent_id][
-                    :, : self.payments_start_index + self.num_rounds_to_play
-                ]
-
-        return states
-
     def _has_won_already_from_state(
         self, state: torch.Tensor, stage: int
     ) -> Dict[int, torch.Tensor]:
@@ -535,6 +496,7 @@ class SequentialAuction(BaseEnvForVec, VerifiableEnv):
         deterministic: bool = True,
         for_single_learner: bool = True,
     ):
+        # TODO: for_single_learner logic seems broken
         if for_single_learner:
             predictions = {
                 agent_id: learner.predict(
