@@ -4,7 +4,6 @@ Simple sequential auction game following Krishna.
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
 import time
-from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -15,8 +14,7 @@ from gym import spaces
 from src.envs.equilibria import equilibrium_fpsb_symmetric_uniform, truthful
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
-from src.learners.utils import batched_index_select, tensor_norm
-from src.utils.policy_utils import get_algo_name
+from src.learners.utils import tensor_norm
 
 
 class SequentialAuction(BaseEnvForVec, VerifiableEnv):
@@ -635,8 +633,6 @@ class SequentialAuction(BaseEnvForVec, VerifiableEnv):
                 stddevs = stddevs.view(-1).detach().cpu().numpy()
                 actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
                 has_won_already = has_won_already.cpu().numpy()
-
-                algo_name = get_algo_name(agent_id, config)
 
                 # plotting
                 drawing, = ax.plot(
