@@ -197,19 +197,18 @@ class MultiAgentCoordinator:
 
     def verify_in_BNE(self) -> None:
         # TODO: @Nils: Move the logic into the verifier - check if loop is necessary.
-        if not self.verifier.env_is_compatible_with_verifier:
+        if not (
+            self.verifier.env_is_compatible_with_verifier
+            and self.env.model.equilibrium_strategies_known
+        ):
             return None
 
-        num_agents = self.env.model.num_agents
-        strategies = {
-            agent_id: EquilibriumStrategy(self.env, agent_id)
-            for agent_id in range(num_agents)
-        }
+        equ_strategies = self.env.model.equilibrium_strategies
 
-        utility_losses = {agent_id: None for agent_id in range(num_agents)}
-        for agent_id in range(num_agents):
+        utility_losses = {agent_id: None for agent_id in equ_strategies.keys()}
+        for agent_id in equ_strategies.keys():
             utility_loss, best_response = self.verifier.verify(
-                strategies, agent_ids=[agent_id]
+                equ_strategies, agent_ids=[agent_id]
             )
             utility_losses[agent_id] = utility_loss[agent_id]
 
