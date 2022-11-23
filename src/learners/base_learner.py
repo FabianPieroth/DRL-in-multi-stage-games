@@ -250,8 +250,8 @@ class SABaseAlgorithm(PPO, ABC):
     def predict(
         self,
         observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """

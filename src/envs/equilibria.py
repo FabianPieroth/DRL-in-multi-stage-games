@@ -2,7 +2,7 @@
 import math
 import warnings
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -50,8 +50,8 @@ class EquilibriumStrategy(ABC):
     def predict(
         self,
         observations: torch.Tensor,
-        states: torch.Tensor,
-        episode_start: torch.Tensor,
+        state: Optional[Tuple[torch.Tensor, ...]] = None,
+        episode_start: Optional[torch.Tensor] = None,
         deterministic: bool = True,
     ) -> torch.Tensor:
         return self.equ_method(observations), None
