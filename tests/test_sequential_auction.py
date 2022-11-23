@@ -3,6 +3,7 @@ import hydra
 import torch
 
 import src.utils.io_utils as io_ut
+import src.utils.torch_utils as th_ut
 from src.envs.sequential_auction import SequentialAuction
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
@@ -31,7 +32,7 @@ def test_sequential_auction_in_bne():
     for stage in range(env.num_rounds_to_play):
 
         has_won_already = env._has_won_already_from_state(states, stage)
-        actions = env.get_ma_equilibrium_actions(observations)
+        actions = th_ut.get_ma_actions(env.equilibrium_strategies, observations)
 
         observations, rewards, _, states = env.compute_step(states, actions)
 
