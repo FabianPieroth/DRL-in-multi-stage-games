@@ -1,7 +1,7 @@
 import heapq
 import math
 from collections import namedtuple
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import gizeh
 import moviepy.editor as mpy
@@ -9,7 +9,7 @@ import torch
 from gym import spaces
 from gym.spaces import Space
 
-import src.utils.logging_utils as log_ut
+import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 ObjectSpec = namedtuple("ObjectSpec", ["radius", "mass", "color"])
@@ -617,15 +617,11 @@ class SimpleSoccer(BaseEnvForVec):
         states = self.sample_new_states(1)
         images.append(env.model.render(states[0]))
 
-        hidden_states = {agent_id: None for agent_id in range(env.model.num_agents)}
-        episode_starts = torch.ones((1,), dtype=bool)
         dones = torch.zeros((1,), dtype=bool)
 
         while not dones.detach().item():
             observations = self.get_observations(states)
-            actions = log_ut.get_eval_ma_actions(
-                learners, observations, hidden_states, episode_starts, True
-            )
+            actions = th_ut.get_ma_actions(learners, observations, deterministic=True)
             translated_actions = env.translate_joint_actions(actions)
             observations, rewards, dones, states = env.model.compute_step(
                 states, translated_actions
