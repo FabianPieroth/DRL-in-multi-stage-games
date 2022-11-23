@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 import torch
 
@@ -29,3 +29,20 @@ def repeat_tensor_along_new_axis(
     for k, repeat in enumerate(repeats):
         dims_to_be_repeated[pos[k]] = repeat
     return data.repeat(tuple(dims_to_be_repeated))
+
+
+def get_ma_actions(
+    learners,
+    observations: Dict[int, torch.Tensor],
+    deterministic: bool = True,
+    excluded_agents: List = None,
+):
+    if excluded_agents is None:
+        excluded_agents = []
+    actions = {}
+    for agent_id, sa_obs in observations.items():
+        if agent_id not in excluded_agents:
+            actions[agent_id], _ = learners[agent_id].predict(
+                sa_obs, None, episode_start=None, deterministic=deterministic
+            )
+    return actions
