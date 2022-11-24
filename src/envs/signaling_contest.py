@@ -13,6 +13,7 @@ from pynverse import inversefunc
 
 import src.utils.policy_utils as pl_ut
 from src.envs.equilibria import (
+    SignalingContestEquilibrium,
     no_signaling_equilibrium,
     np_array_first_round_strategy,
     signaling_equilibrium,
@@ -35,13 +36,21 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.action_size = config["action_size"]
         self.prior_low, self.prior_high = config["prior_bounds"]
         self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
+        self.num_rounds_to_play = 2
+        # obs indizes
+        self.group_split_index = int(config["num_agents"] / 2)
+        self.allocation_index = self.valuation_size
+        self.stage_index = self.valuation_size + 1
+        self.payments_start_index = self.valuation_size + self.allocation_index + 1
+
         super().__init__(config, device)
 
         self.all_pay_mechanism = self._init_all_pay_mechanism()
         self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
 
-        self.equilibrium_strategies = self._init_equilibrium_strategies()
-        self.num_rounds_to_play = 2
+        self.equilibrium_strategies_deprecated = (
+            self._init_equilibrium_strategies_deprecated()
+        )
 
     def _init_all_pay_mechanism(self) -> Mechanism:
         return AllPayAuction(self.device)
@@ -50,7 +59,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         impact_fun = lambda x: x ** self.config["impact_factor"]
         return TullockContest(impact_fun, self.device, self.config["use_valuation"])
 
-    def _init_equilibrium_strategies(self):
+    def _init_equilibrium_strategies_deprecated(self):
         equilibrium_profile = self._get_equilibrium_profile(
             self.config["information_case"]
         )
@@ -62,6 +71,27 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             )
             for agent_id in range(self.num_agents)
         }
+
+    def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
+        return {
+            agent_id: self._get_agent_equilibrium_strategy(agent_id)
+            for agent_id in range(self.num_agents)
+        }
+
+    def _get_agent_equilibrium_strategy(
+        self, agent_id: int
+    ) -> SignalingContestEquilibrium:
+        equilibrium_config = {
+            "prior_low": self.prior_low,
+            "prior_high": self.prior_high,
+            "num_agents": self.num_agents,
+            "information_case": self.config["information_case"],
+            "stage_index": self.stage_index,
+            "allocation_index": self.allocation_index,
+            "valuation_size": self.valuation_size,
+            "payments_start_index": self.payments_start_index,
+        }
+        return SignalingContestEquilibrium(agent_id, equilibrium_config)
 
     def _get_equilibrium_profile(self, information_case: str):
         if information_case == "true_valuations":
@@ -135,10 +165,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         """Samples number n initial states. 
         [n, valuation + allocation + stage + winning bids + winning valuations]
         """
-        self.group_split_index = int(self.num_agents / 2)
-        self.allocation_index = self.valuation_size
-        self.stage_index = self.valuation_size + 1
-        self.payments_start_index = self.valuation_size + self.allocation_index + 1
         states = torch.zeros(
             (n, self.num_agents, self.valuation_size + 1 + 1 + 2 * self.action_size),
             device=self.device,
@@ -557,7 +583,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         has_lost_already = self._has_lost_already_from_obs(observations)
         for agent_id, obs in observations.items():
             agent_vals, opponent_vals = obs[:, 0], obs[:, 3]
-            equ_actions[agent_id] = self.equilibrium_strategies[agent_id](
+            equ_actions[agent_id] = self.equilibrium_strategies_deprecated[agent_id](
                 stage, agent_vals, opponent_vals, has_lost_already[agent_id]
             )
         return equ_actions
@@ -737,7 +763,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         val_x, info_y, bid_opponent_info = self._get_meshgrid_for_second_round_equ(
             plot_precision
         )
-        bid_z = self.equilibrium_strategies[agent_id](
+        bid_z = self.equilibrium_strategies_deprecated[agent_id](
             round=2, valuations=val_x, opponent_vals=bid_opponent_info, lost=None
         )
         bid_z = bid_z.reshape(plot_precision, plot_precision)
@@ -754,7 +780,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         elif self.config["information_case"] == "winning_bids":
             info_ys = np.linspace(0.000001, 0.297682, num=plot_precision)
             inverse_bids = inversefunc(
-                np_array_first_round_strategy, y_values=info_ys, domain=[1.0, 1.5]
+                np_array_first_round_strategy,
+                y_values=info_ys,
+                domain=[self.prior_low, self.prior_high],
             )
             inverse_bids = np.repeat(inverse_bids[:, None], plot_precision, axis=1)
             bid_opponent_info = torch.tensor(inverse_bids)
@@ -803,7 +831,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         val_xs = torch.linspace(
             self.prior_low, self.prior_high, steps=100, device=self.device
         )
-        bid_ys = self.equilibrium_strategies[agent_id](
+        bid_ys = self.equilibrium_strategies_deprecated[agent_id](
             round=1, valuations=val_xs, opponent_vals=None, lost=None
         )
         equ_xs = val_xs.detach().cpu().numpy().squeeze()
