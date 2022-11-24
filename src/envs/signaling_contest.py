@@ -82,6 +82,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self, agent_id: int
     ) -> SignalingContestEquilibrium:
         equilibrium_config = {
+            "device": self.device,
             "prior_low": self.prior_low,
             "prior_high": self.prior_high,
             "num_agents": self.num_agents,

@@ -7,6 +7,8 @@ from typing import Callable, Dict, Optional, Tuple
 import numpy as np
 import torch
 
+import src.utils.torch_utils as th_ut
+
 RELU_LAYER = torch.nn.ReLU()
 """We delete positive bids in equilibrium when appropriate. That is necessary due to 
 precision errors. See https://discuss.pytorch.org/t/numerical-error-between-batch-and-single-instance-computation/56735/4"""
@@ -150,6 +152,7 @@ class SequetialAuctionEquilibrium(EquilibriumStrategy):
 
 class SignalingContestEquilibrium(EquilibriumStrategy):
     def __init__(self, agent_id: int, config: Dict):
+        self.device = config["device"]
         self.prior_low = config["prior_low"]
         self.prior_high = config["prior_high"]
         self.num_agents = config["num_agents"]
@@ -160,6 +163,11 @@ class SignalingContestEquilibrium(EquilibriumStrategy):
         self.payments_start_index = config["payments_start_index"]
         self.is_signaling_equ = self._is_signaling_equilibrium()
         self.first_round_equ_strategy = self._init_first_round_equ_strategy()
+        self.inverse_first_round_equ_strategy = th_ut.torch_inverse_func(
+            func=self.first_round_equ_strategy,
+            domain=(self.prior_low, self.prior_high),
+            device=self.device,
+        )
         super().__init__(agent_id)
         if self.num_agents != 4 or self.prior_low != 1.0 or self.prior_high != 1.5:
             warnings.warn(
@@ -263,13 +271,10 @@ class SignalingContestEquilibrium(EquilibriumStrategy):
     def _get_oppo_vals_from_obs(self, observation: torch.Tensor) -> torch.Tensor:
         opponent_info = observation[:, self.payments_start_index :]
         if self.is_signaling_equ:
-            opponent_vals = self._inverse_equ_mapping(opponent_info)
+            opponent_vals = self.inverse_first_round_equ_strategy(opponent_info)
         else:
             opponent_vals = opponent_info
         return opponent_vals
-
-    def _inverse_equ_mapping(self, opponent_bids: torch.Tensor) -> torch.Tensor:
-        pass
 
     @staticmethod
     def winning_effect_term(valuations: torch.Tensor) -> torch.Tensor:
