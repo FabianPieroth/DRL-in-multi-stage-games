@@ -758,14 +758,24 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ax.set_zlabel("bid $b$", fontsize=12)
 
     def _plot_second_round_equ_strategy_surface(self, ax, agent_id, plot_precision):
-        val_x, info_y, bid_opponent_info = self._get_meshgrid_for_second_round_equ(
-            plot_precision
+        val_x, opp_info = self._get_meshgrid_for_second_round_equ(plot_precision)
+        # flatten mesh for forward
+        val_x, opp_info = (
+            val_x.reshape(plot_precision ** 2),
+            opp_info.reshape(plot_precision ** 2),
         )
-        bid_z = self.equilibrium_strategies_deprecated[agent_id](
-            round=2, valuations=val_x, opponent_vals=bid_opponent_info, lost=None
-        )
+        sa_obs = torch.zeros((plot_precision ** 2, 4), device=self.device)
+        sa_obs[:, 0] = val_x
+        sa_obs[:, 1] = 1.0  # always won first stage
+        sa_obs[:, 2] = 1.0  # set stage
+        sa_obs[:, 3] = opp_info
+        bid_z = self.equilibrium_strategies[agent_id].equ_method(sa_obs)
         bid_z = bid_z.reshape(plot_precision, plot_precision)
-        ax.plot_surface(val_x.numpy(), info_y.numpy(), bid_z.numpy(), alpha=0.2)
+        val_x = val_x.reshape(plot_precision, plot_precision)
+        opp_info = opp_info.reshape(plot_precision, plot_precision)
+        ax.plot_surface(
+            val_x.cpu().numpy(), opp_info.cpu().numpy(), bid_z.cpu().numpy(), alpha=0.2
+        )
 
     def _get_meshgrid_for_second_round_equ(self, plot_precision):
         val_xs = torch.linspace(self.prior_low, self.prior_high, steps=plot_precision)
@@ -773,24 +783,16 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             info_ys = torch.linspace(
                 self.prior_low, self.prior_high, steps=plot_precision
             )
-            val_x, info_y = torch.meshgrid(val_xs, info_ys, indexing="xy")
-            bid_opponent_info = info_y
+            val_x, opp_info = torch.meshgrid(val_xs, info_ys, indexing="xy")
         elif self.config["information_case"] == "winning_bids":
             info_ys = np.linspace(0.000001, 0.297682, num=plot_precision)
-            inverse_bids = inversefunc(
-                np_array_first_round_strategy,
-                y_values=info_ys,
-                domain=[self.prior_low, self.prior_high],
-            )
-            inverse_bids = np.repeat(inverse_bids[:, None], plot_precision, axis=1)
-            bid_opponent_info = torch.tensor(inverse_bids)
-
-            val_x, info_y = torch.meshgrid(
+            val_x, opp_info = torch.meshgrid(
                 val_xs, torch.tensor(info_ys, dtype=torch.float32), indexing="xy"
             )
+
         else:
             raise ValueError()
-        return val_x, info_y, bid_opponent_info
+        return val_x, opp_info
 
     def _plot_first_round_strategy(
         self,
