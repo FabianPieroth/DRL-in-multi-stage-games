@@ -43,6 +43,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.allocation_index = self.valuation_size
         self.stage_index = self.valuation_size + 1
         self.payments_start_index = self.valuation_size + self.allocation_index + 1
+        self.relu_layer = torch.nn.ReLU()
 
         super().__init__(config, device)
 
@@ -590,22 +591,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             )
         return equ_actions
 
-    @staticmethod
-    def get_ma_learner_predictions(
-        learners,
-        observations,
-        deterministic: bool = True,
-        clip_negativ_bids: bool = False,
-    ):
-        relu = torch.nn.ReLU()
-        action_dict = {}
-        for agent_id, obs in observations.items():
-            sa_action_pred = learners[agent_id].predict(
-                obs, deterministic=deterministic
-            )[0]
-            if clip_negativ_bids:
-                sa_action_pred = relu(sa_action_pred)
-            action_dict[agent_id] = sa_action_pred
+    def get_ma_clipped_bids(self, learners, observations, deterministic: bool = True):
+        action_dict = th_ut.get_ma_actions(
+            learners, observations, deterministic=deterministic
+        )
+        for agent_id, sa_actions in action_dict.items():
+            sa_actions = self.relu_layer(sa_actions)
+            action_dict[agent_id] = sa_actions
         return action_dict
 
     def plot_strategies_vs_equilibrium(
@@ -889,8 +881,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
             equ_actions_in_equ = self.get_ma_equilibrium_actions(equ_observations)
 
-            actual_actions = self.get_ma_learner_predictions(
-                learners, actual_observations, True, clip_negativ_bids=True
+            actual_actions = self.get_ma_clipped_bids(
+                learners, actual_observations, True
             )
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
