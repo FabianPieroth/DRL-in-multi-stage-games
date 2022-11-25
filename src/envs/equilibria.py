@@ -51,12 +51,12 @@ class EquilibriumStrategy(ABC):
 
     def predict(
         self,
-        observations: torch.Tensor,
+        observation: torch.Tensor,
         state: Optional[Tuple[torch.Tensor, ...]] = None,
         episode_start: Optional[torch.Tensor] = None,
         deterministic: bool = True,
     ) -> torch.Tensor:
-        return self.equ_method(observations), None
+        return self.equ_method(observation), None
 
 
 class SequetialAuctionEquilibrium(EquilibriumStrategy):

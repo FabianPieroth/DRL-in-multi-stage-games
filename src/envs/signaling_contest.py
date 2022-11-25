@@ -12,6 +12,7 @@ from gym import spaces
 from pynverse import inversefunc
 
 import src.utils.policy_utils as pl_ut
+import src.utils.torch_utils as th_ut
 from src.envs.equilibria import (
     SignalingContestEquilibrium,
     no_signaling_equilibrium,
@@ -599,7 +600,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         relu = torch.nn.ReLU()
         action_dict = {}
         for agent_id, obs in observations.items():
-            sa_action_pred = learners[0].predict(obs, deterministic)[0]
+            sa_action_pred = learners[agent_id].predict(
+                obs, deterministic=deterministic
+            )[0]
             if clip_negativ_bids:
                 sa_action_pred = relu(sa_action_pred)
             action_dict[agent_id] = sa_action_pred
@@ -639,12 +642,14 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         for round in range(1, 3):
             observations = self.get_observations(states)
-            ma_deterministic_actions = self.get_ma_learner_predictions(
-                learners, observations, True
+            ma_deterministic_actions = th_ut.get_ma_actions(
+                learners, observations, deterministic=True
             )
-            ma_mixed_actions = self.get_ma_learner_predictions(
-                learners, observations, False
+
+            ma_mixed_actions = th_ut.get_ma_actions(
+                learners, observations, deterministic=False
             )
+
             num_agents_to_plot = self.num_agents
             if self.config["plot_only_one_agent"]:
                 num_agents_to_plot = 1

@@ -73,7 +73,10 @@ def get_ma_actions(
     for agent_id, sa_obs in observations.items():
         if agent_id not in excluded_agents:
             actions[agent_id], _ = learners[agent_id].predict(
-                sa_obs, None, episode_start=None, deterministic=deterministic
+                observation=sa_obs,
+                state=None,
+                episode_start=None,
+                deterministic=deterministic,
             )
     return actions
 
