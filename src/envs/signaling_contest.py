@@ -827,7 +827,21 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ax.set_ylabel("bid $b$")
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
 
-    def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
+    def _plot_first_round_equilibrium_strategy(
+        self, ax, agent_id: int, precision: int = 200
+    ):
+        sa_obs = torch.zeros((precision, 4), device=self.device)
+        val_xs = torch.linspace(
+            self.prior_low, self.prior_high, steps=precision, device=self.device
+        )
+        sa_obs[:, 0] = val_xs
+        sa_obs[:, 2] = 0.0  # set stage
+        bid_ys = self.equilibrium_strategies[agent_id].equ_method(sa_obs)
+        equ_xs = val_xs.detach().cpu().numpy().squeeze()
+        equ_bid_y = bid_ys.squeeze().detach().cpu().numpy()
+        ax.plot(equ_xs, equ_bid_y, linewidth=1)
+
+    """def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
         val_xs = torch.linspace(
             self.prior_low, self.prior_high, steps=100, device=self.device
         )
@@ -836,7 +850,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         )
         equ_xs = val_xs.detach().cpu().numpy().squeeze()
         equ_bid_y = bid_ys.detach().cpu().numpy().squeeze()
-        ax.plot(equ_xs, equ_bid_y, linewidth=1)
+        ax.plot(equ_xs, equ_bid_y, linewidth=1)"""
 
     def log_metrics_to_equilibrium(self, learners, num_samples: int = 2 ** 16):
         """Evaluate learned strategies vs BNE."""
