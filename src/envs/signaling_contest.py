@@ -577,20 +577,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
         self.log_metrics_to_equilibrium(learners)
 
-    def get_ma_equilibrium_actions(
-        self, observations: Dict[int, torch.Tensor]
-    ) -> torch.Tensor:
-        equ_actions = {}
-        player_positions = list(observations.keys())
-        stage = self._obs2stage(observations[player_positions[0]])
-        has_lost_already = self._has_lost_already_from_obs(observations)
-        for agent_id, obs in observations.items():
-            agent_vals, opponent_vals = obs[:, 0], obs[:, 3]
-            equ_actions[agent_id] = self.equilibrium_strategies_deprecated[agent_id](
-                stage, agent_vals, opponent_vals, has_lost_already[agent_id]
-            )
-        return equ_actions
-
     def get_ma_clipped_bids(self, learners, observations, deterministic: bool = True):
         action_dict = th_ut.get_ma_actions(
             learners, observations, deterministic=deterministic
@@ -891,11 +877,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         for round_iter in range(num_rounds):
 
-            equ_actions_in_actual_play = self.get_ma_equilibrium_actions(
-                actual_observations
+            equ_actions_in_actual_play = th_ut.get_ma_actions(
+                self.equilibrium_strategies, actual_observations
             )
 
-            equ_actions_in_equ = self.get_ma_equilibrium_actions(equ_observations)
+            equ_actions_in_equ = th_ut.get_ma_actions(
+                self.equilibrium_strategies, equ_observations
+            )
 
             actual_actions = self.get_ma_clipped_bids(
                 learners, actual_observations, True
