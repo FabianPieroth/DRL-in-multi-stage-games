@@ -171,11 +171,11 @@ class MultiAgentCoordinator:
                 device=self.config.device,
                 n_eval_episodes=n_eval_episodes,
             )
-            learners = (
-                {0: self.learners[0]} if self.config.policy_sharing else self.learners
-            )
+            # learners = (  # TODO: @Nils - this leads to errors - why was this necessary?
+            #    {0: self.learners[0]} if self.config.policy_sharing else self.learners
+            # )
             self.env.model.custom_evaluation(
-                learners, self.env, self.writer, iteration + 1, self.config
+                self.learners, self.env, self.writer, iteration + 1, self.config
             )
         self._log_change_in_parameter_space()
 
