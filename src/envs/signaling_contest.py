@@ -9,16 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym import spaces
-from pynverse import inversefunc
 
 import src.utils.policy_utils as pl_ut
 import src.utils.torch_utils as th_ut
-from src.envs.equilibria import (
-    SignalingContestEquilibrium,
-    no_signaling_equilibrium,
-    np_array_first_round_strategy,
-    signaling_equilibrium,
-)
+from src.envs.equilibria import SignalingContestEquilibrium
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
 from src.learners.utils import tensor_norm
@@ -50,29 +44,12 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.all_pay_mechanism = self._init_all_pay_mechanism()
         self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
 
-        self.equilibrium_strategies_deprecated = (
-            self._init_equilibrium_strategies_deprecated()
-        )
-
     def _init_all_pay_mechanism(self) -> Mechanism:
         return AllPayAuction(self.device)
 
     def _init_tullock_contest_mechanism(self) -> Mechanism:
         impact_fun = lambda x: x ** self.config["impact_factor"]
         return TullockContest(impact_fun, self.device, self.config["use_valuation"])
-
-    def _init_equilibrium_strategies_deprecated(self):
-        equilibrium_profile = self._get_equilibrium_profile(
-            self.config["information_case"]
-        )
-        return {
-            agent_id: equilibrium_profile(
-                num_agents=self.num_agents,
-                prior_low=self.prior_low,
-                prior_high=self.prior_high,
-            )
-            for agent_id in range(self.num_agents)
-        }
 
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
         return {
@@ -95,15 +72,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             "payments_start_index": self.payments_start_index,
         }
         return SignalingContestEquilibrium(agent_id, equilibrium_config)
-
-    def _get_equilibrium_profile(self, information_case: str):
-        if information_case == "true_valuations":
-            return no_signaling_equilibrium
-        elif information_case == "winning_bids":
-            self._is_equilibrium_ensured_to_exist()
-            return signaling_equilibrium
-        else:
-            raise ValueError("No valid information case provided!")
 
     def _is_equilibrium_ensured_to_exist(self):
         if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
