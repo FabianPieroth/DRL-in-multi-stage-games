@@ -4,10 +4,11 @@ log_path: './logs/'
 experiment_log_path: ''
 experiment_name: ''
 delete_logs_after_training: false
-device: 2
+device: 1
 seed: 0
 num_envs: 8_192
-eval_freq: 20
+eval_freq: 400
+verify_br: false
 iteration_num: 1000
 total_training_steps: null
 n_steps_per_iteration: null
@@ -17,4 +18,5 @@ defaults:
   - rl_envs: sequential_auction
   - algorithm_configs: all_algos
   - space_translators: default_config
+  - verifier: default_verifier
   - _self_

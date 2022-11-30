@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple
 import torch
 from gym.spaces import Box, Discrete, MultiDiscrete, Space
 
-import src.utils_folder.spaces_utils as sp_ut
+import src.utils.spaces_utils as sp_ut
 
 
 class BaseSpaceTranslator(ABC):

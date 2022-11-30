@@ -1,0 +1,3 @@
+num_simulations: 7
+action_discretization: 11
+obs_discretization: 13

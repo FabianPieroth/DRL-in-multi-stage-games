@@ -4,6 +4,7 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import imageio
+import matplotlib.pyplot as plt
 import torch
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -11,7 +12,9 @@ from stable_baselines3.common.vec_env import (
     VecMonitor,
     is_vecenv_wrapped,
 )
+from torch.utils.tensorboard import SummaryWriter
 
+import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import MATorchVecEnv
 
 
@@ -110,12 +113,10 @@ def evaluate_policies(
     }
     current_lengths = torch.zeros((n_envs,), dtype=int, device=device)
     observations = env.reset()
-    states = {agent_id: None for agent_id in range(env.model.num_agents)}
     episode_rollout_ends = torch.zeros((env.num_envs), dtype=bool, device=env.device)
-    episode_starts = torch.ones((env.num_envs,), dtype=bool)
     while episode_iter < n_eval_episodes:
-        actions = get_eval_ma_actions(
-            learners, observations, states, episode_starts, deterministic
+        actions = actions = th_ut.get_ma_actions(
+            learners, observations, deterministic=deterministic
         )
         observations, rewards, dones, infos = env.step(actions)
         for agent_id in range(env.model.num_agents):
@@ -154,13 +155,15 @@ def evaluate_policies(
     return episode_rewards, episode_lengths
 
 
-def get_eval_ma_actions(learners, observations, states, episode_starts, deterministic):
-    actions = {}
+def log_data_dict_to_learner_loggers(
+    learners, data_dict: Dict[int, float], data_name: str
+):
     for agent_id, learner in learners.items():
-        actions[agent_id], states[agent_id] = learner.predict(
-            observations[agent_id],
-            states[agent_id],
-            episode_start=episode_starts,
-            deterministic=deterministic,
-        )
-    return actions
+        learner.logger.record(data_name, data_dict[agent_id])
+
+
+def log_figure_to_writer(
+    writer: SummaryWriter, fig: plt.Figure, iteration: int, name: str
+):
+    if fig is not None:
+        writer.add_figure(name, fig, iteration)

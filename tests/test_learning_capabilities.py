@@ -3,9 +3,9 @@ import hydra
 import pytest
 import torch
 
-import src.utils_folder.io_utils as io_ut
-import src.utils_folder.logging_utils as log_ut
-import src.utils_folder.test_utils as tst_ut
+import src.utils.io_utils as io_ut
+import src.utils.test_utils as tst_ut
+import src.utils.torch_utils as th_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
@@ -193,12 +193,8 @@ def test_learning_in_rps(algo_name, iteration_num, error_bound):
     ma_learner = tst_ut.run_limited_learning(config)
     states = ma_learner.env.model.sample_new_states(n=2 ** 12)
     observations = ma_learner.env.model.get_observations(states)
-    ma_actions = log_ut.get_eval_ma_actions(
-        ma_learner.learners,
-        observations,
-        {agent_id: None for agent_id in range(3)},
-        None,
-        False,
+    ma_actions = th_ut.get_ma_actions(
+        ma_learner.learners, observations, deterministic=False
     )
     learner_percentage_paper = (
         (torch.sum(ma_actions[0] == 1) / ma_actions[0].shape[0]).detach().cpu().item()

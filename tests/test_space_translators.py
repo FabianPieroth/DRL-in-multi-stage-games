@@ -5,8 +5,8 @@ import pytest
 import torch
 from gym.spaces import Box, Discrete, MultiDiscrete
 
-import src.utils_folder.io_utils as io_ut
-import src.utils_folder.test_utils as tst_ut
+import src.utils.io_utils as io_ut
+import src.utils.test_utils as tst_ut
 from src.envs.space_translators import (
     BoxToDiscreteSpaceTranslator,
     IdentitySpaceTranslator,

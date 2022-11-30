@@ -4,7 +4,7 @@ import torch
 from gym import spaces
 from gym.spaces import Space
 
-import src.utils_folder.logging_utils as log_ut
+import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 ROCK = 0
@@ -15,11 +15,15 @@ SCISSORS = 2
 class RockPaperScissors(BaseEnvForVec):
     """Iterated RockPaperScissors game as simple env example."""
 
+    ACTION_DIM = 1
+
     def __init__(self, config: Dict, device: str = None):
         super().__init__(config, device)
         self.state_shape = (self.num_agents, 2)
         self.action_space_sizes = self._init_action_space_sizes()
         self.variable_num_rounds = self.config["variable_num_rounds"]
+
+        self.num_rounds_to_play = self.config["num_rounds_to_play"]
 
     def _get_num_rounds_to_play(self, num: int) -> torch.Tensor:
         if self.config["variable_num_rounds"]:
@@ -34,7 +38,6 @@ class RockPaperScissors(BaseEnvForVec):
                 torch.ones((num,), device=self.device)
                 * self.config["num_rounds_to_play"]
             )
-        pass
 
     def _get_num_agents(self) -> int:
         return self.config["num_agents"]
@@ -166,8 +169,6 @@ class RockPaperScissors(BaseEnvForVec):
         deterministic = True
         episode_iter = 0
         observations = env.reset()
-        states = {agent_id: None for agent_id in range(env.model.num_agents)}
-        episode_starts = torch.ones((env.num_envs,), dtype=bool)
 
         freq_dict = {
             agent_id: {
@@ -180,8 +181,8 @@ class RockPaperScissors(BaseEnvForVec):
         }
 
         while episode_iter < 10:
-            actions = log_ut.get_eval_ma_actions(
-                learners, observations, states, episode_starts, deterministic
+            actions = th_ut.get_ma_actions(
+                learners, observations, deterministic=deterministic
             )
             observations, rewards, dones, infos = env.step(actions)
             for agent_id in range(env.model.num_agents):
@@ -235,3 +236,6 @@ class RockPaperScissors(BaseEnvForVec):
 
     def render(self, state):
         return state
+
+    def __str__(self):
+        return "RockPaperScissors"

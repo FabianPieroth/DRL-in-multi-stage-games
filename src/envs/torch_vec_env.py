@@ -1,15 +1,28 @@
 """Base classes for vectorized Gym environments"""
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete, Space
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.vec_env import VecEnv
 
+from src.envs.equilibria import EquilibriumStrategy
 from src.envs.space_translators import (
     BaseSpaceTranslator,
     BoxToDiscreteSpaceTranslator,
@@ -29,6 +42,7 @@ class BaseEnvForVec(ABC):
     to wrap it."""
 
     def __init__(self, config: Dict, device):
+        super().__init__()
         self.device = device
         self.config = config
         self.num_agents = self._get_num_agents()
@@ -36,6 +50,8 @@ class BaseEnvForVec(ABC):
         self.action_spaces = self._init_action_spaces()
         self.observation_space = None
         self.action_space = None
+        self.equilibrium_strategies = self._get_equilibrium_strategies()
+        self.equilibrium_strategies_known = self._are_equ_strategies_known()
 
     @abstractmethod
     def _get_num_agents(self) -> int:
@@ -136,6 +152,26 @@ class BaseEnvForVec(ABC):
         """
         pass
 
+    def _get_equilibrium_strategies(self) -> Dict[int, Optional[EquilibriumStrategy]]:
+        """Overwrite this method to enable verification against the known
+        equilibrium strategy. The verification is skipped, if at least one
+        returned method is None.
+        Each equilibrium strategy needs to be of type EquilibriumStrategy.
+        Note that verfication only works if the Env is also of class VerfiableEnv
+        Returns:
+            Dict[agent_id: EquilibriumStrategy or None]:
+        """
+        return {agent_id: None for agent_id in range(self.num_agents)}
+
+    def _are_equ_strategies_known(self) -> bool:
+        """Checks whether there are valid equilibrium strategies.
+        Returns: bool
+        """
+        if None in self.equilibrium_strategies.values():
+            return False
+        else:
+            return True
+
     def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
         """
         Environment-specific seeding is not used at the moment.
@@ -146,6 +182,45 @@ class BaseEnvForVec(ABC):
         np.random.seed(seed)
         random.seed(seed)
         torch.manual_seed(seed)
+
+
+class VerifiableEnv(ABC):
+    """Inherit from this class if you want your env to use the BFVerifier.
+    Do NOT implement an __init__ method here as this might give conflicts due to
+    multiple inheritance!
+    """
+
+    @abstractmethod
+    def get_obs_discretization_shape(
+        self, agent_id: int, obs_discretization: int, stage: int
+    ) -> Tuple[int]:
+        """For the verifier, we return a discretized observation space."""
+
+    @abstractmethod
+    def get_obs_bin_indices(
+        self,
+        agent_obs: torch.Tensor,
+        agent_id: int,
+        stage: int,
+        obs_discretization: int,
+    ) -> torch.LongTensor:
+        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
+
+        Args:
+            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
+            agent_id (int): 
+            stage (int): 
+            obs_discretization (int): number of discretization points
+
+        Returns:
+            torch.LongTensor: shape=(batch_size, )
+        """
+        # TODO: Catch "Index out of bounds" error if the given agent_obs are incorrect.
+
+    def plot_br_strategy(
+        self, br_strategies: Dict[int, Callable]
+    ) -> Optional[plt.Figure]:
+        return None
 
 
 class MATorchVecEnv(VecEnv):
@@ -394,6 +469,38 @@ class MATorchVecEnv(VecEnv):
         self.current_states = self.model.sample_new_states(self.num_envs)
         obses = self.model.get_observations(self.current_states)
         return obses
+
+    def get_action_grid(self, agent_id: int, grid_size: int = 4) -> torch.Tensor:
+        """
+        Generate a grid of alternative actions that are equally spaced on the
+        action domain for continuous action spaces or fall back to return all
+        actions for discrete action spaces.
+        
+        NOTE: Currently, the framework can only handle a static (state/stage
+        independent) action space.
+        """
+        own_action_space = self.model.action_spaces[agent_id]
+        own_action_space.shape
+        if not all(own_action_space.bounded_above) or not all(
+            own_action_space.bounded_below
+        ):
+            raise NotImplementedError("Action space is unbounded.")
+
+        if own_action_space.shape != (1,):
+            raise NotImplementedError(
+                "High dimensional action spaces are not supported yet."
+            )
+
+        if isinstance(own_action_space, Discrete):
+            grid_size = own_action_space.n  # arg grid_size is ignored then
+            action_grid = torch.range(0, own_action_space.n, device=self.device)
+
+        else:
+            low = own_action_space.low.item()
+            high = own_action_space.high.item()
+            action_grid = torch.linspace(low, high, grid_size, device=self.device)
+
+        return action_grid.view(grid_size, *own_action_space.shape)
 
     def get_images(self) -> Sequence[np.ndarray]:
         pass

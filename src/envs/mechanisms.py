@@ -3,7 +3,7 @@ from typing import Tuple, Union
 
 import torch
 
-from src.utils_folder.tensor_utils import batched_index_select
+from src.utils.torch_utils import batched_index_select
 
 
 class Mechanism(ABC):

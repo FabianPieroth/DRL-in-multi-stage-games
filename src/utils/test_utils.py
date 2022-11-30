@@ -4,7 +4,7 @@ from typing import Dict, List
 import hydra
 import omegaconf
 
-import src.utils_folder.env_utils as env_ut
+import src.utils.env_utils as env_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 
