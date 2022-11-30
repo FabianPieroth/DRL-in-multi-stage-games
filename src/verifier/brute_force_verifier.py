@@ -119,7 +119,7 @@ class BFVerifier:
             obs, rewards, _, states = self.env.model.compute_step(states, actions)
             actual_utility += rewards[agent_id]
 
-        return actual_utility.mean()
+        return actual_utility
 
     def _add_simulation_results_to_tree(
         self,
@@ -145,6 +145,15 @@ class BFVerifier:
         actual_utility = self.get_actual_utility(states.clone(), learners, agent_id)
 
         # B. Calculate best response utility
+        best_response_utilities, sim_batch_indices = self.get_br_utilities_and_indices(
+            learners, agent_id, batch_size, states
+        )
+
+        information_tree.add_simulation_results(
+            best_response_utilities, sim_batch_indices, actual_utility
+        )
+
+    def get_br_utilities_and_indices(self, learners, agent_id, batch_size, states):
         best_response_utilities = torch.zeros(
             self._total_utilities_shape_for_batch(batch_size), device=self.device
         ).flatten()
@@ -157,7 +166,6 @@ class BFVerifier:
         sim_batch_indices = torch.tensor([], device=self.device).long()
 
         for stage in range(self.num_rounds_to_play):
-
             # Repeat states such that we can try out all discrete actions in
             # all states
             # shape = (sim_size, action_discretization, *state_size)
@@ -213,13 +221,10 @@ class BFVerifier:
             # sim_size increases by no. of alternative actions we try out
             # (branching factor of game tree)
             sim_size *= self.action_discretization
-
         assert (
             torch.all(dones).cpu().item()
         ), "All games should have ended after playing all rounds! Check num_rounds_to_play of env!"
-        information_tree.add_simulation_results(
-            best_response_utilities - actual_utility, sim_batch_indices
-        )
+        return best_response_utilities, sim_batch_indices
 
     def _get_combined_actions(self, agent_id, sim_size_grid_actions, opp_actions):
         combined_actions = {}

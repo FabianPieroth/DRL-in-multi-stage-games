@@ -3,6 +3,7 @@ from typing import Callable, Dict, List, Tuple
 import torch
 
 import src.utils.spaces_utils as sp_ut
+from src.verifier.mean_utility_tracker import UtilityTracker
 
 
 class InformationSetTree(object):
@@ -22,6 +23,8 @@ class InformationSetTree(object):
         self.num_rounds_to_play = self.env.model.num_rounds_to_play
         self.action_dim = env.model.ACTION_DIM
         self.device = device
+
+        self.actual_utility_tracker = UtilityTracker(agent_id, device)
 
         self.stored_br_indices = self._init_stage_to_data_dict()
         self.best_responses = self._init_stage_to_data_dict()
@@ -66,19 +69,25 @@ class InformationSetTree(object):
         return torch.prod(torch.tensor(list(self.all_nodes_shape))).item()
 
     def add_simulation_results(
-        self, utilities: torch.Tensor, indices: torch.LongTensor
+        self,
+        sim_utilities: torch.Tensor,
+        sim_indices: torch.LongTensor,
+        actual_utilities: torch.Tensor,
     ):
         # Ravel the stage-wise observation indices to indexing the whole game tree
-        flat_indices = sp_ut.ravel_multi_index(indices, self.all_nodes_shape)
+        flat_indices = sp_ut.ravel_multi_index(sim_indices, self.all_nodes_shape)
 
         # Add utilities to cumulative utilities
-        self.nodes_utility_estimates.index_add_(0, flat_indices, utilities)
+        self.nodes_utility_estimates.index_add_(0, flat_indices, sim_utilities)
 
         # Increment visitation counts
         counts = torch.ones(
             flat_indices.shape, device=self.device, dtype=torch.long
         )  # TODO: expand instead creating big tensor
         self.nodes_counts.index_add_(0, flat_indices, counts)
+
+        # store actual utilities to tracker
+        self.actual_utility_tracker.add_utility(actual_utilities)
 
     def get_utility_loss_estimate(self):
         """Iteratively compute best-response utility estimate.
@@ -93,15 +102,15 @@ class InformationSetTree(object):
         ), "We assume one dimensional action spaces in all rounds!"
 
         # Utility estimate at last/terminal stage for all simulations
-        estimated_utility_losses = self.calc_monte_carlo_utility_estimations()
+        estimated_br_utilities = self.calc_monte_carlo_utility_estimations()
         nodes_counts = self.nodes_counts.view(self.all_nodes_shape)
 
         # Backwards traversal of game tree
         for stage in reversed(range(self.num_rounds_to_play)):
 
             # Select action with highest utility
-            estimated_utility_losses, br_indices = torch.max(
-                estimated_utility_losses, dim=-1
+            estimated_br_utilities, br_indices = torch.max(
+                estimated_br_utilities, dim=-1
             )
 
             self.stored_br_indices[stage] = br_indices.clone()
@@ -112,17 +121,18 @@ class InformationSetTree(object):
             visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
-            estimated_utility_losses *= visitation_probabilities
+            estimated_br_utilities *= visitation_probabilities
 
             # Sum over all possible states of this stage (chance node in
             # game tree)
-            estimated_utility_losses = estimated_utility_losses.sum(
+            estimated_br_utilities = estimated_br_utilities.sum(
                 dim=self._get_stage_obs_summing_dim(stage)
             )
 
         # Now we have a scalar estimate of the utility when playing the BR
         self._calculate_best_responses()
-        return estimated_utility_losses.item()
+        actual_utility_estimate = self.actual_utility_tracker.get_mean_utility()
+        return estimated_br_utilities.item() - actual_utility_estimate
 
     def _calc_visitation_probabilities_and_update_nodes_counts(
         self, nodes_counts: torch.LongTensor, br_indices: torch.LongTensor, stage: int
