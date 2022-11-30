@@ -52,14 +52,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         return TullockContest(impact_fun, self.device, self.config["use_valuation"])
 
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
-        return {
-            agent_id: self._get_agent_equilibrium_strategy(agent_id)
-            for agent_id in range(self.num_agents)
-        }
-
-    def _get_agent_equilibrium_strategy(
-        self, agent_id: int
-    ) -> SignalingContestEquilibrium:
         equilibrium_config = {
             "device": self.device,
             "prior_low": self.prior_low,
@@ -71,7 +63,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             "valuation_size": self.valuation_size,
             "payments_start_index": self.payments_start_index,
         }
-        return SignalingContestEquilibrium(agent_id, equilibrium_config)
+        return {
+            agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
+            for agent_id in range(self.num_agents)
+        }
 
     def _is_equilibrium_ensured_to_exist(self):
         if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
@@ -794,17 +789,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         equ_xs = val_xs.detach().cpu().numpy().squeeze()
         equ_bid_y = bid_ys.squeeze().detach().cpu().numpy()
         ax.plot(equ_xs, equ_bid_y, linewidth=1)
-
-    """def _plot_first_round_equilibrium_strategy(self, ax, agent_id):
-        val_xs = torch.linspace(
-            self.prior_low, self.prior_high, steps=100, device=self.device
-        )
-        bid_ys = self.equilibrium_strategies_deprecated[agent_id](
-            round=1, valuations=val_xs, opponent_vals=None, lost=None
-        )
-        equ_xs = val_xs.detach().cpu().numpy().squeeze()
-        equ_bid_y = bid_ys.detach().cpu().numpy().squeeze()
-        ax.plot(equ_xs, equ_bid_y, linewidth=1)"""
 
     def log_metrics_to_equilibrium(self, learners, num_samples: int = 2 ** 16):
         """Evaluate learned strategies vs BNE."""
