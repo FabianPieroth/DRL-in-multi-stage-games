@@ -9,7 +9,7 @@ import src.utils.env_utils as env_ut
 import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
-DEVICE = "cuda:1" if torch.cuda.is_available() else "CPU"
+DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 EPS = 0.01
 
 ids_verifier, testdata_verifier = zip(
