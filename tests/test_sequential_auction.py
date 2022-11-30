@@ -3,6 +3,7 @@ import hydra
 import torch
 
 import src.utils.io_utils as io_ut
+import src.utils.torch_utils as th_ut
 from src.envs.sequential_auction import SequentialAuction
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
@@ -13,14 +14,14 @@ def test_sequential_auction_in_bne():
     strategy. Collect the total rewards and compare with expectation.
     """
     io_ut.set_global_seed(0)
+
     batch_size: int = 2 ** 10  # The higher the lower the error tolerance should be
 
-    config = io_ut.get_config()
-    config["device"] = DEVICE
-    rl_config = hydra.compose("../configs/rl_envs/sequential_auction.yaml")[""][""][""][
-        "configs"
-    ]
-    env = SequentialAuction(rl_config["rl_envs"], device=DEVICE)
+    overrides = [f"device={DEVICE}"]
+    config = io_ut.get_config(overrides)
+    config.rl_envs = hydra.compose("rl_envs/sequential_auction.yaml").rl_envs
+
+    env = SequentialAuction(config.rl_envs, device=DEVICE)
 
     states = env.sample_new_states(n=batch_size)
     observations = env.get_observations(states)
@@ -30,10 +31,8 @@ def test_sequential_auction_in_bne():
     # Simulate game
     for stage in range(env.num_rounds_to_play):
 
-        has_won_already = env._has_won_already(states, stage)
-        actions = env.get_equilibrium_actions(
-            stage, env.strategies_bne, observations, has_won_already
-        )
+        has_won_already = env._has_won_already_from_state(states, stage)
+        actions = th_ut.get_ma_actions(env.equilibrium_strategies, observations)
 
         observations, rewards, _, states = env.compute_step(states, actions)
 

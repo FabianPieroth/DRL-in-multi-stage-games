@@ -22,6 +22,7 @@ from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete, Space
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.vec_env import VecEnv
 
+from src.envs.equilibria import EquilibriumStrategy
 from src.envs.space_translators import (
     BaseSpaceTranslator,
     BoxToDiscreteSpaceTranslator,
@@ -41,6 +42,7 @@ class BaseEnvForVec(ABC):
     to wrap it."""
 
     def __init__(self, config: Dict, device):
+        super().__init__()
         self.device = device
         self.config = config
         self.num_agents = self._get_num_agents()
@@ -48,6 +50,8 @@ class BaseEnvForVec(ABC):
         self.action_spaces = self._init_action_spaces()
         self.observation_space = None
         self.action_space = None
+        self.equilibrium_strategies = self._get_equilibrium_strategies()
+        self.equilibrium_strategies_known = self._are_equ_strategies_known()
 
     @abstractmethod
     def _get_num_agents(self) -> int:
@@ -148,6 +152,26 @@ class BaseEnvForVec(ABC):
         """
         pass
 
+    def _get_equilibrium_strategies(self) -> Dict[int, Optional[EquilibriumStrategy]]:
+        """Overwrite this method to enable verification against the known
+        equilibrium strategy. The verification is skipped, if at least one
+        returned method is None.
+        Each equilibrium strategy needs to be of type EquilibriumStrategy.
+        Note that verfication only works if the Env is also of class VerfiableEnv
+        Returns:
+            Dict[agent_id: EquilibriumStrategy or None]:
+        """
+        return {agent_id: None for agent_id in range(self.num_agents)}
+
+    def _are_equ_strategies_known(self) -> bool:
+        """Checks whether there are valid equilibrium strategies.
+        Returns: bool
+        """
+        if None in self.equilibrium_strategies.values():
+            return False
+        else:
+            return True
+
     def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
         """
         Environment-specific seeding is not used at the moment.
@@ -161,8 +185,10 @@ class BaseEnvForVec(ABC):
 
 
 class VerifiableEnv(ABC):
-    def __init__(self, config: Dict, device) -> None:
-        super().__init__()
+    """Inherit from this class if you want your env to use the BFVerifier.
+    Do NOT implement an __init__ method here as this might give conflicts due to
+    multiple inheritance!
+    """
 
     @abstractmethod
     def get_obs_discretization_shape(

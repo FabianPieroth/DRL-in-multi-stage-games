@@ -55,26 +55,6 @@ class VecPPO(SABaseAlgorithm):
             sa_rewards[dones] += self.gamma * terminal_value
         return sa_rewards
 
-    def add_data_to_replay_buffer(
-        self,
-        sa_last_obs,
-        last_episode_starts,
-        sa_actions,
-        sa_rewards,
-        sa_additional_actions_data,
-        agent_id: int,
-    ):
-        sa_values, sa_log_probs = sa_additional_actions_data
-        self.rollout_buffer.add(
-            sa_last_obs,
-            sa_actions,
-            sa_rewards,
-            last_episode_starts,
-            sa_values,
-            sa_log_probs,
-            th.ones(1, dtype=int) * agent_id,
-        )
-
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         with th.no_grad():
             if policy_sharing:

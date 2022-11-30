@@ -15,10 +15,10 @@ def run_limited_learning(config):
     env = env_ut.get_env(config)
     ma_learner = MultiAgentCoordinator(config, env)
     ma_learner.learn(
-        total_timesteps=config["total_training_steps"],
-        n_steps_per_iteration=config["n_steps_per_iteration"],
+        total_timesteps=config.total_training_steps,
+        n_steps_per_iteration=config.n_steps_per_iteration,
         log_interval=None,
-        eval_freq=config["eval_freq"],
+        eval_freq=config.eval_freq,
         n_eval_episodes=1,
     )
     hydra.core.global_hydra.GlobalHydra().clear()
@@ -35,4 +35,4 @@ def set_specific_algo_configs(
         algorithm_config = omegaconf.OmegaConf.load(
             "./configs/algorithm_configs/" + algo_name + "/" + algo_instance + ".yaml"
         )
-        config["algorithm_configs"][algo_name] = algorithm_config
+        config.algorithm_configs[algo_name] = algorithm_config

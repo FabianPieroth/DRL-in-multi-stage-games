@@ -135,7 +135,6 @@ class SABaseAlgorithm(PPO, ABC):
             self.train()
             self.prepare_next_rollout(self.env, callback)
 
-    @abstractmethod
     def add_data_to_replay_buffer(
         self,
         sa_last_obs,
@@ -145,7 +144,16 @@ class SABaseAlgorithm(PPO, ABC):
         sa_additional_actions_data,
         agent_id: int,
     ):
-        pass
+        sa_values, sa_log_probs = sa_additional_actions_data
+        self.rollout_buffer.add(
+            sa_last_obs,
+            sa_actions,
+            sa_rewards,
+            last_episode_starts,
+            sa_values,
+            sa_log_probs,
+            th.ones(1, dtype=int) * agent_id,
+        )
 
     @abstractmethod
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
@@ -242,8 +250,8 @@ class SABaseAlgorithm(PPO, ABC):
     def predict(
         self,
         observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """

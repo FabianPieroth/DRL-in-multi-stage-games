@@ -14,6 +14,7 @@ from stable_baselines3.common.vec_env import (
 )
 from torch.utils.tensorboard import SummaryWriter
 
+import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import MATorchVecEnv
 
 
@@ -112,12 +113,10 @@ def evaluate_policies(
     }
     current_lengths = torch.zeros((n_envs,), dtype=int, device=device)
     observations = env.reset()
-    states = {agent_id: None for agent_id in range(env.model.num_agents)}
     episode_rollout_ends = torch.zeros((env.num_envs), dtype=bool, device=env.device)
-    episode_starts = torch.ones((env.num_envs,), dtype=bool)
     while episode_iter < n_eval_episodes:
-        actions = get_eval_ma_actions(
-            learners, observations, states, episode_starts, deterministic
+        actions = actions = th_ut.get_ma_actions(
+            learners, observations, deterministic=deterministic
         )
         observations, rewards, dones, infos = env.step(actions)
         for agent_id in range(env.model.num_agents):
@@ -154,23 +153,6 @@ def evaluate_policies(
         )
         learner.logger.record("eval/ep_len_mean", mean_episode_lengths)
     return episode_rewards, episode_lengths
-
-
-def get_eval_ma_actions(
-    learners, observations, states, episode_starts, deterministic, excluded_agents=None
-):
-    if excluded_agents is None:
-        excluded_agents = []
-    actions = {}
-    for agent_id, learner in learners.items():
-        if agent_id not in excluded_agents:
-            actions[agent_id], states[agent_id] = learner.predict(
-                observations[agent_id],
-                states[agent_id],
-                episode_start=episode_starts,
-                deterministic=deterministic,
-            )
-    return actions
 
 
 def log_data_dict_to_learner_loggers(

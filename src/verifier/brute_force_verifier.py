@@ -3,20 +3,18 @@ import traceback
 from typing import Dict, List, Tuple
 
 import torch
-from tqdm import tqdm
 
 import src.utils.io_utils as io_ut
-import src.utils.logging_utils as log_ut
+import src.utils.torch_utils as th_ut
+from src.envs.torch_vec_env import VerifiableEnv
 from src.learners.base_learner import SABaseAlgorithm
-from src.utils.torch_utils import repeat_tensor_along_new_axis
-from src.verifier.base_verifier import BaseVerifier
 from src.verifier.information_set_tree import InformationSetTree
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM!"
 
 
-class BFVerifier(BaseVerifier):
+class BFVerifier:
     """Verifier that tries out a grid of alternative actions and choses the
     best combination as approximation to a best response.
     Assumptions:
@@ -33,7 +31,7 @@ class BFVerifier(BaseVerifier):
         action_discretization: int,
     ):
         self.env = env
-        self.env_is_compatible_with_verifier = self._check_if_env_is_compatible(env)
+        self.env_is_compatible_with_verifier = isinstance(env.model, VerifiableEnv)
         self.num_agents = self.env.model.num_agents
         self.num_simulations = num_simulations
         self.action_discretization = action_discretization
@@ -43,15 +41,18 @@ class BFVerifier(BaseVerifier):
         if self.env_is_compatible_with_verifier:
             self.num_rounds_to_play = self.env.model.num_rounds_to_play
 
-    def verify(self, learners: Dict[int, SABaseAlgorithm]):
-        utility_loss = torch.zeros(self.num_agents, device=self.device)
-        best_responses = {agent_id: None for agent_id in range(self.num_agents)}
+    def verify(
+        self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
+    ):
+        agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
+        utility_losses = {agent_id: 0 for agent_id in agent_ids}
+        best_responses = {agent_id: None for agent_id in agent_ids}
 
-        for agent_id in range(self.num_agents):
-            utility_loss[agent_id], best_responses[
-                agent_id
-            ] = self._get_agent_utility_loss_and_br(learners, agent_id)
-        return utility_loss.cpu().detach().tolist(), best_responses
+        for agent_id in agent_ids:
+            ul, br = self._get_agent_utility_loss_and_br(strategies, agent_id)
+            utility_losses[agent_id], best_responses[agent_id] = ul, br
+
+        return utility_losses, best_responses
 
     def _get_agent_utility_loss_and_br(self, learners, agent_id: int) -> float:
         """
@@ -87,12 +88,14 @@ class BFVerifier(BaseVerifier):
                     num_done_sims, self.num_simulations, progress_message
                 )
             except RuntimeError as e:
-                """ TODO: Some data seems to remain on the GPU if allocation fails. If initial batch size = 2**18,
-                then working batch_size = 1024. If inital batch size = 2**15, working batch size = 4096 for signaling contest!"""
+                """TODO: Some data seems to remain on the GPU if allocation
+                fails. If initial batch size = 2**18, then working batch_size =
+                1024. If initial batch size = 2**15, working batch size = 4096
+                for signaling contest!"""
                 self._catch_failed_simulation(batch_size, e)
                 batch_size = int(batch_size / 2)
         return (
-            information_tree.get_br_utility_estimate(),
+            information_tree.get_utility_loss_estimate(),
             information_tree.get_best_response_estimate(),
         )
 
@@ -102,6 +105,21 @@ class BFVerifier(BaseVerifier):
         if batch_size <= 1:
             traceback.print_exc()
             raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
+
+    def get_actual_utility(
+        self, states: torch.Tensor, learners: Dict[int, "Strategy"], agent_id: int
+    ):
+        batch_size, device = states.shape[0], states.device
+
+        actual_utility = torch.zeros((batch_size,), device=device)
+
+        for stage in range(self.num_rounds_to_play):
+            obs = self.env.model.get_observations(states)
+            actions = th_ut.get_ma_actions(learners, obs)
+            obs, rewards, _, states = self.env.model.compute_step(states, actions)
+            actual_utility += rewards[agent_id]
+
+        return actual_utility.mean()
 
     def _add_simulation_results_to_tree(
         self,
@@ -120,13 +138,17 @@ class BFVerifier(BaseVerifier):
             information_tree (InformationSetTree): game tree
         """
 
-        batch_utilities = torch.zeros(
+        # shape = (sim_size, *state_size)
+        states = self.env.model.sample_new_states(batch_size)
+
+        # A. Sample actual utility
+        actual_utility = self.get_actual_utility(states.clone(), learners, agent_id)
+
+        # B. Calculate best response utility
+        best_response_utilities = torch.zeros(
             self._total_utilities_shape_for_batch(batch_size), device=self.device
         ).flatten()
         sim_size = batch_size  # The current size of the simulation
-
-        # shape = (sim_size, *state_size)
-        states = self.env.model.sample_new_states(batch_size)
 
         agent_obs, opp_obs = self._split_obs(
             agent_id, self.env.model.get_observations(states)
@@ -181,7 +203,7 @@ class BFVerifier(BaseVerifier):
             repeated_agent_rewards = self._repeat_rewards_and_flatten_to_full_stage_sim_size(
                 rewards[agent_id], stage + 1
             )
-            batch_utilities += repeated_agent_rewards
+            best_response_utilities += repeated_agent_rewards
 
             # Update variables for next game stage
             episode_starts = dones
@@ -195,7 +217,9 @@ class BFVerifier(BaseVerifier):
         assert (
             torch.all(dones).cpu().item()
         ), "All games should have ended after playing all rounds! Check num_rounds_to_play of env!"
-        information_tree.add_simulation_results(batch_utilities, sim_batch_indices)
+        information_tree.add_simulation_results(
+            best_response_utilities - actual_utility, sim_batch_indices
+        )
 
     def _get_combined_actions(self, agent_id, sim_size_grid_actions, opp_actions):
         combined_actions = {}
@@ -228,7 +252,7 @@ class BFVerifier(BaseVerifier):
             episode_starts, learners, agent_id, opp_obs
         )
         for opp_agent, opp_action in opp_actions.items():
-            opp_actions[opp_agent] = repeat_tensor_along_new_axis(
+            opp_actions[opp_agent] = th_ut.repeat_tensor_along_new_axis(
                 data=opp_action, pos=[1], repeats=[self.action_discretization]
             )
         return opp_actions
@@ -241,7 +265,7 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape: (sim_size, action_discretization)
         """
-        sim_size_states = repeat_tensor_along_new_axis(
+        sim_size_states = th_ut.repeat_tensor_along_new_axis(
             data=states, pos=[1], repeats=[self.action_discretization]
         )
 
@@ -258,7 +282,7 @@ class BFVerifier(BaseVerifier):
         """
         action_bins = torch.arange(self.action_discretization, device=self.device)
         repeated_action_bins = (
-            repeat_tensor_along_new_axis(
+            th_ut.repeat_tensor_along_new_axis(
                 data=action_bins,
                 pos=[0, 2],
                 repeats=[
@@ -308,7 +332,7 @@ class BFVerifier(BaseVerifier):
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
         pos_to_repeat = len(rewards.shape)
-        return repeat_tensor_along_new_axis(
+        return th_ut.repeat_tensor_along_new_axis(
             data=rewards,
             pos=[pos_to_repeat],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -325,7 +349,7 @@ class BFVerifier(BaseVerifier):
         Returns:
             torch.Tensor: shape=(sim_size * sims_to_be_made)
         """
-        return repeat_tensor_along_new_axis(
+        return th_ut.repeat_tensor_along_new_axis(
             data=obs_bins,
             pos=[1],
             repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
@@ -345,7 +369,7 @@ class BFVerifier(BaseVerifier):
         agent_grid_actions = self.env.get_action_grid(
             agent_id, grid_size=self.action_discretization
         )
-        repeated_grid_actions = repeat_tensor_along_new_axis(
+        repeated_grid_actions = th_ut.repeat_tensor_along_new_axis(
             data=agent_grid_actions, pos=[0], repeats=[cur_sim_size]
         )
 
@@ -360,8 +384,8 @@ class BFVerifier(BaseVerifier):
         self, episode_starts: torch.Tensor, learners, agent_id, opp_obs
     ):
         states = {agent_id: None for agent_id in range(self.num_agents)}
-        opp_actions = log_ut.get_eval_ma_actions(
-            learners, opp_obs, states, episode_starts, True, excluded_agents=[agent_id]
+        opp_actions = th_ut.get_ma_actions(
+            learners, opp_obs, deterministic=True, excluded_agents=[agent_id]
         )
 
         return opp_actions

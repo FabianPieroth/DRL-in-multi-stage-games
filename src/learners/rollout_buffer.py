@@ -1,6 +1,6 @@
 """Rollout Buffer"""
 from abc import ABC, abstractmethod
-from typing import Generator, NamedTuple, Optional
+from typing import Dict, Generator, NamedTuple, Optional
 
 import torch as th
 from gym import spaces
@@ -43,6 +43,18 @@ class VecBaseBuffer(RolloutBuffer, ABC):
         self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None
     ) -> SimpleRolloutBufferSamples:
         pass
+
+    def _find_step_size_to_agent_data(self, step):
+        """When `policy_sharing` is turned on, the buffer receives inputs for
+        all agents, thus we need to keep track of how many inputs relate to one
+        time step. Should default to 1 if buffer is only responsible for a
+        single agent.
+        """
+        step_size = 1
+        target_agent_id = self.agent_ids[step].detach().item()
+        while target_agent_id != self.agent_ids[step + step_size].detach().item():
+            step_size += 1
+        return step_size
 
 
 class SimpleVecRolloutBuffer(VecBaseBuffer):
@@ -121,7 +133,10 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
             self.full = True
 
     def compute_returns(
-        self, last_values: th.Tensor, dones: th.Tensor, policy_sharing: bool = False
+        self,
+        last_values: Dict[int, th.Tensor],
+        dones: th.Tensor,
+        policy_sharing: bool = False,
     ) -> None:
         """
         Post-processing step: compute the returns.
@@ -129,8 +144,8 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
+        self.returns = self.rewards
         for step in reversed(range(self.buffer_size)):
-            self.returns[step] = self.rewards[step]
             if step >= self.buffer_size - len(last_values):
                 next_non_terminal = th.logical_not(dones)
             else:
@@ -138,16 +153,10 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
                 next_non_terminal = th.logical_not(
                     self.episode_starts[step + step_size_to_data]
                 )
-                self.returns[step][next_non_terminal] += self.returns[
-                    step + step_size_to_data
-                ][next_non_terminal]
-
-    def _find_step_size_to_agent_data(self, step):
-        step_size = 1
-        target_agent_id = self.agent_ids[step].detach().item()
-        while target_agent_id != self.agent_ids[step + step_size].detach().item():
-            step_size += 1
-        return step_size
+                self.returns[step][next_non_terminal] += (
+                    self.gamma
+                    * self.returns[step + step_size_to_data][next_non_terminal]
+                )
 
     def _get_samples(
         self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None
@@ -326,13 +335,6 @@ class VecRolloutBuffer(VecBaseBuffer):
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
         # in David Silver Lecture 4: https://www.youtube.com/watch?v=PnHCvfgC_ZA
         self.returns = self.advantages + self.values
-
-    def _find_step_size_to_agent_data(self, step):
-        step_size = 1
-        target_agent_id = self.agent_ids[step].detach().item()
-        while target_agent_id != self.agent_ids[step + step_size].detach().item():
-            step_size += 1
-        return step_size
 
     def _get_samples(
         self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None

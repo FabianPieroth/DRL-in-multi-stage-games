@@ -51,6 +51,7 @@ def get_policy_for_agent(
             env=env,
             device=config["device"],
             n_steps=n_rollout_steps,
+            learning_rate=ppo_config["learning_rate"],
             gamma=ppo_config["gamma"],
             batch_size=ppo_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
@@ -75,6 +76,8 @@ def get_policy_for_agent(
             env=env,
             device=config["device"],
             n_steps=n_rollout_steps,
+            learning_rate=reinforce_config["learning_rate"],
+            gamma=reinforce_config["gamma"],
             batch_size=reinforce_config["n_rollout_steps"] * config["num_envs"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
@@ -150,23 +153,17 @@ def get_policy_for_agent(
 
 
 def get_algo_name(agent_id: int, config: Dict):
-    if isinstance(config["algorithms"], str):
-        return config["algorithms"]
-    elif config["policy_sharing"] and all_equal(config["algorithms"]):
-        return config["algorithms"][0]
-    elif config["policy_sharing"] and not all_equal(config["algorithms"]):
+    assert not isinstance(config.algorithms, list)
+    if config.policy_sharing and all_equal(config.algorithms):
+        return config.algorithms[0]
+    elif config.policy_sharing and not all_equal(config.algorithms):
         raise ValueError(
             "Policy sharing is true but not all provided policies are equal!"
         )
-    elif (
-        not config["policy_sharing"]
-        and len(config["algorithms"]) != config["rl_envs"]["num_agents"]
-    ):
-        raise ValueError(
-            "One needs to specify a policy for every agent or use policy sharing!"
-        )
+    elif not config.policy_sharing and len(config.algorithms) == 1:
+        return config.algorithms[0]
     else:
-        return config["algorithms"][agent_id]
+        return config.algorithms[agent_id]
 
 
 def all_equal(iterator):

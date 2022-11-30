@@ -3,6 +3,8 @@ from typing import Tuple, Union
 
 import torch
 
+from src.utils.torch_utils import batched_index_select
+
 
 class Mechanism(ABC):
     """
@@ -11,9 +13,7 @@ class Mechanism(ABC):
     for each of the players.
     """
 
-    def play(
-        self, action_profile, smooth_market: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def play(self, action_profile) -> Tuple[torch.Tensor, torch.Tensor]:
         """Alias for `run` method"""
         return self.run(bids=action_profile)
 
@@ -26,7 +26,8 @@ class Mechanism(ABC):
 class FirstPriceAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, random_tie_break: bool = True, **kwargs):
+        self.random_tie_break = random_tie_break
         super().__init__(**kwargs)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
@@ -70,6 +71,12 @@ class FirstPriceAuction(Mechanism):
         )  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
 
+        if self.random_tie_break:  # randomly change order of bidders
+            idx = torch.randn((*batch_sizes, n_players), device=bids.device).sort(
+                dim=1
+            )[1]
+            bids = batched_index_select(bids, 1, idx)
+
         # allocate return variables
         payments_per_item = torch.zeros(*batch_sizes, n_players, n_items, device=device)
         allocations = torch.zeros(*batch_sizes, n_players, n_items, device=device)
@@ -86,6 +93,14 @@ class FirstPriceAuction(Mechanism):
         allocations.masked_fill_(mask=payments_per_item <= 0, value=0)
         payments.masked_fill_(mask=payments < 0, value=0)
 
+        if self.random_tie_break:  # restore bidder order
+            idx_rev = idx.sort(dim=1)[1]
+            allocations = batched_index_select(allocations, 1, idx_rev)
+            payments = batched_index_select(payments, 1, idx_rev)
+
+            # also revert the order of bids if they're used later on
+            bids = batched_index_select(bids, 1, idx_rev)
+
         return (
             allocations,
             payments,
@@ -95,7 +110,8 @@ class FirstPriceAuction(Mechanism):
 class VickreyAuction(Mechanism):
     "Vickrey / Second Price Sealed Bid Auctions"
 
-    def __init__(self, **kwargs):
+    def __init__(self, random_tie_break: bool = True, **kwargs):
+        self.random_tie_break = random_tie_break
         super().__init__(**kwargs)
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -136,6 +152,12 @@ class VickreyAuction(Mechanism):
         )  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
 
+        if self.random_tie_break:  # randomly change order of bidders
+            idx = torch.randn((*batch_sizes, n_players), device=bids.device).sort(
+                dim=1
+            )[1]
+            bids = batched_index_select(bids, 1, idx)
+
         # allocate return variables
         payments_per_item = torch.zeros(
             *batch_sizes, n_players, n_items, device=bids.device
@@ -158,6 +180,14 @@ class VickreyAuction(Mechanism):
         allocations.masked_fill_(mask=payments_per_item < 0, value=0)
         payments.masked_fill_(mask=payments < 0, value=0)
 
+        if self.random_tie_break:  # restore bidder order
+            idx_rev = idx.sort(dim=1)[1]
+            allocations = batched_index_select(allocations, 1, idx_rev)
+            payments = batched_index_select(payments, 1, idx_rev)
+
+            # also revert the order of bids if they're used later on
+            bids = batched_index_select(bids, 1, idx_rev)
+
         return (
             allocations,
             payments,
@@ -165,7 +195,10 @@ class VickreyAuction(Mechanism):
 
 
 class AllPayAuction(Mechanism):
-    def __init__(self, device: Union[str, int]):
+    def __init__(
+        self, device: Union[str, int], random_tie_break: bool = True, **kwargs
+    ):
+        self.random_tie_break = random_tie_break
         self.device = device
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -202,6 +235,12 @@ class AllPayAuction(Mechanism):
         *batch_dims, player_dim, item_dim = range(bids.dim())
         *batch_sizes, n_players, n_items = bids.shape
 
+        if self.random_tie_break:  # randomly change order of bidders
+            idx = torch.randn((*batch_sizes, n_players), device=bids.device).sort(
+                dim=1
+            )[1]
+            bids = batched_index_select(bids, 1, idx)
+
         # allocate return variables
         allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
 
@@ -212,6 +251,14 @@ class AllPayAuction(Mechanism):
         allocations.masked_fill_(mask=bids == 0, value=0)
 
         payments = bids.reshape(*batch_sizes, n_players)  # pay as bid
+
+        if self.random_tie_break:  # restore bidder order
+            idx_rev = idx.sort(dim=1)[1]
+            allocations = batched_index_select(allocations, 1, idx_rev)
+            payments = batched_index_select(payments, 1, idx_rev)
+
+            # also revert the order of bids if they're used later on
+            bids = batched_index_select(bids, 1, idx_rev)
 
         return (
             allocations,
