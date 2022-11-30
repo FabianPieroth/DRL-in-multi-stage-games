@@ -7,7 +7,6 @@ import torch
 
 import src.utils.env_utils as env_ut
 import src.utils.io_utils as io_ut
-from src.envs.sequential_auction import SequentialAuction
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 DEVICE = "cuda:1" if torch.cuda.is_available() else "CPU"
@@ -15,14 +14,15 @@ EPS = 0.01
 
 ids_verifier, testdata_verifier = zip(
     *[
-        ["signaling_contest", "signaling_contest"],
-        ["sequential_auction", "sequential_auction"],
+        ["signaling_contest_no_signaling", ("signaling_contest", "true_valuations")],
+        ["signaling_contest_signaling", ("signaling_contest", "winning_bids")],
+        ["sequential_auction", ("sequential_auction", "")],
     ]
 )
 
 
-@pytest.mark.parametrize("environment", testdata_verifier, ids=ids_verifier)
-def test_verifier_in_bne(environment):
+@pytest.mark.parametrize("environment, add_info", testdata_verifier, ids=ids_verifier)
+def test_verifier_in_bne(environment, add_info):
     """Test the `signaling_contest` and the `sequential_auction` game
     environment by playing the BNE strategy. Collect the total rewards and
     compare with the analytic expected utility.
@@ -34,6 +34,8 @@ def test_verifier_in_bne(environment):
     config = copy.deepcopy(config)
 
     config.rl_envs = hydra.compose(f"/rl_envs/{environment}.yaml").rl_envs
+    if environment == "signaling_contest":
+        config.rl_envs.information_case = add_info
     config.device = DEVICE
 
     env = env_ut.get_env(config)

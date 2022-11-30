@@ -4,7 +4,7 @@ import torch
 from gym import spaces
 from gym.spaces import Space
 
-import src.utils.logging_utils as log_ut
+import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
 ROCK = 0
@@ -169,8 +169,6 @@ class RockPaperScissors(BaseEnvForVec):
         deterministic = True
         episode_iter = 0
         observations = env.reset()
-        states = {agent_id: None for agent_id in range(env.model.num_agents)}
-        episode_starts = torch.ones((env.num_envs,), dtype=bool)
 
         freq_dict = {
             agent_id: {
@@ -183,8 +181,8 @@ class RockPaperScissors(BaseEnvForVec):
         }
 
         while episode_iter < 10:
-            actions = log_ut.get_eval_ma_actions(
-                learners, observations, states, episode_starts, deterministic
+            actions = th_ut.get_ma_actions(
+                learners, observations, deterministic=deterministic
             )
             observations, rewards, dones, infos = env.step(actions)
             for agent_id in range(env.model.num_agents):

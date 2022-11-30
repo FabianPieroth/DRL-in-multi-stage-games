@@ -5,7 +5,6 @@ from typing import Dict, List, Tuple
 import torch
 
 import src.utils.io_utils as io_ut
-import src.utils.logging_utils as log_ut
 import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import VerifiableEnv
 from src.learners.base_learner import SABaseAlgorithm
@@ -112,20 +111,12 @@ class BFVerifier:
     ):
         batch_size, device = states.shape[0], states.device
 
-        episode_starts = torch.ones((batch_size,), dtype=bool, device=device)
         actual_utility = torch.zeros((batch_size,), device=device)
 
         for stage in range(self.num_rounds_to_play):
             obs = self.env.model.get_observations(states)
-            actions = log_ut.get_eval_ma_actions(
-                learners=learners,
-                observations=obs,
-                states=states,
-                episode_starts=episode_starts,
-            )
-            obs, rewards, episode_starts, states = self.env.model.compute_step(
-                states, actions
-            )
+            actions = th_ut.get_ma_actions(learners, obs)
+            obs, rewards, _, states = self.env.model.compute_step(states, actions)
             actual_utility += rewards[agent_id]
 
         return actual_utility.mean()
@@ -393,8 +384,8 @@ class BFVerifier:
         self, episode_starts: torch.Tensor, learners, agent_id, opp_obs
     ):
         states = {agent_id: None for agent_id in range(self.num_agents)}
-        opp_actions = log_ut.get_eval_ma_actions(
-            learners, opp_obs, states, episode_starts, True, excluded_agents=[agent_id]
+        opp_actions = th_ut.get_ma_actions(
+            learners, opp_obs, deterministic=True, excluded_agents=[agent_id]
         )
 
         return opp_actions
