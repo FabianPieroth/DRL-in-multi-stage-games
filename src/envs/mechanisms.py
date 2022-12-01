@@ -30,7 +30,6 @@ class FirstPriceAuction(Mechanism):
         self.random_tie_break = random_tie_break
         super().__init__(**kwargs)
 
-    # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) First Price Sealed Bid Auction.

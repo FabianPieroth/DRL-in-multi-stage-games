@@ -167,7 +167,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         """Create new initial states consisting of
             * one valuation per agent
             * num_rounds_to_play * allocation per agent
-            * prices of all stages (-1 for future stages TODO?)
+            * prices of all stages (-1 for future stages)
                 -> implicitly tells agents which the current round is
 
         :param n: Batch size of how many auction games are played in parallel.
@@ -301,7 +301,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         """Computes the rewards for the played auction games for the player at
         `self.player_position`.
 
-        TODO: do we want intermediate rewards or not?
+        NOTE: We calculate intermediate rewards and not only returns once the
+        game terminates.
         """
 
         return {
