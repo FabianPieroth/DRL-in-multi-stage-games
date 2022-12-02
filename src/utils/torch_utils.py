@@ -69,6 +69,14 @@ def get_ma_actions(
 ):
     if excluded_agents is None:
         excluded_agents = []
+
+    # NOTE: For `collapse_symmetric_opponents` in sequential sales, we only
+    # have a single learner but two observations
+    n_learners = len(learners)
+    n_observations = len(observations.keys())
+    if n_learners < n_observations:
+        excluded_agents += list(range(n_learners, n_observations))
+
     actions = {}
     for agent_id, sa_obs in observations.items():
         if agent_id not in excluded_agents:
