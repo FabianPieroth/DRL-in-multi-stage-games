@@ -169,8 +169,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         :return: The new states, in shape=(n, num_agents, -1), where the last
             dimension consists of the valuation, the allocations, and payments.
             Latter of which are kept track of over all stages.
-            where ...
-        `current_round` and `num_rounds_to_play`.
         """
         self.allocations_start_index = self.valuation_size
         # NOTE: We keep track of all (incl. zero) payments for reward calculations
