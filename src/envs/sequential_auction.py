@@ -166,7 +166,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 -> implicitly tells agents which the current round is
 
         :param n: Batch size of how many auction games are played in parallel.
-        :return: The new states, in shape=(n, num_agents, -1),
+        :return: The new states, in shape=(n, num_agents, -1), where the last
+            dimension consists of the valuation, the allocations, and payments.
+            Latter of which are kept track of over all stages.
             where ...
         `current_round` and `num_rounds_to_play`.
         """
