@@ -217,7 +217,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         if self.collapse_symmetric_opponents:
             # simulate opponent actions
             opponent_obs = self.get_observations(cur_states)[1]
-            opponent_actions = self.learners[0].policy.forward(opponent_obs)[0]
+            with th.no_grad():
+                opponent_actions = self.learners[0].policy._predict(opponent_obs)
             actions[1] = opponent_actions
 
         # append opponents' actions

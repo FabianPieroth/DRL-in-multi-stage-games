@@ -66,6 +66,7 @@ def get_ma_actions(
     observations: Dict[int, torch.Tensor],
     deterministic: bool = True,
     excluded_agents: List = None,
+    no_grad: bool = True,
 ):
     if excluded_agents is None:
         excluded_agents = []
@@ -77,15 +78,17 @@ def get_ma_actions(
     if n_learners < n_observations:
         excluded_agents += list(range(n_learners, n_observations))
 
-    actions = {}
-    for agent_id, sa_obs in observations.items():
-        if agent_id not in excluded_agents:
-            actions[agent_id], _ = learners[agent_id].predict(
-                observation=sa_obs,
-                state=None,
-                episode_start=None,
-                deterministic=deterministic,
-            )
+    with torch.no_grad() if no_grad else nullcontext():
+        actions = {}
+        for agent_id, sa_obs in observations.items():
+            if agent_id not in excluded_agents:
+                actions[agent_id], _ = learners[agent_id].predict(
+                    observation=sa_obs,
+                    state=None,
+                    episode_start=None,
+                    deterministic=deterministic,
+                )
+
     return actions
 
 
