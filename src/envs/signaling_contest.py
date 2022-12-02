@@ -542,7 +542,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def get_ma_clipped_bids(self, learners, observations, deterministic: bool = True):
         action_dict = th_ut.get_ma_actions(
-            learners, observations, deterministic=deterministic
+            learners, observations, deterministic=deterministic, no_grad=False
         )
         for agent_id, sa_actions in action_dict.items():
             sa_actions = self.relu_layer(sa_actions)

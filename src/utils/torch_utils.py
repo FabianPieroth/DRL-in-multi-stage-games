@@ -73,23 +73,20 @@ def get_ma_actions(
 
     # NOTE: For `collapse_symmetric_opponents` in sequential sales, we only
     # have a single learner but two observations
-    n_learners = len(learners)
-    n_observations = len(observations.keys())
-    if n_learners < n_observations:
-        excluded_agents += list(range(n_learners, n_observations))
+    agent_ids = list(
+        set(learners.keys()) & set(observations.keys()) - set(excluded_agents)
+    )
 
     with torch.no_grad() if no_grad else nullcontext():
-        actions = {}
-        for agent_id, sa_obs in observations.items():
-            if agent_id not in excluded_agents:
-                actions[agent_id], _ = learners[agent_id].predict(
-                    observation=sa_obs,
-                    state=None,
-                    episode_start=None,
-                    deterministic=deterministic,
-                )
-
-    return actions
+        return {
+            agent_id: learners[agent_id].predict(
+                observation=observations[agent_id],
+                state=None,
+                episode_start=None,
+                deterministic=deterministic,
+            )[0]
+            for agent_id in agent_ids
+        }
 
 
 def torch_inverse_func(
