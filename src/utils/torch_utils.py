@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from typing import Callable, Dict, List, Tuple
 
 import torch
@@ -45,7 +46,7 @@ def batched_index_select(
     args:
         input: Tensor which is to be indexed
         dim: Dimension
-        index: Index tensor which proviedes the seleting and ordering.
+        index: Index tensor which provides the selecting and ordering.
 
     returns:
         Indexed tensor
