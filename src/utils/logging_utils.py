@@ -115,7 +115,7 @@ def evaluate_policies(
     observations = env.reset()
     episode_rollout_ends = torch.zeros((env.num_envs), dtype=bool, device=env.device)
     while episode_iter < n_eval_episodes:
-        actions = actions = th_ut.get_ma_actions(
+        actions = th_ut.get_ma_actions(
             learners, observations, deterministic=deterministic
         )
         observations, rewards, dones, infos = env.step(actions)

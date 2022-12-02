@@ -17,7 +17,7 @@ from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPo
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
     set_space_translators_in_env(config, env)
-    if config["policy_sharing"]:
+    if config.policy_sharing:
         shared_policy = get_policy_for_agent(0, config, env)
         return {agent_id: shared_policy for agent_id in range(env.model.num_agents)}
     else:

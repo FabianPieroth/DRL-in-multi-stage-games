@@ -101,15 +101,15 @@ class SABaseAlgorithm(PPO, ABC):
         """This interface is used by the `MultiAgentCoordinator` to be the
         single point of information sharing with this learner.
         """
+        # Only do once for all agents that share the same policy
         if not (policy_sharing and agent_id > 0):
             self.num_timesteps += self.env.num_envs
-
             self._update_info_buffer(infos, dones)
 
+        # Add all data to buffer even when it comes from multiple agents
+        # sharing the same policy -> more efficient usage of game data
         sa_actions = self.prepare_actions_for_buffer(sa_actions)
-
         sa_rewards = self.handle_dones(dones, infos, sa_rewards, agent_id)
-
         self.add_data_to_replay_buffer(
             sa_last_obs,
             last_episode_starts,
@@ -284,6 +284,9 @@ class SABaseAlgorithm(PPO, ABC):
                 )
 
         return actions, state
+
+    def __str__(self):
+        return self.__class__.__name__
 
 
 class MABaseAlgorithm(BaseAlgorithm):

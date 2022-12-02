@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict
 
 from src.envs.rock_paper_scissors import RockPaperScissors
@@ -12,6 +13,11 @@ def get_env(config: Dict) -> MATorchVecEnv:
     if env_name == "rockpaperscissors":
         env = RockPaperScissors(config.rl_envs, device=config.device)
     elif env_name == "sequential_auction":
+        if config.rl_envs.collapse_symmetric_opponents and not config.policy_sharing:
+            warnings.warn(
+                "`collapse_symmetric_opponents` requires `policy_sharing`", UserWarning
+            )
+            config.policy_sharing = True
         env = SequentialAuction(config.rl_envs, device=config.device)
     elif env_name == "signaling_contest":
         env = SignalingContest(config.rl_envs, device=config.device)

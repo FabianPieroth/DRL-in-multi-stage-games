@@ -59,7 +59,7 @@ class EquilibriumStrategy(ABC):
         return self.equ_method(observation), None
 
 
-class SequetialAuctionEquilibrium(EquilibriumStrategy):
+class SequentialAuctionEquilibrium(EquilibriumStrategy):
     def __init__(self, agent_id: int, config: Dict):
         self.num_agents = config["num_agents"]
         self.num_units = config["num_units"]
