@@ -479,15 +479,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self.log_metrics_to_equilibrium(learners)
 
     @staticmethod
-    def get_ma_learner_predictions(learners, observations, deterministic: bool = True):
-        return {
-            agent_id: learner.predict(
-                observations[agent_id], deterministic=deterministic
-            )[0]
-            for agent_id, learner in learners.items()
-        }
-
-    @staticmethod
     def get_ma_learner_stddevs(learners, observations):
         stddevs = {
             agent_id: learners[0].policy.get_stddev(obs)
@@ -518,7 +509,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
             ax.set_title(f"Stage {stage + 1}")
             observations = self.get_observations(states)
-            ma_deterministic_actions = self.get_ma_learner_predictions(
+            ma_deterministic_actions = th_ut.get_ma_actions(
                 strategies, observations, True
             )
             ma_stddevs = self.get_ma_learner_stddevs(strategies, observations)
@@ -678,13 +669,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             equ_actions_in_equ = th_ut.get_ma_actions(
                 self.equilibrium_strategies, equ_observations
             )
-
-            # NOTE: Here we need to query `self.learners` (even when policy
-            # sharing is turned on), because we need multi-agent actions for
-            # all player positions
-            actual_actions = self.get_ma_learner_predictions(
-                self.learners, actual_observations, True
-            )
+            actual_actions = th_ut.get_ma_actions(learners, actual_observations)
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions
