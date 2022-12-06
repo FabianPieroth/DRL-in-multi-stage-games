@@ -481,11 +481,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
 
     @staticmethod
     def get_ma_learner_stddevs(learners, observations):
-        stddevs = {
-            agent_id: learners[agent_id].policy.get_stddev(obs)
-            for agent_id, obs in observations.items()
+        # NOTE: Can't iterate over obs because for `collapse_symmetric_opponents`
+        # we only have a single learner and more observations
+        return {
+            agent_id: learner.policy.get_stddev(observations[agent_id])
+            for agent_id, learner in learners.items()
         }
-        return stddevs
 
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
