@@ -482,7 +482,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     @staticmethod
     def get_ma_learner_stddevs(learners, observations):
         stddevs = {
-            agent_id: learners[0].policy.get_stddev(obs)
+            agent_id: learners[agent_id].policy.get_stddev(obs)
             for agent_id, obs in observations.items()
         }
         return stddevs
