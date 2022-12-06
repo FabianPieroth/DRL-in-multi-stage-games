@@ -726,7 +726,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         sa_obs = self.get_obs_from_val_and_opp_info(
             val_x, opp_info, stage=1.0, won_first_round=won_first_round
         )
-        bid_z, _ = sa_learner.predict(sa_obs)
+        bid_z, _ = sa_learner.predict(sa_obs, deterministic=True)
         bid_z = bid_z.reshape(precision, precision)
         val_x = val_x.reshape(precision, precision)
         opp_info = opp_info.reshape(precision, precision)
@@ -806,11 +806,11 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         val_xs = torch.linspace(
             self.prior_low, self.prior_high, steps=precision, device=self.device
         )
-        opp_info = torch.zeros_like(val_xs)
+        opp_info = -1.0 * torch.ones_like(val_xs)
         sa_obs = self.get_obs_from_val_and_opp_info(
             val_xs, opp_info, stage=0.0, won_first_round=0.0
         )
-        bid_ys, _ = sa_learner.predict(sa_obs)
+        bid_ys, _ = sa_learner.predict(sa_obs, deterministic=True)
         return val_xs, bid_ys
 
     def log_metrics_to_equilibrium(self, learners, num_samples: int = 2 ** 16):
@@ -823,7 +823,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         )
 
         l2_distances_to_equ_over_grid = self.measure_l2_distance_to_equ_over_grid(
-            learners
+            learners, num_samples
         )
 
         self._log_metric_dict_to_individual_learners(
@@ -832,7 +832,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self._log_metric_dict_to_individual_learners(
             learners, learned_utilities, "eval/utility_vs_actual"
         )
-        self._log_l2_distances(learners, l2_distances_vs_equ)
+        self._log_l2_distances(
+            learners, l2_distances_vs_equ, "over_learner_distribution"
+        )
+        self._log_l2_distances(learners, l2_distances_to_equ_over_grid, "over_grid")
 
         # reset seed
         self.seed(
@@ -893,10 +896,18 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 learner.logger.record(
                     "eval/action_equ_L2_distance_"
                     + add_specifier
-                    + "_round_"
+                    + "_stage_"
                     + str(round_iter + 1),
                     distances_l2[agent_id][round_iter],
                 )
+                if round_iter == 1 and len(distances_l2[agent_id]) == 3:
+                    learner.logger.record(
+                        "eval/action_equ_L2_distance_"
+                        + add_specifier
+                        + "_lost_already_stage_"
+                        + str(round_iter + 1),
+                        distances_l2[agent_id][round_iter + 1],
+                    )
 
     def _get_mix_equ_learned_actions(
         self, agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
@@ -918,18 +929,57 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         for agent_id, learner in learners.items():
             learner.logger.record(key_prefix, metric_dict[agent_id])
 
-    def measure_l2_distance_to_equ_over_grid(self, learners) -> Dict:
+    def measure_l2_distance_to_equ_over_grid(self, learners, precision: int) -> Dict:
         num_rounds = 2
-        l2_distances = {i: [None] * num_rounds for i in learners.keys()}
+        l2_distances = {i: [None] * (num_rounds + 1) for i in learners.keys()}
+        second_round_precision = int(np.sqrt(precision))
+        for agent_id, learner in learners.items():
+            _, first_round_equ_actions = self._get_actions_and_grid_in_first_stage(
+                self.equilibrium_strategies[agent_id], precision
+            )
+            _, first_round_agent_actions = self._get_actions_and_grid_in_first_stage(
+                learner, precision
+            )
+            first_round_agent_actions = self.relu_layer(first_round_agent_actions)
 
-        """
-        l2_distances = {i: [None] * num_rounds for i in learners.keys()}
-        
-        for agent_id in learners.keys():
-                l2_distances[agent_id][round_iter] = tensor_norm(
-                    actual_actions[agent_id], equ_actions_in_actual_play[agent_id]
-                )
-        """
+            l2_distances[agent_id][0] = tensor_norm(
+                first_round_agent_actions, first_round_equ_actions
+            )
+
+            _, _, second_round_equ_actions_won_first_round = self._get_actions_and_grid_in_second_stage(
+                self.equilibrium_strategies[agent_id], second_round_precision
+            )
+
+            _, _, second_round_agent_actions_won_first_round = self._get_actions_and_grid_in_second_stage(
+                learner, second_round_precision
+            )
+            second_round_agent_actions_won_first_round = self.relu_layer(
+                second_round_agent_actions_won_first_round
+            )
+
+            l2_distances[agent_id][1] = tensor_norm(
+                second_round_agent_actions_won_first_round.flatten(),
+                second_round_equ_actions_won_first_round.flatten(),
+            )
+
+            _, _, second_round_equ_actions_lost_first_round = self._get_actions_and_grid_in_second_stage(
+                self.equilibrium_strategies[agent_id],
+                second_round_precision,
+                won_first_round=0.0,
+            )
+
+            _, _, second_round_agent_actions_lost_first_round = self._get_actions_and_grid_in_second_stage(
+                learner, second_round_precision, won_first_round=0.0
+            )
+            second_round_agent_actions_lost_first_round = self.relu_layer(
+                second_round_agent_actions_lost_first_round
+            )
+
+            l2_distances[agent_id][2] = tensor_norm(
+                second_round_agent_actions_lost_first_round.flatten(),
+                second_round_equ_actions_lost_first_round.flatten(),
+            )
+
         return l2_distances
 
     def plot_br_strategy(
