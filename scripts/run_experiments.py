@@ -8,19 +8,16 @@ import pandas as pd
 
 sys.path.append(os.path.realpath("."))
 
-import experiments.evaluation_utils as ex_ut
 import src.utils.env_utils as env_ut
 import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
-# TODO: Check params for all experiments - especially total_training_steps -> iteration_num
-
 
 def run_sequential_sales_experiment():
 
-    runs = 3
-    total_training_steps = 200_000_000
-    n_steps_per_iteration = 100
+    runs = 2
+    iteration_num = 10
+    n_steps_per_iteration = 10
     policy_sharing = False
 
     collapse_symmetric_opponents_options = [True, False]
@@ -47,7 +44,7 @@ def run_sequential_sales_experiment():
                 f"seed={i}",
                 f"policy_sharing={policy_sharing}",
                 f"algorithms=[{algorithm}]",
-                f"total_training_steps=[{total_training_steps}]",
+                f"iteration_num={iteration_num}",
                 f"n_steps_per_iteration=[{n_steps_per_iteration}]",
                 f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
                 f"rl_envs.mechanism_type={mechanism_type}",
@@ -82,9 +79,9 @@ def run_sequential_sales_experiment():
 
 def run_signaling_contest_experiment():
 
-    runs = 1
-    total_training_steps = 200_000_000
-    n_steps_per_iteration = 100
+    runs = 2
+    iteration_num = 10
+    n_steps_per_iteration = 10
     policy_sharing = False
 
     algorithms = ["ppo", "reinforce"]
@@ -102,7 +99,7 @@ def run_signaling_contest_experiment():
                 f"seed={i}",
                 f"policy_sharing={policy_sharing}",
                 f"algorithms=[{algorithm}]",
-                f"total_training_steps=[{total_training_steps}]",
+                f"iteration_num={iteration_num}",
                 f"n_steps_per_iteration=[{n_steps_per_iteration}]",
             ]
             env_overrides = [f"rl_envs.information_case={information_case}"]
@@ -135,73 +132,7 @@ def run_signaling_contest_experiment():
     print("Done!")
 
 
-def evaluate_sequential_sales_experiment():
-    path = "/home/kohring/sequential-auction-on-gpu/logs/final/sequential_auction"
-    df = ex_ut.get_log_df(path)
-
-    metrics = [
-        "eval/action_equ_L2_distance_stage_0",
-        "eval/action_equ_L2_distance_stage_1",
-        "eval/action_equ_L2_distance_stage_2",
-        "eval/action_equ_L2_distance_stage_3",
-    ]
-
-    # 1. Scalability in terms of rounds to play
-    df_select = df[df.metric.isin(metrics)]
-    df_select = df_select[df_select.time_step == max(df_select.time_step)]
-    df_select.metric = df_select.metric.apply(ex_ut.metric_python2latex)
-    df_select = df_select[
-        df_select.index.get_level_values("collapse_symmetric_opponents") == False
-    ]
-    df_select = df_select.droplevel(level="collapse_symmetric_opponents")
-
-    reduced_index = list(df_select.index.names)
-    reduced_index.remove("seed")
-    reduced_index.remove("algorithms")
-    reduced_index.append("metric")
-    df_select = df_select.reset_index()
-    df_select = df_select.set_index(reduced_index)
-    df_select.algorithms = df_select.algorithms.apply(ex_ut.metric_python2latex)
-
-    aggregate_df = pd.pivot_table(
-        df_select,
-        values="value",
-        index=reduced_index,
-        columns=["algorithms"],
-        aggfunc=[np.mean, np.std],
-    )
-
-    # Formatting
-    aggregate_df = aggregate_df.swaplevel(axis=1)
-    aggregate_df = aggregate_df[aggregate_df.columns[[0, 2, 1, 3]]]
-
-    aggregate_df = aggregate_df.round(decimals=4)
-    final_df = pd.DataFrame()
-    for algorithm in set(i[0] for i in aggregate_df.columns):
-        final_df[algorithm] = (
-            aggregate_df[(algorithm, "mean")].astype(str)
-            + " ("
-            + aggregate_df[(algorithm, "std")].astype(str)
-            + ")"
-        )
-
-    # Write to disk
-    ex_ut.df_to_tex(
-        df=final_df,
-        name="table_sequential_sales.tex",
-        label="tab:table_sequential_sales",
-        caption="",
-        path=path,
-    )
-
-    # 2. Collapse opponents
-    # TODO
-
-    pass
-
-
 if __name__ == "__main__":
 
     run_sequential_sales_experiment()
-    evaluate_sequential_sales_experiment()
     run_signaling_contest_experiment()
