@@ -1,11 +1,18 @@
 """Evaluating the experiments run in `run_experiments.py`."""
-import experiments.evaluation_utils as ex_ut
+import os
+import sys
+
 import numpy as np
 import pandas as pd
 
+sys.path.append(os.path.realpath("."))
+
+import src.utils.logging_read_utils as ex_ut
+from scripts.run_experiments import LOG_PATH
+
 
 def evaluate_sequential_sales_experiment():
-    path = "/home/kohring/sequential-auction-on-gpu/logs/final/sequential_auction"
+    path = LOG_PATH + "sequential_auction"
     df = ex_ut.get_log_df(path)
 
     metrics = [
@@ -13,6 +20,7 @@ def evaluate_sequential_sales_experiment():
         "eval/action_equ_L2_distance_stage_1",
         "eval/action_equ_L2_distance_stage_2",
         "eval/action_equ_L2_distance_stage_3",
+        # TODO: add utility loss from verifier
     ]
 
     # 1. Scalability in terms of rounds to play
@@ -70,11 +78,12 @@ def evaluate_sequential_sales_experiment():
 
 
 def evaluate_signaling_contest_experiment():
+    path = LOG_PATH + "signaling_contest"
     # TODO
     pass
 
 
 if __name__ == "__main__":
 
-    run_signaling_contest_experiment()
+    evaluate_sequential_sales_experiment()
     evaluate_signaling_contest_experiment()

@@ -1,3 +1,4 @@
+"""Run experiments as reported in the paper."""
 import os
 import sys
 from itertools import product
@@ -12,12 +13,14 @@ import src.utils.env_utils as env_ut
 import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
+LOG_PATH = "./logs/test/"
+
 
 def run_sequential_sales_experiment():
 
     runs = 2
-    iteration_num = 10
-    n_steps_per_iteration = 10
+    iteration_num = 2
+    n_steps_per_iteration = 1
     policy_sharing = False
 
     collapse_symmetric_opponents_options = [True, False]
@@ -40,25 +43,20 @@ def run_sequential_sales_experiment():
             print("=============\nStart new run\n-------------")
 
             # Configure and set hyperparameters
-            overrides = [
+            config = io_ut.get_config(
+                f"device={6}",
                 f"seed={i}",
                 f"policy_sharing={policy_sharing}",
                 f"algorithms=[{algorithm}]",
                 f"iteration_num={iteration_num}",
                 f"n_steps_per_iteration=[{n_steps_per_iteration}]",
+                f"verify_br={True}",
+                f"log_path={LOG_PATH}",
                 f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
                 f"rl_envs.mechanism_type={mechanism_type}",
                 f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
                 f"rl_envs.num_agents={num_rounds_to_play + 1}",
-            ]
-            config = io_ut.get_config(overrides)
-            config.experiment_log_path = (
-                config.experiment_log_path[:7]
-                + "test/"
-                + config.experiment_log_path[7:]
-                + f"{i}/"
             )
-            io_ut.store_config_and_set_seed(config)
 
             # Set up env and learning
             env = env_ut.get_env(config)
@@ -80,8 +78,8 @@ def run_sequential_sales_experiment():
 def run_signaling_contest_experiment():
 
     runs = 2
-    iteration_num = 10
-    n_steps_per_iteration = 10
+    iteration_num = 2
+    n_steps_per_iteration = 1
     policy_sharing = False
 
     algorithms = ["ppo", "reinforce"]
@@ -95,25 +93,17 @@ def run_signaling_contest_experiment():
             print("=============\nStart new run\n-------------")
 
             # Configure and set hyperparameters
-            overrides = [
+            config = io_ut.get_config(
                 f"seed={i}",
                 f"policy_sharing={policy_sharing}",
                 f"algorithms=[{algorithm}]",
                 f"iteration_num={iteration_num}",
                 f"n_steps_per_iteration=[{n_steps_per_iteration}]",
-            ]
-            env_overrides = [f"rl_envs.information_case={information_case}"]
-            config = io_ut.get_config(overrides)
-            config.rl_envs = hydra.compose(
-                "rl_envs/signaling_contest.yaml", env_overrides
-            ).rl_envs
-            config.experiment_log_path = (
-                config.experiment_log_path[:7]
-                + "test/"
-                + config.experiment_log_path[7:]
-                + f"{i}/"
+                f"verify_br={True}",
+                f"log_path={LOG_PATH}",
+                f"rl_envs=signaling_contest",
+                f"rl_envs.information_case={information_case}",
             )
-            io_ut.store_config_and_set_seed(config)
 
             # Set up env and learning
             env = env_ut.get_env(config)

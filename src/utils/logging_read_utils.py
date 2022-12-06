@@ -55,59 +55,76 @@ def get_log_df(path: str):
     NOTE: We don't match it to all configs, because these include many
     redundancies currently.
     """
+    if not os.path.isdir(path):
+        raise FileNotFoundError(f"Directory {path} does not exist.")
+
     summary_df = pd.DataFrame()
     for subdir, _, files in os.walk(path):
-        if any(f.endswith("run_config.yaml") for f in files):
 
-            for f in files:
-                if f.startswith("events.out.tfevents"):
-                    tb_file = os.path.join(subdir, f)
-                elif f == "run_config.yaml":
-                    config_file = os.path.join(subdir, f)
+        if not any(f.endswith("run_config.yaml") for f in files):
+            continue  # Directory {path} does not contain results in proper format.")
 
-            # 1. Read config
-            with open(config_file, "r") as f:
-                config = yaml.safe_load(f)
+        for f in files:
+            if f.startswith("events.out.tfevents"):
+                tb_file = os.path.join(subdir, f)
+            elif f == "run_config.yaml":
+                config_file = os.path.join(subdir, f)
 
-            # Hyperparameters
-            hyperparamters = {
-                "collapse_symmetric_opponents": config["rl_envs"][
-                    "collapse_symmetric_opponents"
-                ],
-                "mechanism_type": config["rl_envs"]["mechanism_type"],
-                "num_rounds_to_play": config["rl_envs"]["num_rounds_to_play"],
-                "algorithms": config["algorithms"],
-                "seed": config["seed"],
-                # "experiment_log_path": config["experiment_log_path"],
-            }
+        # 1. Read config
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
 
-            # 2. Read data
-            # General logs: Usually empty
-            # event_acc = EventAccumulator(tb_file)
-            # event_acc.Reload()
+        # Hyperparameters
+        # TODO: Perhaps use all?
+        hyperparamters = {
+            "collapse_symmetric_opponents": config["rl_envs"][
+                "collapse_symmetric_opponents"
+            ],
+            "mechanism_type": config["rl_envs"]["mechanism_type"],
+            "num_rounds_to_play": config["rl_envs"]["num_rounds_to_play"],
+            "algorithms": config["algorithms"],
+            "seed": config["seed"],
+            # "experiment_log_path": config["experiment_log_path"],
+        }
 
-            # Learner specific logs
-            agents = [
-                l for l in os.listdir(subdir) if os.path.isdir(os.path.join(subdir, l))
-            ]
-            for agent in agents:
-                agent_df = tb2df(os.path.join(subdir, agent))
+        # 2. Read data
+        # General logs: Usually empty
+        # event_acc = EventAccumulator(tb_file)
+        # event_acc.Reload()
 
-                # Format from long to wide
-                w = agent_df.unstack()
-                w = w.reset_index()
-                w = w.rename(
-                    columns={"level_0": "metric", "level_1": "time_step", 0: "value"}
-                )
+        # Learner specific logs
+        agents = [
+            l for l in os.listdir(subdir) if os.path.isdir(os.path.join(subdir, l))
+        ]
+        for agent in agents:
+            agent_df = tb2df(os.path.join(subdir, agent))
 
-                # Delete empty rows
-                w = w[w.value != -1]
+            # Format from long to wide
+            w = agent_df.unstack()
+            w = w.reset_index()
+            w = w.rename(
+                columns={"level_0": "metric", "level_1": "time_step", 0: "value"}
+            )
 
-                for hp_key, hp_value in hyperparamters.items():
-                    w[hp_key] = [hp_value] * w.shape[0]
+            # Delete empty rows
+            w = w[w.value != -1]
 
-            summary_df = pd.concat([summary_df, w], axis=0)
+            for hp_key, hp_value in hyperparamters.items():
+                w[hp_key] = [hp_value] * w.shape[0]
 
+        summary_df = pd.concat([summary_df, w], axis=0)
+
+    def _reduce_algorithm_list_to_single_algorithm(row):
+        if isinstance(row, list):
+            if len(row) != 1:
+                raise ValueError("Only supports single algorithm per setting.")
+            return row[0]
+        else:
+            return row
+
+    summary_df.algorithms = summary_df.algorithms.apply(
+        _reduce_algorithm_list_to_single_algorithm
+    )
     summary_df.set_index(list(hyperparamters.keys()), inplace=True)
 
     return summary_df

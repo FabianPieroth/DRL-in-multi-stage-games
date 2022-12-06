@@ -1,3 +1,6 @@
+"""Deprecated script to check performance of vectorization.
+"""
+# TODO @Fabian: Either update or delete.
 import os
 import sys
 import time
