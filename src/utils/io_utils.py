@@ -35,9 +35,14 @@ def read_hydra_config(overrides: List[str] = []):
     return cfg
 
 
-def get_config(overrides: List[str] = []) -> DictConfig:
+def get_config(*overrides: List[str]) -> DictConfig:
     config = read_hydra_config(overrides)
     enrich_config(config)
+
+    # store config and set seed
+    store_config(config)
+    set_global_seed(config["seed"])
+
     return config
 
 
@@ -46,11 +51,6 @@ def set_global_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-
-def store_config_and_set_seed(config: DictConfig):
-    store_config(config)
-    set_global_seed(config["seed"])
 
 
 def store_config(config: DictConfig):
