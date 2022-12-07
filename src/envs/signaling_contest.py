@@ -930,6 +930,18 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             learner.logger.record(key_prefix, metric_dict[agent_id])
 
     def measure_l2_distance_to_equ_over_grid(self, learners, precision: int) -> Dict:
+        """Instead of checking how far away we are from the equilibrium strategy in actual play,
+        we measure the distance over a specified grid. This is especially important for the second
+        round, where the opponent's bids are published. On distribution, these may only be covering
+        a very narrow part of the strategy space.  
+
+        Args:
+            learners (_type_): learner type strategies
+            precision (int): Number of Grid points
+
+        Returns:
+            Dict: agent_id: [first_round, second_round_won, second_round_lost]
+        """
         num_rounds = 2
         l2_distances = {i: [None] * (num_rounds + 1) for i in learners.keys()}
         second_round_precision = int(np.sqrt(precision))
