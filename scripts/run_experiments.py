@@ -19,9 +19,10 @@ LOG_PATH = "./logs/test/"
 def run_sequential_sales_experiment():
 
     device = 1
+    verifier_device = "null"
     runs = 2
-    iteration_num = 2
-    n_steps_per_iteration = 1
+    iteration_num = 2_000
+    n_steps_per_iteration = 128
     policy_sharing = True
 
     collapse_symmetric_opponents_options = [True, False]
@@ -52,8 +53,10 @@ def run_sequential_sales_experiment():
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"n_steps_per_iteration=[{n_steps_per_iteration}]",
-                    f"verify_br={True}",
                     f"log_path={LOG_PATH}",
+                    f"verify_br={True}",
+                    f"verifier.device={verifier_device}",
+                    # f"verifier.batch_size={4}",
                     f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
                     f"rl_envs.mechanism_type={mechanism_type}",
                     f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
@@ -81,9 +84,10 @@ def run_sequential_sales_experiment():
 def run_signaling_contest_experiment():
 
     device = 1
+    verifier_device = "null"
     runs = 2
-    iteration_num = 2
-    n_steps_per_iteration = 1
+    iteration_num = 2_000
+    n_steps_per_iteration = 128
     policy_sharing = True
 
     algorithms = ["ppo", "reinforce"]
@@ -105,8 +109,10 @@ def run_signaling_contest_experiment():
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"n_steps_per_iteration=[{n_steps_per_iteration}]",
-                    f"verify_br={True}",
                     f"log_path={LOG_PATH}",
+                    f"verify_br={True}",
+                    f"verifier.device={verifier_device}",
+                    # f"verifier.batch_size={4}",
                     f"rl_envs=signaling_contest",
                     f"rl_envs.information_case={information_case}",
                 ]
