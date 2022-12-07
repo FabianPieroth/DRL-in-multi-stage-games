@@ -30,6 +30,10 @@ def evaluate_sequential_sales_experiment():
     ]
     df = ex_ut.get_last_iter(df, hyperparamters, metrics)
 
+    # Policy sharing?
+    df = df[df.policy_sharing == True]
+    # NOTE: Possibly check all configs manually
+
     # Handle collapsing
     key = "rl_envs.collapse_symmetric_opponents"
     df = df[df.index.get_level_values(key) == False]
@@ -41,9 +45,6 @@ def evaluate_sequential_sales_experiment():
 
     # Write to disk
     ex_ut.save_df(pivot, environment, path)
-
-    # 2. Collapse opponents
-    # TODO
 
 
 def evaluate_signaling_contest_experiment():
@@ -58,6 +59,10 @@ def evaluate_signaling_contest_experiment():
         "eval/utility_loss",
     ]
     df = ex_ut.get_last_iter(df, hyperparamters, metrics)
+
+    # Policy sharing?
+    df = df[df.policy_sharing == True]
+    # NOTE: Possibly check all configs manually
 
     # Create pivot table
     pivot = ex_ut.get_pivot_table(df, hyperparamters)

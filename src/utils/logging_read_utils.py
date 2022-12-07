@@ -9,18 +9,21 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 
 
 def metric_python2latex(metric_python_name: str):
-
-    metric_latex_name = metric_python_name
+    """Transform code naming of metric into proper LaTeX code."""
 
     if metric_python_name.startswith("eval/action_equ_L2_distance_stage_"):
         stage = int(metric_python_name[metric_python_name.rfind("_") + 1 :]) + 1
-        metric_latex_name = "$L_2^{S" + str(stage) + "}$"
+        return "$L_2^{S" + str(stage) + "}$"
+
+    if metric_python_name == "eval/utility_loss":
+        return "$\ell$"
 
     algorithm_dict = {"ppo": "PPO", "reinforce": "REINFORCE"}
     if metric_python_name in algorithm_dict.keys():
-        metric_latex_name = algorithm_dict[metric_python_name]
+        return algorithm_dict[metric_python_name]
 
-    return metric_latex_name
+    # Fall back: No LaTeX formulation found
+    return metric_python_name
 
 
 def get_last_iter(
@@ -49,7 +52,6 @@ def get_last_iter(
 
 def get_pivot_table(df: pd.DataFrame, hyperparamters: List[str]):
     """Create pivot table"""
-    hyperparamters.append("metric")
     pivot = pd.pivot_table(
         df,
         values="value",
@@ -165,7 +167,7 @@ def get_log_df(path: str):
                 else:
                     w[hp_key] = [hp_value] * w.shape[0]
 
-        summary_df = pd.concat([summary_df, w], axis=0)
+            summary_df = pd.concat([summary_df, w], axis=0)
 
     def _reduce_algorithm_list_to_single_algorithm(row):
         if isinstance(row, list):

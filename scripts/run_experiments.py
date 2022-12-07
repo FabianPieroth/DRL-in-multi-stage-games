@@ -18,10 +18,11 @@ LOG_PATH = "./logs/test/"
 
 def run_sequential_sales_experiment():
 
+    device = 1
     runs = 2
     iteration_num = 2
     n_steps_per_iteration = 1
-    policy_sharing = False
+    policy_sharing = True
 
     collapse_symmetric_opponents_options = [True, False]
     num_rounds_to_play_options = [2, 4]
@@ -45,7 +46,7 @@ def run_sequential_sales_experiment():
             # Configure and set hyperparameters
             config = io_ut.get_config(
                 [
-                    f"device={1}",
+                    f"device={device}",
                     f"seed={i}",
                     f"policy_sharing={policy_sharing}",
                     f"algorithms=[{algorithm}]",
@@ -79,10 +80,11 @@ def run_sequential_sales_experiment():
 
 def run_signaling_contest_experiment():
 
+    device = 1
     runs = 2
     iteration_num = 2
     n_steps_per_iteration = 1
-    policy_sharing = False
+    policy_sharing = True
 
     algorithms = ["ppo", "reinforce"]
     information_cases = ["true_valuations", "winning_bids"]
@@ -97,7 +99,7 @@ def run_signaling_contest_experiment():
             # Configure and set hyperparameters
             config = io_ut.get_config(
                 [
-                    f"device={1}",
+                    f"device={device}",
                     f"seed={i}",
                     f"policy_sharing={policy_sharing}",
                     f"algorithms=[{algorithm}]",

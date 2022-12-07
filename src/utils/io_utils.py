@@ -35,7 +35,7 @@ def read_hydra_config(overrides: List[str] = []):
     return cfg
 
 
-def get_config(overrides: List[str]) -> DictConfig:
+def get_config(overrides: List[str] = []) -> DictConfig:
     config = read_hydra_config(overrides)
     enrich_config(config)
 
