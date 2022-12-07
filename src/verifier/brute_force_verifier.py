@@ -11,6 +11,7 @@ from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.information_set_tree import InformationSetTree
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
+_CPU_OOM_ERR_MSG_START = "[enforce fail at alloc_cpu.cpp:73]"
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM!"
 
 
@@ -29,6 +30,8 @@ class BFVerifier:
         num_simulations: int,
         obs_discretization: int,
         action_discretization: int,
+        batch_size: int,
+        device: str,
     ):
         self.env = env
         self.env_is_compatible_with_verifier = isinstance(env.model, VerifiableEnv)
@@ -37,7 +40,8 @@ class BFVerifier:
         self.action_discretization = action_discretization
         self.obs_discretization = obs_discretization
         self.action_dim = env.model.ACTION_DIM
-        self.device = self.env.device
+        self.batch_size = batch_size
+        self.device = device
         if self.env_is_compatible_with_verifier:
             self.num_rounds_to_play = self.env.model.num_rounds_to_play
 
@@ -71,7 +75,7 @@ class BFVerifier:
             self.device,
         )
         num_done_sims = 0
-        batch_size = min(self.num_simulations, 2 ** 15)
+        batch_size = min(self.num_simulations, self.batch_size)
         while num_done_sims <= self.num_simulations:
             try:
                 self._add_simulation_results_to_tree(
@@ -100,6 +104,8 @@ class BFVerifier:
         )
 
     def _catch_failed_simulation(self, batch_size: int, e):
+        if self.device == "cpu" and str(e).startswith(_CPU_OOM_ERR_MSG_START):
+            raise RuntimeError("Can't determine variable batch size to fit in CPU.")
         if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
             raise e
         if batch_size <= 1:
@@ -139,7 +145,7 @@ class BFVerifier:
         """
 
         # shape = (sim_size, *state_size)
-        states = self.env.model.sample_new_states(batch_size)
+        states = self.env.model.sample_new_states(batch_size).to(self.device)
 
         # A. Sample actual utility
         actual_utility = self.get_actual_utility(states.clone(), learners, agent_id)

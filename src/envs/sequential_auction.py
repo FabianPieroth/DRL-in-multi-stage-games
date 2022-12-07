@@ -212,13 +212,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         :return episode-done markers:
         :return updated_states:
         """
+        device = cur_states.device  # may differ from `self.device`
         player_positions_of_actions = set(actions.keys())
 
         if self.collapse_symmetric_opponents:
             # simulate opponent actions
             opponent_obs = self.get_observations(cur_states)[1]
             with torch.no_grad():
-                opponent_actions = self.learners[0].policy._predict(opponent_obs)
+                opponent_actions = self.learners[0].policy._predict(
+                    opponent_obs.to(self.learners[0].device)
+                )
             actions[1] = opponent_actions
 
         # append opponents' actions
@@ -252,9 +255,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             highest_opponent = new_states[:, 1, : self.valuation_size]
             m = torch.distributions.Beta(
                 torch.tensor(
-                    [max(1, self.num_actual_agents - 2 - stage)], device=self.device
+                    [max(1, self.num_actual_agents - 2 - stage)], device=device
                 ),
-                torch.tensor([1.0], device=self.device),
+                torch.tensor([1.0], device=device),
             )
             batch_size = cur_states.shape[0]
             new_states[:, 1, : self.valuation_size] = highest_opponent * m.sample(
@@ -273,9 +276,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
 
         # reached last stage?
         if stage >= self.num_rounds_to_play - 1:
-            dones = torch.ones((cur_states.shape[0]), device=cur_states.device).bool()
+            dones = torch.ones((cur_states.shape[0]), device=device).bool()
         else:
-            dones = torch.zeros((cur_states.shape[0]), device=cur_states.device).bool()
+            dones = torch.zeros((cur_states.shape[0]), device=device).bool()
 
         observations = {
             k: self.get_observations(new_states)[k] for k in player_positions_of_actions
@@ -429,6 +432,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         Returns:
             torch.LongTensor: shape=(batch_size, relevant_obs_size)
         """
+        device = agent_obs.device
         if stage == 0:
             relevant_obs_indices = (0,)
             num_discretization = obs_discretization
@@ -444,7 +448,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         relevant_new_stage_obs = agent_obs[:, relevant_obs_indices]
         low = self.observation_spaces[agent_id].low[relevant_obs_indices]
         high = self.observation_spaces[agent_id].high[relevant_obs_indices]
-        obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
+        obs_grid = torch.linspace(low, high, num_discretization, device=device)
         # TODO: Only works for one dimensional additional obs in every stage
         return torch.bucketize(relevant_new_stage_obs, obs_grid)
 

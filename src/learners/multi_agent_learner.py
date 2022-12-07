@@ -62,6 +62,10 @@ class MultiAgentCoordinator:
             obs_discretization=self.config.verifier.obs_discretization,
             action_discretization=self.config.verifier.action_discretization,
             env=self.env,
+            batch_size=self.config.verifier.batch_size,
+            device=self.config.device
+            if self.config.verifier.device is None
+            else self.config.verifier.device,
         )
         return verifier
 
