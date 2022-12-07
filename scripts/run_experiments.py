@@ -44,18 +44,20 @@ def run_sequential_sales_experiment():
 
             # Configure and set hyperparameters
             config = io_ut.get_config(
-                f"device={6}",
-                f"seed={i}",
-                f"policy_sharing={policy_sharing}",
-                f"algorithms=[{algorithm}]",
-                f"iteration_num={iteration_num}",
-                f"n_steps_per_iteration=[{n_steps_per_iteration}]",
-                f"verify_br={True}",
-                f"log_path={LOG_PATH}",
-                f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
-                f"rl_envs.mechanism_type={mechanism_type}",
-                f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
-                f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                [
+                    f"device={1}",
+                    f"seed={i}",
+                    f"policy_sharing={policy_sharing}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"n_steps_per_iteration=[{n_steps_per_iteration}]",
+                    f"verify_br={True}",
+                    f"log_path={LOG_PATH}",
+                    f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
+                    f"rl_envs.mechanism_type={mechanism_type}",
+                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
+                    f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                ]
             )
 
             # Set up env and learning
@@ -94,15 +96,18 @@ def run_signaling_contest_experiment():
 
             # Configure and set hyperparameters
             config = io_ut.get_config(
-                f"seed={i}",
-                f"policy_sharing={policy_sharing}",
-                f"algorithms=[{algorithm}]",
-                f"iteration_num={iteration_num}",
-                f"n_steps_per_iteration=[{n_steps_per_iteration}]",
-                f"verify_br={True}",
-                f"log_path={LOG_PATH}",
-                f"rl_envs=signaling_contest",
-                f"rl_envs.information_case={information_case}",
+                [
+                    f"device={1}",
+                    f"seed={i}",
+                    f"policy_sharing={policy_sharing}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"n_steps_per_iteration=[{n_steps_per_iteration}]",
+                    f"verify_br={True}",
+                    f"log_path={LOG_PATH}",
+                    f"rl_envs=signaling_contest",
+                    f"rl_envs.information_case={information_case}",
+                ]
             )
 
             # Set up env and learning
@@ -123,6 +128,5 @@ def run_signaling_contest_experiment():
 
 
 if __name__ == "__main__":
-
     run_sequential_sales_experiment()
     run_signaling_contest_experiment()

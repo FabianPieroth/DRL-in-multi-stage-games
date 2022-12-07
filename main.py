@@ -13,18 +13,20 @@ def main():
 
         # change some of the default configurations
         config = io_ut.get_config(
-            f"seed={i}",
-            # f"device='cuda:1'",
-            f"policy_sharing={True}",
-            f"algorithms=[ppo]",
-            f"experiment_log_path='/{i}/'",
-            # Sequential sales
-            f"rl_envs.num_rounds_to_play={2}",
-            f"rl_envs.num_agents={9}",
-            f"rl_envs.reduced_observation_space={True}",
-            f"rl_envs.collapse_symmetric_opponents={True}",
-            # Signaling contest
-            # f"rl_envs=signaling_contest"
+            [
+                f"seed={i}",
+                # f"device='cuda:1'",
+                f"policy_sharing={True}",
+                f"algorithms=[ppo]",
+                f"experiment_log_path='/{i}/'",
+                # Sequential sales
+                f"rl_envs.num_rounds_to_play={2}",
+                f"rl_envs.num_agents={9}",
+                f"rl_envs.reduced_observation_space={True}",
+                f"rl_envs.collapse_symmetric_opponents={True}",
+                # Signaling contest
+                # f"rl_envs=signaling_contest"
+            ]
         )
 
         # run learning

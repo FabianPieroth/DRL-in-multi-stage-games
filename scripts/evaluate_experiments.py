@@ -12,78 +12,60 @@ from scripts.run_experiments import LOG_PATH
 
 
 def evaluate_sequential_sales_experiment():
-    path = LOG_PATH + "sequential_auction"
+    environment = "sequential_auction"
+    path = LOG_PATH + environment
     df = ex_ut.get_log_df(path)
 
+    hyperparamters = [
+        "rl_envs.collapse_symmetric_opponents",
+        "rl_envs.mechanism_type",
+        "rl_envs.num_rounds_to_play",
+    ]
     metrics = [
         "eval/action_equ_L2_distance_stage_0",
         "eval/action_equ_L2_distance_stage_1",
         "eval/action_equ_L2_distance_stage_2",
         "eval/action_equ_L2_distance_stage_3",
-        # TODO: add utility loss from verifier
+        "eval/utility_loss",
     ]
+    df = ex_ut.get_last_iter(df, hyperparamters, metrics)
 
-    # 1. Scalability in terms of rounds to play
-    df_select = df[df.metric.isin(metrics)]
-    df_select = df_select[df_select.time_step == max(df_select.time_step)]
-    df_select.metric = df_select.metric.apply(ex_ut.metric_python2latex)
-    df_select = df_select[
-        df_select.index.get_level_values("collapse_symmetric_opponents") == False
-    ]
-    df_select = df_select.droplevel(level="collapse_symmetric_opponents")
+    # Handle collapsing
+    key = "rl_envs.collapse_symmetric_opponents"
+    df = df[df.index.get_level_values(key) == False]
+    df = df.droplevel(level=key)
+    hyperparamters.remove(key)
 
-    reduced_index = list(df_select.index.names)
-    reduced_index.remove("seed")
-    reduced_index.remove("algorithms")
-    reduced_index.append("metric")
-    df_select = df_select.reset_index()
-    df_select = df_select.set_index(reduced_index)
-    df_select.algorithms = df_select.algorithms.apply(ex_ut.metric_python2latex)
-
-    aggregate_df = pd.pivot_table(
-        df_select,
-        values="value",
-        index=reduced_index,
-        columns=["algorithms"],
-        aggfunc=[np.mean, np.std],
-    )
-
-    # Formatting
-    aggregate_df = aggregate_df.swaplevel(axis=1)
-    aggregate_df = aggregate_df[aggregate_df.columns[[0, 2, 1, 3]]]
-
-    aggregate_df = aggregate_df.round(decimals=4)
-    final_df = pd.DataFrame()
-    for algorithm in set(i[0] for i in aggregate_df.columns):
-        final_df[algorithm] = (
-            aggregate_df[(algorithm, "mean")].astype(str)
-            + " ("
-            + aggregate_df[(algorithm, "std")].astype(str)
-            + ")"
-        )
+    # Create pivot table
+    pivot = ex_ut.get_pivot_table(df, hyperparamters)
 
     # Write to disk
-    ex_ut.df_to_tex(
-        df=final_df,
-        name="table_sequential_sales.tex",
-        label="tab:table_sequential_sales",
-        caption="",
-        path=path,
-    )
+    ex_ut.save_df(pivot, environment, path)
 
     # 2. Collapse opponents
     # TODO
 
-    pass
-
 
 def evaluate_signaling_contest_experiment():
-    path = LOG_PATH + "signaling_contest"
-    # TODO
-    pass
+    environment = "signaling_contest"
+    path = LOG_PATH + environment
+    df = ex_ut.get_log_df(path)
+
+    hyperparamters = ["rl_envs.information_case"]
+    metrics = [
+        "eval/action_equ_L2_distance_round_1",
+        "eval/action_equ_L2_distance_round_2",
+        "eval/utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparamters, metrics)
+
+    # Create pivot table
+    pivot = ex_ut.get_pivot_table(df, hyperparamters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment, path)
 
 
 if __name__ == "__main__":
-
     evaluate_sequential_sales_experiment()
     evaluate_signaling_contest_experiment()
