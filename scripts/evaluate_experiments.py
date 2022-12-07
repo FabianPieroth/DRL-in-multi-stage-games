@@ -2,9 +2,6 @@
 import os
 import sys
 
-import numpy as np
-import pandas as pd
-
 sys.path.append(os.path.realpath("."))
 
 import src.utils.logging_read_utils as ex_ut
