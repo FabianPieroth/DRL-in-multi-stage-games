@@ -81,7 +81,11 @@ def get_ma_actions(
     with torch.no_grad() if no_grad else nullcontext():
         return {
             agent_id: learners[agent_id].predict(
-                observation=observations[agent_id],
+                observation=observations[agent_id].to(
+                    learners[agent_id].device
+                    if hasattr(learners[agent_id], "device")
+                    else None
+                ),
                 state=None,
                 episode_start=None,
                 deterministic=deterministic,
