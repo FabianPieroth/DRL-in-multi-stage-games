@@ -11,21 +11,7 @@ def main():
 
     for i in range(1):  # You can change adapted config inside the loop
 
-        # change some of the default configurations
-        overrides = [
-            f"seed={i}",
-            # f"device='cuda:1'",
-            f"policy_sharing={False}",
-            f"algorithms=[ppo]",
-            f"experiment_log_path='/{i}/'",
-            f"rl_envs.num_rounds_to_play={2}",
-            f"rl_envs.num_agents={3}",
-            # f"rl_envs.reduced_observation_space={True}",
-            # f"rl_envs.collapse_symmetric_opponents={True}",
-        ]
-        # config.rl_envs = hydra.compose("rl_envs/signaling_contest.yaml").rl_envs
-        config = io_ut.get_config(overrides=overrides)
-        io_ut.store_config_and_set_seed(config)
+        config = io_ut.get_config()
 
         # run learning
         env = env_ut.get_env(config)
