@@ -306,7 +306,7 @@ class MultiAgentCoordinator:
         for callback in callbacks:
             callback.on_training_end()
 
-        io_ut.wrap_up_experiment_logging(self.config)
+        io_ut.wrap_up_learning_logging(self.config)
         return self
 
     def _iteration_finished(self, n_steps_per_iteration: int):
