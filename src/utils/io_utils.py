@@ -29,14 +29,33 @@ def check_path_and_create(path: str):
             print(path + " already exists")
 
 
-def read_hydra_config(overrides: List[str] = []):
-    hydra.initialize(config_path="../../configs", job_name="run")
+def read_hydra_config(config_path: str, overrides: List[str] = []):
+    hydra.initialize(config_path=config_path, job_name="run")
     cfg = hydra.compose(config_name="config", overrides=overrides)
     return cfg
 
 
-def get_config(overrides: List[str] = []) -> DictConfig:
-    config = read_hydra_config(overrides)
+def get_config(
+    config_path: str = "../../configs", overrides: List[str] = []
+) -> DictConfig:
+    """Fetch project wide config from hierarchical config folder structure.
+
+    Args:
+        config_path (str, optional): Path to configs folder. Defaults to "../../configs".
+        overrides (List[str], optional): List of defaults to overwrite when fetching config.
+            Defaults to [].
+            Example:
+                overrides = [
+                f"seed={i}",
+                f"device='cuda:1'",
+                f"experiment_log_path='/{i}/'",
+                f"rl_envs=signaling_contest"
+                f"rl_envs.num_agents={9}",
+            ]
+    Returns:
+        DictConfig:
+    """
+    config = read_hydra_config(config_path, overrides)
     enrich_config(config)
 
     # store config and set seed
