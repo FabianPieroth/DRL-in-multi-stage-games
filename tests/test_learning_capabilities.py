@@ -61,7 +61,7 @@ def test_learning_in_sequential_auction(
         f"rl_envs.reduced_observation_space={True}",
         f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
     ]
-    config = io_ut.get_config(overrides)
+    config = io_ut.get_config(overrides=overrides)
     config.rl_envs = hydra.compose(
         "rl_envs/sequential_auction.yaml", env_overrides
     ).rl_envs

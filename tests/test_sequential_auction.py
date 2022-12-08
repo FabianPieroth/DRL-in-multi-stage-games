@@ -18,7 +18,7 @@ def test_sequential_auction_in_bne():
     batch_size: int = 2 ** 10  # The higher the lower the error tolerance should be
 
     overrides = [f"device={DEVICE}"]
-    config = io_ut.get_config(overrides)
+    config = io_ut.get_config(overrides=overrides)
     config.rl_envs = hydra.compose("rl_envs/sequential_auction.yaml").rl_envs
 
     env = SequentialAuction(config.rl_envs, device=DEVICE)
