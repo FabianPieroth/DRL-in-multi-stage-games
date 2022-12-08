@@ -63,16 +63,10 @@ def run_sequential_sales_experiment():
             # Set up env and learning
             env = env_ut.get_env(config)
             ma_learner = MultiAgentCoordinator(config, env)
-            ma_learner.learn(
-                total_timesteps=config.total_training_steps,
-                n_steps_per_iteration=config.n_steps_per_iteration,
-                log_interval=1,
-                eval_freq=config.eval_freq,
-                n_eval_episodes=5,
-            )
+            ma_learner.learn()
 
             # Wrap up
-            io_ut.wrap_up_experiment_logging(config)
+            io_ut.wrap_up_learning_logging(config)
 
     print("Done!")
 
@@ -117,16 +111,10 @@ def run_signaling_contest_experiment():
             # Set up env and learning
             env = env_ut.get_env(config)
             ma_learner = MultiAgentCoordinator(config, env)
-            ma_learner.learn(
-                total_timesteps=config.total_training_steps,
-                n_steps_per_iteration=config.n_steps_per_iteration,
-                log_interval=1,
-                eval_freq=config.eval_freq,
-                n_eval_episodes=5,
-            )
+            ma_learner.learn()
 
             # Wrap up
-            io_ut.wrap_up_experiment_logging(config)
+            io_ut.wrap_up_learning_logging(config)
 
     print("Done!")
 
