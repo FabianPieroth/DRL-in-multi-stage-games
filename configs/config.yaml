@@ -9,7 +9,7 @@ experiment_log_path: ''
 experiment_name: ''
 delete_logs_after_training: false
 
-device: 1  # Which device to use, e.g., "cpu", "cuda:X"
+device: 2  # Which device to use, e.g., "cpu", "cuda:X"
 seed: 0  # Random seed
 
 # Set number of outer and inner iterations 
@@ -19,7 +19,7 @@ n_steps_per_iteration: null  # TODO @Fabian: Why is this also null?
 total_training_steps: null
 # total_training_steps = n_steps_per_iteration * num_envs * iteration_num
 
-eval_freq: 500  # How often the evaluation should be run in between learning
+eval_freq: 10  # How often the evaluation should be run in between learning
 verify_br: false  # Wether or not to use the best response verifier
 
 # List of algorithms that maps agents to algorithms. If list of length one is
@@ -29,7 +29,7 @@ algorithms: ["ppo"]
 # Let agents use the same policy in "symmetric" games. We stick to having a
 # list of as many learners as agents just that all indices point to the same
 # learner.
-policy_sharing: false
+policy_sharing: true
 
 # Load default sub-configurations for environment, algorithm, etc.
 defaults:
