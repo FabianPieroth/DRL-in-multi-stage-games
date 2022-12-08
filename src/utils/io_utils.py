@@ -135,7 +135,7 @@ def get_env_log_path_extension(config: DictConfig) -> str:
         return ""
 
 
-def wrap_up_experiment_logging(config: DictConfig):
+def wrap_up_learning_logging(config: DictConfig):
 
     if config.delete_logs_after_training:
         delete_folder(config.experiment_log_path)
@@ -150,7 +150,7 @@ def delete_folder(path_to_folder: str):
 
 def clean_logs_after_test(config: DictConfig):
     config.delete_logs_after_training = True
-    wrap_up_experiment_logging(config)
+    wrap_up_learning_logging(config)
 
 
 def progress_bar(count, total, status=""):
