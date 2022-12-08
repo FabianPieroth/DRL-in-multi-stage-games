@@ -30,6 +30,8 @@ def get_env(config: DictConfig) -> MATorchVecEnv:
     return MATorchVecEnv(env, num_envs=config.num_envs, device=config.device)
 
 
-def get_ma_coordinator(config: DictConfig):
+def start_ma_learning(config: DictConfig) -> MultiAgentCoordinator:
     env = get_env(config)
-    return MultiAgentCoordinator(config, env)
+    ma_learner = MultiAgentCoordinator(config, env)
+    ma_learner.learn()
+    return ma_learner

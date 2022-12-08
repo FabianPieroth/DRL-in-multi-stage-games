@@ -37,7 +37,7 @@ def test_verifier_in_bne(environment, add_info):
         config.rl_envs.information_case = add_info
     config.device = DEVICE
 
-    ma_learner = coord_ut.get_ma_coordinator(config)
+    ma_learner = coord_ut.start_ma_learning(config)
 
     utility_losses = ma_learner.verify_in_BNE()
 

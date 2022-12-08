@@ -8,8 +8,7 @@ def main():
     for i in range(1):  # You can change adapted config with overrides inside the loop
         config = io_ut.get_config()
         # run learning
-        ma_learner = coord_ut.get_ma_coordinator(config)
-        ma_learner.learn()
+        coord_ut.start_ma_learning(config)
 
 
 if __name__ == "__main__":

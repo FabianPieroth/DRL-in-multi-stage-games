@@ -12,8 +12,7 @@ def run_limited_learning(config):
     """Runs multi agent learning for `config`."""
     config = copy.deepcopy(config)
 
-    ma_learner = coord_ut.get_ma_coordinator(config)
-    ma_learner.learn()
+    ma_learner = coord_ut.start_ma_learning(config)
     hydra.core.global_hydra.GlobalHydra().clear()
     return ma_learner
 
