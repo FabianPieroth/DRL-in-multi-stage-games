@@ -5,7 +5,7 @@ from itertools import product
 
 sys.path.append(os.path.realpath("."))
 
-import src.utils.env_utils as env_ut
+import src.utils.coordinator_utils as coord_ut
 import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
@@ -61,8 +61,7 @@ def run_sequential_sales_experiment():
             )
 
             # Set up env and learning
-            env = env_ut.get_env(config)
-            ma_learner = MultiAgentCoordinator(config, env)
+            ma_learner = coord_ut.get_ma_coordinator(config)
             ma_learner.learn()
 
             # Wrap up
@@ -109,8 +108,7 @@ def run_signaling_contest_experiment():
             )
 
             # Set up env and learning
-            env = env_ut.get_env(config)
-            ma_learner = MultiAgentCoordinator(config, env)
+            ma_learner = coord_ut.get_ma_coordinator(config)
             ma_learner.learn()
 
             # Wrap up

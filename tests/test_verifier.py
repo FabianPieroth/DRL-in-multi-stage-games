@@ -5,9 +5,8 @@ import hydra
 import pytest
 import torch
 
-import src.utils.env_utils as env_ut
+import src.utils.coordinator_utils as coord_ut
 import src.utils.io_utils as io_ut
-from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 EPS = 0.01
@@ -38,8 +37,7 @@ def test_verifier_in_bne(environment, add_info):
         config.rl_envs.information_case = add_info
     config.device = DEVICE
 
-    env = env_ut.get_env(config)
-    ma_learner = MultiAgentCoordinator(config, env)
+    ma_learner = coord_ut.get_ma_coordinator(config)
 
     utility_losses = ma_learner.verify_in_BNE()
 
