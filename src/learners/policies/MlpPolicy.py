@@ -27,6 +27,13 @@ from torch import nn
 from src.utils.distributions import DiagGaussianDistributionWithVariableStd
 
 
+class Abs(nn.Module):
+    """Absolute activation function."""
+
+    def forward(self, x):
+        return x.abs()
+
+
 class CustomActorCriticPolicy(ActorCriticPolicy):
     def __init__(
         self,
@@ -34,7 +41,8 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         action_space: gym.spaces.Space,
         lr_schedule: Schedule,
         net_arch: Optional[List[Union[int, Dict[str, List[int]]]]] = None,
-        activation_fn: Type[nn.Module] = nn.Tanh,
+        activation_fn: Type[nn.Module] = nn.SELU,
+        action_activation_fn: Type[nn.Module] = None,
         ortho_init: bool = True,
         use_sde: bool = False,
         log_std_init: float = 0.0,
@@ -49,6 +57,7 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         action_dependent_std: bool = True,
     ):
+        # TODO: net architecture and activations should be logged!
         self.action_dependent_std = action_dependent_std
 
         if optimizer_kwargs is None:
@@ -76,6 +85,7 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
 
         self.net_arch = net_arch
         self.activation_fn = activation_fn
+        self.action_activation_fn = action_activation_fn
         self.ortho_init = ortho_init
 
         self.features_extractor = features_extractor_class(
@@ -179,6 +189,10 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         self.optimizer = self.optimizer_class(
             self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs
         )
+
+        # Prevent negative bids
+        if self.action_activation_fn is not None:
+            self.mlp_extractor.policy_net.append(self.action_activation_fn)
 
     def _get_action_dist_from_latent(self, latent_pi: th.Tensor) -> Distribution:
         """

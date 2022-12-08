@@ -29,7 +29,7 @@ algorithms: ["ppo"]
 # Let agents use the same policy in "symmetric" games. We stick to having a
 # list of as many learners as agents just that all indices point to the same
 # learner.
-policy_sharing: true
+policy_sharing: false
 
 # Load default sub-configurations for environment, algorithm, etc.
 defaults:
