@@ -202,5 +202,10 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
             raise ValueError("Invalid action distribution")
 
     def get_stddev(self, obs):
-        stddev = self.get_distribution(obs).distribution.stddev
-        return stddev
+        """Get average standard deviation of mixed strategy."""
+        if not self.action_dependent_std:
+            return self.get_distribution(obs).distribution.stddev
+        else:
+            features = self.extract_features(obs)
+            latent_pi = self.mlp_extractor.forward_actor(features)
+            return self.log_std(latent_pi).exp()
