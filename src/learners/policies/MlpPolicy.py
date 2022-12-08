@@ -12,6 +12,7 @@ from stable_baselines3.common.distributions import (
     Distribution,
     MultiCategoricalDistribution,
     StateDependentNoiseDistribution,
+    make_proba_distribution,
 )
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.preprocessing import get_action_dim
@@ -188,7 +189,7 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         :return: Action distribution
         """
         if not self.action_dependent_std:
-            return super(CustomActorCriticPolicy)._get_action_dist_from_latent(
+            return super(CustomActorCriticPolicy, self)._get_action_dist_from_latent(
                 latent_pi
             )
 
