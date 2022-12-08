@@ -41,7 +41,7 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         action_space: gym.spaces.Space,
         lr_schedule: Schedule,
         net_arch: Optional[List[Union[int, Dict[str, List[int]]]]] = None,
-        activation_fn: Type[nn.Module] = nn.SELU,
+        activation_fn: Type[nn.Module] = nn.Tanh,
         action_activation_fn: Type[nn.Module] = None,
         ortho_init: bool = True,
         use_sde: bool = False,
@@ -57,7 +57,7 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         action_dependent_std: bool = True,
     ):
-        # TODO: net architecture and activations should be logged!
+        # NOTE: Any parameters changes in this file will not be logged!
         self.action_dependent_std = action_dependent_std
 
         if optimizer_kwargs is None:

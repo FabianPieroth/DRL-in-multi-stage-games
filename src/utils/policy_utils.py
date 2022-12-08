@@ -1,5 +1,7 @@
 from typing import Dict
 
+import torch.nn as nn
+from omegaconf import OmegaConf
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from src.envs.rock_paper_scissors import RockPaperScissors
@@ -18,11 +20,11 @@ from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPo
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
     set_space_translators_in_env(config, env)
     if config.policy_sharing:
-        shared_policy = get_policy_for_agent(0, config, env)
+        shared_policy = get_learner_and_policy(0, config, env)
         return {agent_id: shared_policy for agent_id in range(env.model.num_agents)}
     else:
         return {
-            agent_id: get_policy_for_agent(agent_id, config, env)
+            agent_id: get_learner_and_policy(agent_id, config, env)
             for agent_id in range(env.model.num_agents)
         }
 
@@ -36,27 +38,48 @@ def set_space_translators_in_env(config: Dict, env: MATorchVecEnv):
         )
 
 
-def get_policy_for_agent(
+def get_policy(config_policy):
+    return dict(
+        net_arch=[OmegaConf.to_container(config_policy.net_arch)],
+        activation_fn=eval(str(config_policy.activation_fn)),
+        action_activation_fn=eval(str(config_policy.action_activation_fn)),
+    )
+
+
+def get_learner_and_policy(
     agent_id: int, config: Dict, env: MATorchVecEnv
 ) -> BaseAlgorithm:
     algo_name = get_algo_name(agent_id, config)
     env.set_env_for_current_agent(agent_id)
     if algo_name == "ppo":
-        ppo_config = config["algorithm_configs"]["ppo"]
-        n_rollout_steps = ppo_config["n_rollout_steps"]
+        algorithm_config = config["algorithm_configs"]["ppo"]
+        n_rollout_steps = algorithm_config["n_rollout_steps"]
         if config["policy_sharing"]:
             n_rollout_steps *= env.model.num_agents
         return VecPPO(
-            policy=ppo_config["policy"],
+            policy=algorithm_config["policy"],
             env=env,
-            device=config["device"],
+            learning_rate=algorithm_config["learning_rate"],
             n_steps=n_rollout_steps,
-            learning_rate=ppo_config["learning_rate"],
-            gamma=ppo_config["gamma"],
-            action_dependent_std=ppo_config["action_dependent_std"],
-            batch_size=ppo_config["n_rollout_steps"] * config["num_envs"],
+            batch_size=algorithm_config["n_rollout_steps"] * config["num_envs"],
+            action_dependent_std=config.policy["action_dependent_std"],
+            gamma=algorithm_config["gamma"],
+            gae_lambda=0.95,
+            clip_range=0.2,
+            clip_range_vf=None,
+            normalize_advantage=True,
+            ent_coef=0.0,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            use_sde=False,
+            sde_sample_freq=-1,
+            target_kl=None,
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            policy_kwargs=get_policy(config.policy),
             verbose=0,
+            seed=config.seed,
+            device=config["device"],
+            _init_setup_model=True,
         )
     elif algo_name == "rps_single_action" and isinstance(env.model, RockPaperScissors):
         return RPSDummyLearner(
@@ -68,21 +91,34 @@ def get_policy_for_agent(
             verbose=0,
         )
     elif algo_name == "reinforce":
-        reinforce_config = config["algorithm_configs"]["reinforce"]
-        n_rollout_steps = reinforce_config["n_rollout_steps"]
+        algorithm_config = config["algorithm_configs"]["reinforce"]
+        n_rollout_steps = algorithm_config["n_rollout_steps"]
         if config["policy_sharing"]:
             n_rollout_steps *= env.model.num_agents
         return Reinforce(
-            policy=reinforce_config["policy"],
+            policy=algorithm_config["policy"],
             env=env,
-            device=config["device"],
+            learning_rate=algorithm_config["learning_rate"],
             n_steps=n_rollout_steps,
-            learning_rate=reinforce_config["learning_rate"],
-            gamma=reinforce_config["gamma"],
-            action_dependent_std=reinforce_config["action_dependent_std"],
-            batch_size=reinforce_config["n_rollout_steps"] * config["num_envs"],
+            batch_size=algorithm_config["n_rollout_steps"] * config["num_envs"],
+            action_dependent_std=config.policy["action_dependent_std"],
+            gamma=algorithm_config["gamma"],
+            gae_lambda=0.95,
+            clip_range=0.2,
+            clip_range_vf=None,
+            normalize_advantage=True,
+            ent_coef=0.0,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            use_sde=False,
+            sde_sample_freq=-1,
+            target_kl=None,
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            policy_kwargs=get_policy(config.policy),
             verbose=0,
+            seed=config.seed,
+            device=config["device"],
+            _init_setup_model=True,
         )
     elif algo_name == "soccer_chase_ball" and isinstance(env.model, SimpleSoccer):
         return ChaseBallPolicy(

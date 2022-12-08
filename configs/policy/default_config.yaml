@@ -1,0 +1,6 @@
+net_arch: 
+  pi: [10, 10]
+  vf: [10, 10]
+activation_fn: nn.SELU
+action_activation_fn: null
+action_dependent_std: true
