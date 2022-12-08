@@ -42,7 +42,7 @@ def run_sequential_sales_experiment():
 
             # Configure and set hyperparameters
             config = io_ut.get_config(
-                [
+                overrides=[
                     f"device={device}",
                     f"seed={i}",
                     f"policy_sharing={policy_sharing}",
@@ -87,7 +87,7 @@ def run_signaling_contest_experiment():
 
             # Configure and set hyperparameters
             config = io_ut.get_config(
-                [
+                overrides=[
                     f"device={device}",
                     f"seed={i}",
                     f"policy_sharing={policy_sharing}",

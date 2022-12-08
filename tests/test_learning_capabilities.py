@@ -124,7 +124,7 @@ def test_learning_in_signaling_contest(
         f"eval_freq={iteration_num + 2}",
     ]
     env_overrides = [f"rl_envs.information_case={information_case}"]
-    config = io_ut.get_config(overrides)
+    config = io_ut.get_config(overrides=overrides)
     config.rl_envs = hydra.compose(
         "rl_envs/signaling_contest.yaml", env_overrides
     ).rl_envs
