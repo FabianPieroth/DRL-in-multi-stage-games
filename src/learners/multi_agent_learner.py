@@ -1,17 +1,16 @@
 """Multi agent learning for SB3"""
 import time
-from typing import Callable, Dict, List
+from typing import Dict
 
 import matplotlib.pyplot as plt
 import torch
 from stable_baselines3.common.policies import register_policy
-from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
+import src.utils.io_utils as io_ut
 import src.utils.logging_write_utils as log_ut
 import src.utils.policy_utils as pl_ut
-from src.envs.equilibria import EquilibriumStrategy
 from src.learners.policies.MlpPolicy import CustomActorCriticPolicy
 from src.learners.utils import tensor_norm
 from src.verifier import BFVerifier
@@ -307,6 +306,7 @@ class MultiAgentCoordinator:
         for callback in callbacks:
             callback.on_training_end()
 
+        io_ut.wrap_up_experiment_logging(self.config)
         return self
 
     def _iteration_finished(self, n_steps_per_iteration: int):

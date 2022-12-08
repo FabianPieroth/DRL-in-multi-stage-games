@@ -14,8 +14,6 @@ def main():
         ma_learner = MultiAgentCoordinator(config, env)
         ma_learner.learn()
 
-        io_ut.wrap_up_experiment_logging(config)
-
 
 if __name__ == "__main__":
     main()
