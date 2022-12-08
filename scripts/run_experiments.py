@@ -61,10 +61,7 @@ def run_sequential_sales_experiment():
             )
 
             # Set up env and learning
-            ma_learner = coord_ut.start_ma_learning(config)
-
-            # Wrap up
-            io_ut.wrap_up_learning_logging(config)
+            coord_ut.start_ma_learning(config)
 
     print("Done!")
 
@@ -108,9 +105,6 @@ def run_signaling_contest_experiment():
 
             # Set up env and learning
             coord_ut.start_ma_learning(config)
-
-            # Wrap up
-            io_ut.wrap_up_learning_logging(config)
 
     print("Done!")
 

@@ -19,6 +19,8 @@ n_steps_per_iteration: null  # TODO @Fabian: Why is this also null?
 total_training_steps: null
 # total_training_steps = n_steps_per_iteration * num_envs * iteration_num
 
+train_log_freq: 1  # How often should training metrics be logged
+n_eval_episodes: 5  # How many full episodes should be run for train-eval
 eval_freq: 500  # How often the evaluation should be run in between learning
 verify_br: false  # Wether or not to use the best response verifier
 
