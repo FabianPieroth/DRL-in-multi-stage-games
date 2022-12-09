@@ -38,6 +38,7 @@ def evaluate_sequential_sales_experiment():
     hyperparamters.remove(key)
 
     # Create pivot table
+    assert df.size > 0, "No experiments where run for these parameters."
     pivot = ex_ut.get_pivot_table(df, hyperparamters)
 
     # Write to disk
@@ -62,6 +63,7 @@ def evaluate_signaling_contest_experiment():
     # NOTE: Possibly check all configs manually
 
     # Create pivot table
+    assert df.size > 0, "No experiments where run for these parameters."
     pivot = ex_ut.get_pivot_table(df, hyperparamters)
 
     # Write to disk
