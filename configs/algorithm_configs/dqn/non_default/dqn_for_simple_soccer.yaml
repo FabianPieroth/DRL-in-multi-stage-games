@@ -1,0 +1,10 @@
+# @package _global_
+
+algorithm_configs:
+  dqn:
+    n_rollout_steps: 256
+    batch_size: 8096
+    buffer_size: 50_000_000
+    learning_starts: 50_000_000
+    target_update_interval: 50_000_000
+    action_space_translator: "multidiscrete_to_discrete"
