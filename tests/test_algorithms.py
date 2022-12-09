@@ -8,13 +8,6 @@ import src.utils.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
-ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_rps",
-    "reinforce": "reinforce_for_rps",
-    "dqn": "dqn_for_rps",
-    "rps_single_action": "rps_rock",
-}
-
 ids, testdata = zip(
     *[
         ["all_ppo", ["ppo", "ppo", "ppo"]],
@@ -40,11 +33,9 @@ def test_algos_in_rockpaperscissors(algorithms):
         f"n_steps_per_iteration={1}",
         f"num_envs={32}",
         f"iteration_num={1}",
+        f"rl_envs=rockpaperscissors",
     ]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose("rl_envs/rockpaperscissors.yaml").rl_envs
-    tst_ut.set_specific_algo_configs(config, algorithms, ALGO_INSTANCE_DICT)
-    io_ut.enrich_config(config)
 
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)

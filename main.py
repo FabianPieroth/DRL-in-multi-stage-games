@@ -1,6 +1,5 @@
 import src.utils.coordinator_utils as coord_ut
 import src.utils.io_utils as io_ut
-from src.learners.multi_agent_learner import MultiAgentCoordinator
 
 
 def main():

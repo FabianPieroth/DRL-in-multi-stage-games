@@ -10,12 +10,6 @@ import src.utils.torch_utils as th_ut
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
 
-SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_sequ_auction",
-    "reinforce": "reinforce_for_sequ_auction",
-}
-
-
 ids, testdata = zip(
     *[
         ["first-price-ppo", ("first", "ppo", False, False, 300, 0.10)],
@@ -53,8 +47,7 @@ def test_learning_in_sequential_auction(
         f"algorithms=[{learner}]",
         f"algorithm_configs.{learner}.n_rollout_steps={4}",
         f"eval_freq={iteration_num + 2}",
-    ]
-    env_overrides = [
+        f"rl_envs=sequential_auction",
         f"rl_envs.mechanism_type={mechanism_type}",
         f"rl_envs.num_agents={num_agents}",
         f"rl_envs.num_rounds_to_play={num_agents - 1}",
@@ -62,14 +55,6 @@ def test_learning_in_sequential_auction(
         f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
     ]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose(
-        "rl_envs/sequential_auction.yaml", env_overrides
-    ).rl_envs
-
-    tst_ut.set_specific_algo_configs(
-        config, [learner] * 3, SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
-    )
-    io_ut.enrich_config(config)
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
@@ -97,12 +82,6 @@ ids_sc, testdata_sc = zip(
 )
 
 
-SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_signaling_contest",
-    "reinforce": "reinforce_for_signaling_contest",
-}
-
-
 @pytest.mark.skip(reason="instable: unclear which hyperparameters are required")
 @pytest.mark.parametrize(
     "information_case, policy_sharing, iteration_num, error_bound",
@@ -122,17 +101,10 @@ def test_learning_in_signaling_contest(
         f"policy_sharing={policy_sharing}",
         f"algorithms=[ppo]",
         f"eval_freq={iteration_num + 2}",
+        f"rl_envs=signaling_contest",
+        f"rl_envs.information_case={information_case}",
     ]
-    env_overrides = [f"rl_envs.information_case={information_case}"]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose(
-        "rl_envs/signaling_contest.yaml", env_overrides
-    ).rl_envs
-
-    tst_ut.set_specific_algo_configs(
-        config, ["ppo"], SIGNALING_CONTEST_ALGO_INSTANCE_DICT
-    )
-    io_ut.enrich_config(config)
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
@@ -155,14 +127,6 @@ ids_rps, testdata_rps = zip(
 )
 
 
-RPS_ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_rps",
-    "reinforce": "reinforce_for_rps",
-    "dqn": "dqn_for_rps",
-    "rps_single_action": "rps_rock",
-}
-
-
 @pytest.mark.parametrize(
     "algo_name, iteration_num, error_bound", testdata_rps, ids=ids_rps
 )
@@ -179,15 +143,10 @@ def test_learning_in_rps(algo_name, iteration_num, error_bound):
         f"algorithms={algorithms}",
         f"num_envs={1024}",
         f"eval_freq={iteration_num + 2}",
+        f"rl_envs=rockpaperscissors",
+        f"rl_envs.num_agents={3}",
     ]
-    env_overrides = [f"rl_envs.num_agents={3}"]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose(
-        "rl_envs/rockpaperscissors.yaml", env_overrides
-    ).rl_envs
-
-    tst_ut.set_specific_algo_configs(config, algorithms, RPS_ALGO_INSTANCE_DICT)
-    io_ut.enrich_config(config)
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
