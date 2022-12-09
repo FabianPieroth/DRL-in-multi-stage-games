@@ -128,21 +128,29 @@ class RockPaperScissors(BaseEnvForVec):
         paper_wins = self.first_and_second_not_third(
             rock_played, paper_played, scissors_played
         )
-        rewards[torch.logical_and(paper_wins.unsqueeze(1), actions == PAPER)] = 1.0
+        rewards[
+            torch.logical_and(paper_wins.unsqueeze(1), actions == PAPER).view_as(
+                rewards
+            )
+        ] = 1.0
 
         # Case 2: Paper vs Scissors
         scissors_wins = self.first_and_second_not_third(
             paper_played, scissors_played, rock_played
         )
         rewards[
-            torch.logical_and(scissors_wins.unsqueeze(1), actions == SCISSORS)
+            torch.logical_and(scissors_wins.unsqueeze(1), actions == SCISSORS).view_as(
+                rewards
+            )
         ] = 1.0
 
         # Case 3: Scissors vs Rock
         rock_wins = self.first_and_second_not_third(
             scissors_played, rock_played, paper_played
         )
-        rewards[torch.logical_and(rock_wins.unsqueeze(1), actions == ROCK)] = 1.0
+        rewards[
+            torch.logical_and(rock_wins.unsqueeze(1), actions == ROCK).view_as(rewards)
+        ] = 1.0
 
         return {agent_id: rewards[:, agent_id] for agent_id in range(self.num_agents)}
 

@@ -83,6 +83,7 @@ class Reinforce(SABaseAlgorithm):
             self.lr_schedule,
             use_sde=self.use_sde,
             log_std_init=self.log_std_init,
+            action_dependent_std=self.action_dependent_std,
             **self.policy_kwargs,  # pytype:disable=not-instantiable
         )
         self.policy = self.policy.to(self.device)

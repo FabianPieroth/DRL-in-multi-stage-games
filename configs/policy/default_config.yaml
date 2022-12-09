@@ -1,6 +1,6 @@
-net_arch: 
+net_arch:  # No. of layers and neurons
   pi: [10, 10]
   vf: [10, 10]
-activation_fn: nn.SELU
-action_activation_fn: null
-action_dependent_std: true
+activation_fn: nn.SELU  # Activation function for inner neurons
+action_activation_fn: null  # activation function on output (action)
+action_dependent_std: false  # SB3 only learns a fixed std in output (independent of observation)

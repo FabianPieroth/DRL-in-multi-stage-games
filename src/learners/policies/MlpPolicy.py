@@ -55,7 +55,7 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         normalize_images: bool = True,
         optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
-        action_dependent_std: bool = True,
+        action_dependent_std: bool = False,
     ):
         # NOTE: Any parameters changes in this file will not be logged!
         self.action_dependent_std = action_dependent_std
