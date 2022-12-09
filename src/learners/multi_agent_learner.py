@@ -195,6 +195,7 @@ class MultiAgentCoordinator:
                 self.writer, br_plot, iteration, "estimated_br_strategies"
             )
             plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
+            plt.close()
 
     def verify_in_BNE(self) -> None:
         # TODO: @Nils: Move the logic into the verifier - check if loop is necessary.
@@ -216,6 +217,7 @@ class MultiAgentCoordinator:
             # Debug plotting
             self.env.model.plot_br_strategy(best_response)
             plt.savefig(f"./logs/{self.env.model}_{agent_id}_br.png")
+            plt.close()
 
         return utility_losses
 
