@@ -10,7 +10,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common import utils
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 
 
@@ -20,10 +20,13 @@ class SABaseAlgorithm(PPO, ABC):
     the vanilla Reinforce algorithm to vectorized learning.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, action_dependent_std: bool = False, **kwargs):
 
         # We want to start off with a much lower variance
-        self.log_std_init = -3.0  # default: 1
+        self.log_std_init = -3.0  # default was 1 in SB3
+
+        # Or have an action dependent std
+        self.action_dependent_std = action_dependent_std
 
         super(SABaseAlgorithm, self).__init__(**kwargs)
         self._change_space_attributes_to_tensors()

@@ -1,7 +1,8 @@
 policy: "CustomActorCriticPolicy"
 learning_rate: 1e-3
-n_rollout_steps: 64
+n_rollout_steps: 32
 gamma: 1.0
+action_dependent_std: true
 translate_action_spaces_for_agents: None
 translate_observation_spaces_for_agents: None
 action_space_translator: "identity"

@@ -19,7 +19,7 @@ n_steps_per_iteration: null  # TODO @Fabian: Why is this also null?
 total_training_steps: null
 # total_training_steps = n_steps_per_iteration * num_envs * iteration_num
 
-eval_freq: 500  # How often the evaluation should be run in between learning
+eval_freq: 100  # How often the evaluation should be run in between learning
 verify_br: false  # Wether or not to use the best response verifier
 
 # List of algorithms that maps agents to algorithms. If list of length one is
@@ -35,6 +35,7 @@ policy_sharing: false
 defaults:
   - rl_envs: sequential_auction
   - algorithm_configs: all_algos
+  - policy: default_config
   - space_translators: default_config
   - verifier: default_verifier
   - _self_
