@@ -18,24 +18,35 @@ def run_sequential_sales_experiment():
     verifier_device = "null"
     runs = 2
     iteration_num = 2_000
-    n_steps_per_iteration = 128
     policy_sharing = True
 
+    n_steps_per_iteration_options = [8, 32, 128]
+    n_rollout_steps_options = [8, 32, 128]
     collapse_symmetric_opponents_options = [True, False]
     num_rounds_to_play_options = [2, 4]
     mechanism_type_options = ["first", "second"]
-    algorithms = ["ppo", "reinforce"]
+    algorithm_options = ["ppo", "reinforce"]
+    action_dependent_std_options = [False, True]
     options = product(
+        n_steps_per_iteration_options,
+        n_rollout_steps_options,
         collapse_symmetric_opponents_options,
         num_rounds_to_play_options,
         mechanism_type_options,
-        algorithms,
+        algorithm_options,
+        action_dependent_std_options,
     )
 
     for option in options:
-        collapse_symmetric_opponents, num_rounds_to_play, mechanism_type, algorithm = (
-            option
-        )
+        (
+            n_steps_per_iteration,
+            n_rollout_steps,
+            collapse_symmetric_opponents,
+            num_rounds_to_play,
+            mechanism_type,
+            algorithm,
+            action_dependent_std,
+        ) = option
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -45,10 +56,12 @@ def run_sequential_sales_experiment():
                 overrides=[
                     f"device={device}",
                     f"seed={i}",
-                    f"policy_sharing={policy_sharing}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"n_steps_per_iteration=[{n_steps_per_iteration}]",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={n_rollout_steps}",
+                    f"policy_sharing={policy_sharing}",
+                    f"policy.action_dependent_std=[{action_dependent_std}]",
                     f"log_path={LOG_PATH}",
                     f"verify_br={True}",
                     f"verifier.device={verifier_device}",
@@ -75,12 +88,13 @@ def run_signaling_contest_experiment():
     n_steps_per_iteration = 128
     policy_sharing = True
 
-    algorithms = ["ppo", "reinforce"]
     information_cases = ["true_valuations", "winning_bids"]
-    options = product(algorithms, information_cases)
+    algorithms = ["ppo", "reinforce"]
+    action_dependent_stds = [False, True]
+    options = product(algorithms, information_cases, action_dependent_stds)
 
     for option in options:
-        algorithm, information_case = option
+        algorithm, information_case, action_dependent_std = option
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -90,10 +104,11 @@ def run_signaling_contest_experiment():
                 overrides=[
                     f"device={device}",
                     f"seed={i}",
-                    f"policy_sharing={policy_sharing}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"n_steps_per_iteration=[{n_steps_per_iteration}]",
+                    f"policy_sharing={policy_sharing}",
+                    f"policy.action_dependent_std=[{action_dependent_std}]",
                     f"log_path={LOG_PATH}",
                     f"verify_br={True}",
                     f"verifier.device={verifier_device}",

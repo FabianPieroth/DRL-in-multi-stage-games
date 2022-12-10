@@ -20,10 +20,13 @@ class SABaseAlgorithm(PPO, ABC):
     the vanilla Reinforce algorithm to vectorized learning.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, action_dependent_std: bool = False, **kwargs):
 
         # We want to start off with a much lower variance
-        self.log_std_init = -3.0  # default: 1
+        self.log_std_init = -3.0  # default was 1 in SB3
+
+        # Or have an action dependent std
+        self.action_dependent_std = action_dependent_std
 
         super(SABaseAlgorithm, self).__init__(**kwargs)
         self._change_space_attributes_to_tensors()

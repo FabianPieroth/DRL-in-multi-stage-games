@@ -83,6 +83,7 @@ class Reinforce(SABaseAlgorithm):
             self.lr_schedule,
             use_sde=self.use_sde,
             log_std_init=self.log_std_init,
+            action_dependent_std=self.action_dependent_std,
             **self.policy_kwargs,  # pytype:disable=not-instantiable
         )
         self.policy = self.policy.to(self.device)
@@ -131,7 +132,7 @@ class Reinforce(SABaseAlgorithm):
         # Logs
         self.logger.record("train/policy_gradient_loss", np.mean(pg_losses))
         self.logger.record("train/loss", loss.item())
-        if hasattr(self.policy, "log_std"):
+        if not self.action_dependent_std and hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
 
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
