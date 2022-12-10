@@ -1,5 +1,6 @@
 policy: "CustomActorCriticPolicy"
 learning_rate: 1e-3
+learning_rate_schedule: "constant"
 n_rollout_steps: 16
 gamma: 1.0
 action_dependent_std: true
