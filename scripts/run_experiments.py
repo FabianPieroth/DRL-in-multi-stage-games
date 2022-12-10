@@ -5,7 +5,7 @@ from itertools import product
 
 sys.path.append(os.path.realpath("."))
 
-import src.utils.env_utils as env_ut
+import src.utils.coordinator_utils as coord_ut
 import src.utils.io_utils as io_ut
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 
@@ -53,7 +53,7 @@ def run_sequential_sales_experiment():
 
             # Configure and set hyperparameters
             config = io_ut.get_config(
-                [
+                overrides=[
                     f"device={device}",
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
@@ -74,18 +74,7 @@ def run_sequential_sales_experiment():
             )
 
             # Set up env and learning
-            env = env_ut.get_env(config)
-            ma_learner = MultiAgentCoordinator(config, env)
-            ma_learner.learn(
-                total_timesteps=config.total_training_steps,
-                n_steps_per_iteration=config.n_steps_per_iteration,
-                log_interval=1,
-                eval_freq=config.eval_freq,
-                n_eval_episodes=5,
-            )
-
-            # Wrap up
-            io_ut.wrap_up_experiment_logging(config)
+            coord_ut.start_ma_learning(config)
 
     print("Done!")
 
@@ -102,17 +91,17 @@ def run_signaling_contest_experiment():
     information_cases = ["true_valuations", "winning_bids"]
     algorithms = ["ppo", "reinforce"]
     action_dependent_stds = [False, True]
-    options = product(algorithms, information_cases)
+    options = product(algorithms, information_cases, action_dependent_stds)
 
     for option in options:
-        algorithm, information_case = option
+        algorithm, information_case, action_dependent_std = option
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
 
             # Configure and set hyperparameters
             config = io_ut.get_config(
-                [
+                overrides=[
                     f"device={device}",
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
@@ -130,18 +119,7 @@ def run_signaling_contest_experiment():
             )
 
             # Set up env and learning
-            env = env_ut.get_env(config)
-            ma_learner = MultiAgentCoordinator(config, env)
-            ma_learner.learn(
-                total_timesteps=config.total_training_steps,
-                n_steps_per_iteration=config.n_steps_per_iteration,
-                log_interval=1,
-                eval_freq=config.eval_freq,
-                n_eval_episodes=5,
-            )
-
-            # Wrap up
-            io_ut.wrap_up_experiment_logging(config)
+            coord_ut.start_ma_learning(config)
 
     print("Done!")
 

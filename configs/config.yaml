@@ -15,10 +15,12 @@ seed: 0  # Random seed
 # Set number of outer and inner iterations 
 num_envs: 8_192
 iteration_num: 1000
-n_steps_per_iteration: null  # TODO @Fabian: Why is this also null?
+n_steps_per_iteration: null
 total_training_steps: null
 # total_training_steps = n_steps_per_iteration * num_envs * iteration_num
 
+train_log_freq: 1  # How often should training metrics be logged
+n_eval_episodes: 5  # How many full episodes should be run for train-eval
 eval_freq: 100  # How often the evaluation should be run in between learning
 verify_br: false  # Wether or not to use the best response verifier
 
@@ -33,8 +35,8 @@ policy_sharing: false
 
 # Load default sub-configurations for environment, algorithm, etc.
 defaults:
-  - rl_envs: sequential_auction
   - algorithm_configs: all_algos
+  - rl_envs: sequential_auction
   - policy: default_config
   - space_translators: default_config
   - verifier: default_verifier

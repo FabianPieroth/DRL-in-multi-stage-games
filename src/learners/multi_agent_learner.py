@@ -1,17 +1,16 @@
 """Multi agent learning for SB3"""
 import time
-from typing import Callable, Dict, List
+from typing import Dict
 
 import matplotlib.pyplot as plt
 import torch
 from stable_baselines3.common.policies import register_policy
-from stable_baselines3.common.type_aliases import MaybeCallback
 from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
+import src.utils.io_utils as io_ut
 import src.utils.logging_write_utils as log_ut
 import src.utils.policy_utils as pl_ut
-from src.envs.equilibria import EquilibriumStrategy
 from src.learners.policies.MlpPolicy import CustomActorCriticPolicy
 from src.learners.utils import tensor_norm
 from src.verifier import BFVerifier
@@ -228,16 +227,7 @@ class MultiAgentCoordinator:
             )
             learner.logger.record("train/running_length", self.running_length[i])
 
-    def learn(
-        self,
-        total_timesteps: int,
-        n_steps_per_iteration: int,
-        callbacks: List[MaybeCallback] or MaybeCallback = None,
-        log_interval: int = 1,
-        eval_freq: int = 20,
-        n_eval_episodes: int = 5,
-        reset_num_timesteps: bool = True,
-    ) -> "OnPolicyAlgorithm":
+    def learn(self) -> "OnPolicyAlgorithm":
         """Main training loop for multi-agent learning: Here, (1) the agents
         are asked to submit actions, (2) these are passed to the environment,
         and (3) the utilities are passed back to the agents for learning.        
@@ -245,9 +235,15 @@ class MultiAgentCoordinator:
         Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`.
         """
         iteration = 0
+        init_callbacks = None
+        reset_num_timesteps = True  # NOTE: Needed to implement resuming training
 
         total_timesteps, callbacks = self._setup_learners_for_training(
-            total_timesteps, callbacks, eval_freq, n_eval_episodes, reset_num_timesteps
+            self.config.total_training_steps,
+            init_callbacks,
+            self.config.eval_freq,
+            self.config.n_eval_episodes,
+            reset_num_timesteps,
         )
 
         last_obs = self.env.reset()
@@ -259,24 +255,27 @@ class MultiAgentCoordinator:
             min(learner.num_timesteps for learner in self.learners.values())
             < total_timesteps
         ):
-            if self._iteration_finished(n_steps_per_iteration):
+            if self._iteration_finished(self.config.n_steps_per_iteration):
                 print(f"Iteration {iteration} starts.")
 
                 # Evaluate & log
                 with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
-                    self._display_and_log_training_progress(iteration, log_interval)
-                    self._evaluate_policies(
-                        iteration, eval_freq, n_eval_episodes, callbacks
+                    self._display_and_log_training_progress(
+                        iteration, self.config.train_log_freq
                     )
-                    self._verify_policies(iteration, eval_freq)
+                    self._evaluate_policies(
+                        iteration,
+                        self.config.eval_freq,
+                        self.config.n_eval_episodes,
+                        callbacks,
+                    )
+                    self._verify_policies(iteration, self.config.eval_freq)
 
             actions_for_env, actions, additional_actions_data = self.get_ma_action(
                 last_obs
             )
 
-            new_obs, rewards, dones, infos = self.env.step(
-                actions_for_env
-            )  # TODO: dones for every single agent
+            new_obs, rewards, dones, infos = self.env.step(actions_for_env)
 
             self.n_step += 1
 
@@ -301,12 +300,13 @@ class MultiAgentCoordinator:
                 if callback.on_step() is False:
                     return False
 
-            if self._iteration_finished(n_steps_per_iteration):
+            if self._iteration_finished(self.config.n_steps_per_iteration):
                 iteration += 1
 
         for callback in callbacks:
             callback.on_training_end()
 
+        io_ut.wrap_up_learning_logging(self.config)
         return self
 
     def _iteration_finished(self, n_steps_per_iteration: int):

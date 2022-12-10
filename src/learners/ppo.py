@@ -1,22 +1,9 @@
 """Customized PPO learner and corresponding buffer"""
-import time
-from collections import deque
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
-
 import gym
 import numpy as np
 import torch as th
 from gym import spaces
-from stable_baselines3.common import utils
-from stable_baselines3.common.buffers import RolloutBuffer
-from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.type_aliases import (
-    GymEnv,
-    MaybeCallback,
-    RolloutBufferSamples,
-)
 from stable_baselines3.common.utils import get_schedule_fn
-from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from torch.nn import functional as F
 
 from src.learners.base_learner import SABaseAlgorithm

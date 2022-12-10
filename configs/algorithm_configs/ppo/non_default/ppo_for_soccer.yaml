@@ -1,0 +1,6 @@
+# @package _global_
+
+algorithm_configs:
+  ppo:
+    n_rollout_steps: 128
+    gamma: 0.99
