@@ -10,7 +10,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common import utils
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
+from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 
 

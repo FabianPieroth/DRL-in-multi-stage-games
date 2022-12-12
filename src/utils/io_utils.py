@@ -29,14 +29,33 @@ def check_path_and_create(path: str):
             print(path + " already exists")
 
 
-def read_hydra_config(overrides: List[str] = []):
-    hydra.initialize(config_path="../../configs", job_name="run")
+def read_hydra_config(config_path: str, overrides: List[str] = []):
+    hydra.initialize(config_path=config_path, job_name="run")
     cfg = hydra.compose(config_name="config", overrides=overrides)
     return cfg
 
 
-def get_config(overrides: List[str] = []) -> DictConfig:
-    config = read_hydra_config(overrides)
+def get_config(
+    config_path: str = "../../configs", overrides: List[str] = []
+) -> DictConfig:
+    """Fetch project wide config from hierarchical config folder structure.
+
+    Args:
+        config_path (str, optional): Path to configs folder. Defaults to "../../configs".
+        overrides (List[str], optional): List of defaults to overwrite when fetching config.
+            Defaults to [].
+            Example:
+                overrides = [
+                f"seed={i}",
+                f"device='cuda:1'",
+                f"experiment_log_path='/{i}/'",
+                f"rl_envs=signaling_contest"
+                f"rl_envs.num_agents={9}",
+            ]
+    Returns:
+        DictConfig:
+    """
+    config = read_hydra_config(config_path, overrides)
     enrich_config(config)
 
     # store config and set seed
@@ -116,7 +135,7 @@ def get_env_log_path_extension(config: DictConfig) -> str:
         return ""
 
 
-def wrap_up_experiment_logging(config: DictConfig):
+def wrap_up_learning_logging(config: DictConfig):
 
     if config.delete_logs_after_training:
         delete_folder(config.experiment_log_path)
@@ -131,7 +150,7 @@ def delete_folder(path_to_folder: str):
 
 def clean_logs_after_test(config: DictConfig):
     config.delete_logs_after_training = True
-    wrap_up_experiment_logging(config)
+    wrap_up_learning_logging(config)
 
 
 def progress_bar(count, total, status=""):

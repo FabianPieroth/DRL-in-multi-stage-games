@@ -8,13 +8,6 @@ import src.utils.test_utils as tst_ut
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
-RPS_ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_rps",
-    "reinforce": "reinforce_for_rps",
-    "dqn": "dqn_for_rps",
-    "rps_single_action": "rps_rock",
-}
-
 
 def test_learning_rockpaperscissors():
     """Runs multi agent learning in RPS."""
@@ -28,13 +21,10 @@ def test_learning_rockpaperscissors():
         f"n_steps_per_iteration={1}",
         f"num_envs={1}",
         f"iteration_num={1}",
+        f"rl_envs=rockpaperscissors",
+        f"rl_envs.num_agents={3}",
     ]
-    env_overrides = [f"rl_envs.num_agents={3}"]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose(
-        "rl_envs/rockpaperscissors.yaml", env_overrides
-    ).rl_envs
-    tst_ut.set_specific_algo_configs(config, algorithms, RPS_ALGO_INSTANCE_DICT)
 
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)
@@ -49,11 +39,6 @@ ids_sequ_auction, testdata_sequ_auction = zip(
         ["collapse-symmetric-opponents", ("second", 3, False, True)],
     ]
 )
-
-SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_sequ_auction",
-    "reinforce": "reinforce_for_sequ_auction",
-}
 
 
 @pytest.mark.parametrize(
@@ -76,8 +61,7 @@ def test_learning_sequential_auctions(
         f"n_steps_per_iteration={1}",
         f"num_envs={1}",
         f"iteration_num={1}",
-    ]
-    env_overrides = [
+        f"rl_envs=sequential_auction",
         f"rl_envs.mechanism_type={mechanism_type}",
         f"rl_envs.num_agents={num_agents}",
         f"rl_envs.num_rounds_to_play={num_agents - 1}",
@@ -85,21 +69,9 @@ def test_learning_sequential_auctions(
         f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
     ]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose(
-        "rl_envs/sequential_auction.yaml", env_overrides
-    ).rl_envs
-    tst_ut.set_specific_algo_configs(
-        config, algorithms, SEQUENTIAL_AUCTION_ALGO_INSTANCE_DICT
-    )
 
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)
-
-
-SIGNALING_CONTEST_ALGO_INSTANCE_DICT = {
-    "ppo": "ppo_for_signaling_contest",
-    "reinforce": "reinforce_for_signaling_contest",
-}
 
 
 ids_sign_contest, testdata_sign_contest = zip(
@@ -126,20 +98,13 @@ def test_learning_signaling_contest(information_case, num_agents):
         f"algorithms={algorithms}",
         f"policy_sharing={True}",
         f"n_steps_per_iteration={1}",
-        # f"num_envs={1}",
+        f"num_envs={2}",
         f"iteration_num={1}",
-    ]
-    env_overrides = [
+        f"rl_envs=signaling_contest",
         f"rl_envs.num_agents={num_agents}",
         f"rl_envs.information_case={information_case}",
     ]
     config = io_ut.get_config(overrides=overrides)
-    config.rl_envs = hydra.compose(
-        "rl_envs/signaling_contest.yaml", env_overrides
-    ).rl_envs
-    tst_ut.set_specific_algo_configs(
-        config, algorithms, SIGNALING_CONTEST_ALGO_INSTANCE_DICT
-    )
 
     tst_ut.run_limited_learning(config)
     io_ut.clean_logs_after_test(config)

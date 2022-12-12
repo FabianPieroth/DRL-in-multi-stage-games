@@ -1,10 +1,13 @@
 name: "all_algos"
 defaults:
-  - ppo: ppo_for_sequ_auction
-  - reinforce: reinforce_for_sequ_auction
-  - rps_single_action: rps_rock
-  - soccer_chase_ball: chase_ball_policy
-  - soccer_goal_wall: goal_wall_policy
-  - soccer_block: block_policy
-  - soccer_handcrafted: handcrafted_policy
-  - dqn: dqn_for_soccer
+  - ppo: ppo_default
+  - reinforce: reinforce_default
+  - dqn: dqn_default
+  - rps_single_action: single_action_default
+  - soccer_chase_ball: chase_ball_default
+  - soccer_goal_wall: goal_wall_default
+  - soccer_block: block_default
+  - soccer_handcrafted: handcrafted_default
+  - optional ppo/non_default: ppo_for_${rl_envs}
+  - optional reinforce/non_default: ppo_for_${rl_envs}
+  - optional dqn/non_default: dqn_for_${rl_envs}
