@@ -78,8 +78,8 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
     def _init_equ_method(self) -> Callable:
         if self.equ_type == "fpsb_symmetric_uniform":
             bid_function = self._get_fpsb_symmetric_uniform_equ()
-        elif self.equ_type == "truthful":
-            bid_function = self._get_truthful_equilibrium()
+        elif self.equ_type == "second_price_symmetric_uniform":
+            bid_function = self._get_second_price_symmetric_uniform_equ()
         else:
             raise ValueError("No valid equ_type selected - check: " + self.equ_type)
         return bid_function
@@ -137,10 +137,14 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
 
         return bid_function
 
-    def _get_truthful_equilibrium(self):
+    def _get_second_price_symmetric_uniform_equ(self):
+        """Surprisingly, the second price equilibrium is only truthful in the final stage!"""
+
         def bid_function(observation: torch.Tensor):
-            _, valuation, won = self._get_info_from_observation(observation)
-            bid = valuation
+            stage, valuation, won = self._get_info_from_observation(observation)
+            bid = (
+                (self.num_agents - self.num_units) / (self.num_agents - stage - 1)
+            ) * valuation
 
             if won is not None:
                 bid[won, ...] = 0

@@ -76,7 +76,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self, agent_id: int
     ) -> SequentialAuctionEquilibrium:
         equilibrium_config = {
-            "num_agents": self.num_agents,
+            "num_agents": self.config["num_agents"],
             "num_units": self.num_rounds_to_play,
             "reduced_obs_space": self.reduced_observation_space,
             "payments_start_index": self.payments_start_index,
@@ -87,7 +87,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         if self.config.mechanism_type == "first":
             equilibrium_config["equ_type"] = "fpsb_symmetric_uniform"
         elif self.config.mechanism_type in ["second", "vcg", "vickery"]:
-            equilibrium_config["equ_type"] = "truthful"
+            equilibrium_config["equ_type"] = "second_price_symmetric_uniform"
         else:
             raise NotImplementedError("Payment rule unknown.")
         return SequentialAuctionEquilibrium(agent_id, equilibrium_config)
