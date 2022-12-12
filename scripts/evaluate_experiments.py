@@ -17,6 +17,8 @@ def evaluate_sequential_sales_experiment():
         "rl_envs.collapse_symmetric_opponents",
         "rl_envs.mechanism_type",
         "rl_envs.num_rounds_to_play",
+        "policy.action_dependent_std",
+        "algorithm_configs.ppo.learning_rate_schedule",
     ]
     metrics = [
         "eval/action_equ_L2_distance_stage_0",
@@ -38,8 +40,11 @@ def evaluate_sequential_sales_experiment():
     hyperparamters.remove(key)
 
     # Create pivot table
-    assert df.size > 0, "No experiments where run for these parameters."
+    assert df.size > 0, "No experiments were run for these parameters."
     pivot = ex_ut.get_pivot_table(df, hyperparamters)
+
+    # NOTE: possibly want to rearrange the columns
+    # pivot = pivot[pivot.columns[[0, 2, 1, 3]]]
 
     # Write to disk
     ex_ut.save_df(pivot, environment, path)
@@ -63,7 +68,7 @@ def evaluate_signaling_contest_experiment():
     # NOTE: Possibly check all configs manually
 
     # Create pivot table
-    assert df.size > 0, "No experiments where run for these parameters."
+    assert df.size > 0, "No experiments were run for these parameters."
     pivot = ex_ut.get_pivot_table(df, hyperparamters)
 
     # Write to disk

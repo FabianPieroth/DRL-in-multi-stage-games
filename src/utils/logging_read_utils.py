@@ -62,7 +62,6 @@ def get_pivot_table(df: pd.DataFrame, hyperparamters: List[str]):
 
     # Formatting
     pivot = pivot.swaplevel(axis=1)
-    pivot = pivot[pivot.columns[[0, 2, 1, 3]]]
 
     pivot = pivot.round(decimals=4)
     final_df = pd.DataFrame()
@@ -110,6 +109,26 @@ def df_to_tex(
         column_format="".join(["l"] * len(df.index.names) + ["r"] * len(df.columns)),
         label=label,
     )
+
+
+def _dict_to_columns(df: pd.DataFrame, key, value):
+    """Converts a column with dict entries into multiple columns.
+
+    NOTE: Only supports two levels currently.
+    """
+    if isinstance(value, dict):
+        for inner_key, inner_value in value.items():
+            if isinstance(inner_value, dict):
+                for inner_inner_key, inner_inner_value in inner_value.items():
+                    df[key + "." + inner_key + "." + inner_inner_key] = [
+                        inner_inner_value
+                    ] * df.shape[0]
+            else:
+                df[key + "." + inner_key] = [inner_value] * df.shape[0]
+    else:
+        df[key] = [value] * df.shape[0]
+
+    return df
 
 
 def get_log_df(path: str):
@@ -160,12 +179,7 @@ def get_log_df(path: str):
 
             # Add hyperparameters from config
             for hp_key, hp_value in config.items():
-                if isinstance(hp_value, dict):
-                    # NOTE: only 2 levels are handled
-                    for hp_inner_key, hp_inner_value in hp_value.items():
-                        w[hp_key + "." + hp_inner_key] = [hp_inner_value] * w.shape[0]
-                else:
-                    w[hp_key] = [hp_value] * w.shape[0]
+                w = _dict_to_columns(w, hp_key, hp_value)
 
             summary_df = pd.concat([summary_df, w], axis=0)
 
