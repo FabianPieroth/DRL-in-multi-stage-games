@@ -13,12 +13,14 @@ def evaluate_sequential_sales_experiment():
     path = LOG_PATH + environment
     df = ex_ut.get_log_df(path)
 
-    hyperparamters = [
+    hyperparameters = [
         "rl_envs.collapse_symmetric_opponents",
         "rl_envs.mechanism_type",
         "rl_envs.num_rounds_to_play",
         "policy.action_dependent_std",
         "algorithm_configs.ppo.learning_rate_schedule",
+        "algorithm_configs.ppo.n_rollout_steps",
+        "n_steps_per_iteration",
     ]
     metrics = [
         "eval/action_equ_L2_distance_stage_0",
@@ -27,7 +29,7 @@ def evaluate_sequential_sales_experiment():
         "eval/action_equ_L2_distance_stage_3",
         "eval/utility_loss",
     ]
-    df = ex_ut.get_last_iter(df, hyperparamters, metrics)
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
 
     # Policy sharing?
     df = df[df.policy_sharing == True]
@@ -37,11 +39,11 @@ def evaluate_sequential_sales_experiment():
     key = "rl_envs.collapse_symmetric_opponents"
     df = df[df.index.get_level_values(key) == False]
     df = df.droplevel(level=key)
-    hyperparamters.remove(key)
+    hyperparameters.remove(key)
 
     # Create pivot table
     assert df.size > 0, "No experiments were run for these parameters."
-    pivot = ex_ut.get_pivot_table(df, hyperparamters)
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
 
     # NOTE: possibly want to rearrange the columns
     # pivot = pivot[pivot.columns[[0, 2, 1, 3]]]
@@ -55,13 +57,13 @@ def evaluate_signaling_contest_experiment():
     path = LOG_PATH + environment
     df = ex_ut.get_log_df(path)
 
-    hyperparamters = ["rl_envs.information_case"]
+    hyperparameters = ["rl_envs.information_case"]
     metrics = [
         "eval/action_equ_L2_distance_round_1",
         "eval/action_equ_L2_distance_round_2",
         "eval/utility_loss",
     ]
-    df = ex_ut.get_last_iter(df, hyperparamters, metrics)
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
 
     # Policy sharing?
     df = df[df.policy_sharing == True]
@@ -69,7 +71,7 @@ def evaluate_signaling_contest_experiment():
 
     # Create pivot table
     assert df.size > 0, "No experiments were run for these parameters."
-    pivot = ex_ut.get_pivot_table(df, hyperparamters)
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
 
     # Write to disk
     ex_ut.save_df(pivot, environment, path)
