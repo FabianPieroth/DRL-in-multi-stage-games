@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch.nn as nn
 from omegaconf import OmegaConf
@@ -46,6 +46,17 @@ def get_policy(config_policy):
     )
 
 
+def get_lr_schedule(lr_schedule_name: str, initial_value: float) -> Callable:
+    if lr_schedule_name == "constant":
+        return lambda x: initial_value
+    elif lr_schedule_name == "linear":
+        return lambda progress_remaining: progress_remaining * initial_value
+    elif lr_schedule_name == "exponential":
+        return lambda progress_remaining: initial_value * (progress_remaining ** 10)
+    else:
+        raise ValueError(f"Learning rate scheduler {lr_schedule_name} unknown.")
+
+
 def get_learner_and_policy(
     agent_id: int, config: Dict, env: MATorchVecEnv
 ) -> BaseAlgorithm:
@@ -59,7 +70,10 @@ def get_learner_and_policy(
         return VecPPO(
             policy=algorithm_config["policy"],
             env=env,
-            learning_rate=algorithm_config["learning_rate"],
+            learning_rate=get_lr_schedule(
+                algorithm_config["learning_rate_schedule"],
+                algorithm_config["learning_rate"],
+            ),
             n_steps=n_rollout_steps,
             batch_size=algorithm_config["n_rollout_steps"] * config["num_envs"],
             action_dependent_std=config.policy["action_dependent_std"],
