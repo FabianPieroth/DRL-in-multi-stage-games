@@ -25,7 +25,7 @@ class EquilibriumStrategy(ABC):
 
     @abstractmethod
     def _init_equ_method(self) -> Callable:
-        """Returns the equilibrium method for the repsective agent.
+        """Returns the equilibrium method for the respective agent.
 
         Returns:
             Callable:   equ_method(self, observation: torch.Tensor) -> actions: torch.Tensor:
@@ -70,14 +70,19 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
         self.dummy_price_key = config["dummy_price_key"]
         self.valuations_start_index = config["valuations_start_index"]
         self.valuation_size = config["valuation_size"]
+        self.risk_aversion = config["risk_aversion"]
         assert (
             self.num_agents > self.num_units
         ), "For this BNE, there must be more bidders than items."
         super().__init__(agent_id)
 
     def _init_equ_method(self) -> Callable:
-        if self.equ_type == "fpsb_symmetric_uniform":
+        if self.equ_type == "fpsb_symmetric_uniform" and self.risk_aversion == 1.0:
             bid_function = self._get_fpsb_symmetric_uniform_equ()
+        elif self.equ_type == "fpsb_symmetric_uniform_single_stage_risk_averse":
+            bid_function = (
+                self._get_fpsb_symmetric_uniform_single_stage_risk_averse_equ()
+            )
         elif self.equ_type == "second_price_symmetric_uniform":
             bid_function = self._get_second_price_symmetric_uniform_equ()
         else:
@@ -133,6 +138,21 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
             if won is not None:
                 bid[won, ...] = 0
 
+            return bid.view(-1, 1)
+
+        return bid_function
+
+    def _get_fpsb_symmetric_uniform_single_stage_risk_averse_equ(self):
+        """BNE in the special case of a single-stage symmetric FPSB IPV auction
+        where priors are symmetric uniform."""
+
+        def bid_function(observation: torch.Tensor):
+            stage, valuation, won = self._get_info_from_observation(observation)
+            bid = (
+                valuation
+                * (self.num_agents - 1.0)
+                / (self.num_agents - 1.0 + self.risk_aversion)
+            )
             return bid.view(-1, 1)
 
         return bid_function

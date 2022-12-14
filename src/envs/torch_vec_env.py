@@ -50,7 +50,9 @@ class BaseEnvForVec(ABC):
         self.action_spaces = self._init_action_spaces()
         self.observation_space = None
         self.action_space = None
-        self.equilibrium_strategies = self._get_equilibrium_strategies()
+        self.equilibrium_available, self.equilibrium_strategies = (
+            self._get_equilibrium_strategies()
+        )
         self.equilibrium_strategies_known = self._are_equ_strategies_known()
 
     @abstractmethod
@@ -76,7 +78,8 @@ class BaseEnvForVec(ABC):
 
     @abstractmethod
     def to(self, device) -> Any:
-        """Takes an available GPU device and shifts all tensors to the newly specified device.
+        """Takes an available GPU device and shifts all tensors to the newly
+        specified device.
 
         Args:
             device (int or string): The device to send the data to.
@@ -157,7 +160,7 @@ class BaseEnvForVec(ABC):
         equilibrium strategy. The verification is skipped, if at least one
         returned method is None.
         Each equilibrium strategy needs to be of type EquilibriumStrategy.
-        Note that verfication only works if the Env is also of class VerfiableEnv
+        Note that verification only works if the Env is also of class VerfiableEnv
         Returns:
             Dict[agent_id: EquilibriumStrategy or None]:
         """
@@ -204,7 +207,8 @@ class VerifiableEnv(ABC):
         stage: int,
         obs_discretization: int,
     ) -> torch.LongTensor:
-        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
+        """Determines the bin indices for the given observations with discrete
+        values between 0 and obs_discretization.
 
         Args:
             agent_obs (torch.Tensor): shape=(batch_size, obs_size)

@@ -39,6 +39,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self.action_size = config.action_size
         self.payments_start_index = self.get_payments_start_index()
         self.valuations_start_index = 0
+        self.risk_aversion = config.risk_aversion
 
         super().__init__(config, device)
 
@@ -67,10 +68,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         return mechanism
 
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
-        return {
+        strategy_profile = {
             agent_id: self._get_agent_equilibrium_strategy(agent_id)
             for agent_id in range(self.num_agents)
         }
+        equilibrium_available = None not in strategy_profile.values()
+        return equilibrium_available, strategy_profile
 
     def _get_agent_equilibrium_strategy(
         self, agent_id: int
@@ -83,13 +86,19 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             "dummy_price_key": SequentialAuction.DUMMY_PRICE_KEY,
             "valuations_start_index": self.valuations_start_index,
             "valuation_size": self.valuation_size,
+            "risk_aversion": self.risk_aversion,
         }
-        if self.config.mechanism_type == "first":
+        if self.config.mechanism_type == "first" and self.risk_aversion == 1.0:
             equilibrium_config["equ_type"] = "fpsb_symmetric_uniform"
+        elif self.config.mechanism_type == "first" and self.num_rounds_to_play == 1:
+            equilibrium_config[
+                "equ_type"
+            ] = "fpsb_symmetric_uniform_single_stage_risk_averse"
         elif self.config.mechanism_type in ["second", "vcg", "vickery"]:
             equilibrium_config["equ_type"] = "second_price_symmetric_uniform"
         else:
-            raise NotImplementedError("Payment rule unknown.")
+            print("No analytical equilibrium available.")
+            return None
         return SequentialAuctionEquilibrium(agent_id, equilibrium_config)
 
     def _init_dummy_strategies(self):
@@ -328,9 +337,14 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         ].view_as(payments)
 
         # quasi-linear utility
-        rewards = (valuations * allocations) * torch.logical_not(
+        payoff = (valuations * allocations) * torch.logical_not(
             has_won_already
         ) - payments
+
+        # Handle risk aversion and the case for negative utilities
+        rewards = (
+            payoff.relu() ** self.risk_aversion - (-payoff).relu() ** self.risk_aversion
+        )
 
         return rewards.view(-1)
 
@@ -481,7 +495,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             iteration: current training iteration
         """
         self.plot_strategies_vs_bne(learners, writer, iteration, config)
-        self.log_metrics_to_equilibrium(learners)
+        if self.equilibrium_available:
+            self.log_metrics_to_equilibrium(learners)
 
     @staticmethod
     def get_ma_learner_stddevs(learners, observations):
@@ -541,15 +556,17 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 stddevs = ma_stddevs[agent_id][increasing_order]
 
                 # get BNE actions
-                actions_bne = th_ut.get_ma_actions(
-                    self.equilibrium_strategies, {agent_id: agent_obs}
-                )[agent_id]
+                if self.equilibrium_available:
+                    actions_bne = th_ut.get_ma_actions(
+                        self.equilibrium_strategies, {agent_id: agent_obs}
+                    )[agent_id]
 
                 # covert to numpy
                 agent_obs = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 stddevs = stddevs.view(-1).detach().cpu().numpy()
-                actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
+                if self.equilibrium_available:
+                    actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
                 has_won_already = has_won_already.cpu().numpy()
 
                 # plotting
@@ -559,13 +576,14 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     linestyle="-",
                     label=f"bidder {agent_id+1} {strategy}",
                 )
-                ax.plot(
-                    agent_obs[~has_won_already],
-                    actions_bne[~has_won_already],
-                    linestyle="--",
-                    color=drawing.get_color(),
-                    label=f"bidder {agent_id+1} BNE",
-                )
+                if self.equilibrium_available:
+                    ax.plot(
+                        agent_obs[~has_won_already],
+                        actions_bne[~has_won_already],
+                        linestyle="--",
+                        color=drawing.get_color(),
+                        label=f"bidder {agent_id+1} BNE",
+                    )
                 ax.fill_between(
                     agent_obs[~has_won_already],
                     (
@@ -588,14 +606,15 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                         alpha=0.5,
                         label=f"bidder {agent_id+1} {strategy} (won)",
                     )
-                    ax.plot(
-                        agent_obs[has_won_already],
-                        actions_bne[has_won_already],
-                        linestyle="--",
-                        color=drawing.get_color(),
-                        alpha=0.5,
-                        label=f"bidder {agent_id+1} BNE (won)",
-                    )
+                    if self.equilibrium_available:
+                        ax.plot(
+                            agent_obs[has_won_already],
+                            actions_bne[has_won_already],
+                            linestyle="--",
+                            color=drawing.get_color(),
+                            alpha=0.5,
+                            label=f"bidder {agent_id+1} BNE (won)",
+                        )
                     ax.fill_between(
                         agent_obs[has_won_already],
                         (

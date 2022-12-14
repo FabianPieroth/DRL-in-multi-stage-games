@@ -63,10 +63,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             "valuation_size": self.valuation_size,
             "payments_start_index": self.payments_start_index,
         }
-        return {
-            agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
-            for agent_id in range(self.num_agents)
-        }
+        return (
+            True,
+            {
+                agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
+                for agent_id in range(self.num_agents)
+            },
+        )
 
     def _is_equilibrium_ensured_to_exist(self):
         if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
