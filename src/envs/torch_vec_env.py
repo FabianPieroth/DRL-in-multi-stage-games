@@ -76,7 +76,8 @@ class BaseEnvForVec(ABC):
 
     @abstractmethod
     def to(self, device) -> Any:
-        """Takes an available GPU device and shifts all tensors to the newly specified device.
+        """Takes an available GPU device and shifts all tensors to the newly
+        specified device.
 
         Args:
             device (int or string): The device to send the data to.
@@ -154,29 +155,29 @@ class BaseEnvForVec(ABC):
 
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[EquilibriumStrategy]]:
         """Overwrite this method to enable verification against the known
-        equilibrium strategy. The verification is skipped, if at least one
-        returned method is None.
-        Each equilibrium strategy needs to be of type EquilibriumStrategy.
-        Note that verfication only works if the Env is also of class VerfiableEnv
+        equilibrium strategy. Each equilibrium strategy needs to be of type
+        `EquilibriumStrategy`. Returns a strategy profile potentially
+        containing `None` values.
+
+        Note that verification only works if the Env is also of class `VerfiableEnv`.
+
         Returns:
-            Dict[agent_id: EquilibriumStrategy or None]:
+            Dict[agent_id: EquilibriumStrategy or None]
         """
         return {agent_id: None for agent_id in range(self.num_agents)}
 
     def _are_equ_strategies_known(self) -> bool:
         """Checks whether there are valid equilibrium strategies.
+
         Returns: bool
         """
-        if None in self.equilibrium_strategies.values():
-            return False
-        else:
-            return True
+        return None not in self.equilibrium_strategies.values()
 
     def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
         """
         Environment-specific seeding is not used at the moment.
         In the underlying environment, random numbers are generated through
-        calls to methods like torch.randn and can be seeded with
+        calls to methods like `torch.randn` and can be seeded with
         `torch.manual_seed`.
         """
         np.random.seed(seed)
@@ -204,7 +205,8 @@ class VerifiableEnv(ABC):
         stage: int,
         obs_discretization: int,
     ) -> torch.LongTensor:
-        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
+        """Determines the bin indices for the given observations with discrete
+        values between 0 and obs_discretization.
 
         Args:
             agent_obs (torch.Tensor): shape=(batch_size, obs_size)

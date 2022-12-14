@@ -32,7 +32,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.prior_low, self.prior_high = config["prior_bounds"]
         self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
         self.num_rounds_to_play = 2
-        # obs indizes
+        # obs indices
         self.group_split_index = int(config["num_agents"] / 2)
         self.allocation_index = self.valuation_size
         self.stage_index = self.valuation_size + 1
