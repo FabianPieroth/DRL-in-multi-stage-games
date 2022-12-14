@@ -68,12 +68,10 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         return mechanism
 
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
-        strategy_profile = {
+        return {
             agent_id: self._get_agent_equilibrium_strategy(agent_id)
             for agent_id in range(self.num_agents)
         }
-        equilibrium_available = None not in strategy_profile.values()
-        return equilibrium_available, strategy_profile
 
     def _get_agent_equilibrium_strategy(
         self, agent_id: int
@@ -495,7 +493,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             iteration: current training iteration
         """
         self.plot_strategies_vs_bne(learners, writer, iteration, config)
-        if self.equilibrium_available:
+        if self.equilibrium_strategies_known:
             self.log_metrics_to_equilibrium(learners)
 
     @staticmethod
@@ -556,7 +554,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 stddevs = ma_stddevs[agent_id][increasing_order]
 
                 # get BNE actions
-                if self.equilibrium_available:
+                if self.equilibrium_strategies_known:
                     actions_bne = th_ut.get_ma_actions(
                         self.equilibrium_strategies, {agent_id: agent_obs}
                     )[agent_id]
@@ -565,7 +563,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 agent_obs = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
                 stddevs = stddevs.view(-1).detach().cpu().numpy()
-                if self.equilibrium_available:
+                if self.equilibrium_strategies_known:
                     actions_bne = actions_bne.view(-1, 1).detach().cpu().numpy()
                 has_won_already = has_won_already.cpu().numpy()
 
@@ -576,7 +574,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     linestyle="-",
                     label=f"bidder {agent_id+1} {strategy}",
                 )
-                if self.equilibrium_available:
+                if self.equilibrium_strategies_known:
                     ax.plot(
                         agent_obs[~has_won_already],
                         actions_bne[~has_won_already],
@@ -606,7 +604,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                         alpha=0.5,
                         label=f"bidder {agent_id+1} {strategy} (won)",
                     )
-                    if self.equilibrium_available:
+                    if self.equilibrium_strategies_known:
                         ax.plot(
                             agent_obs[has_won_already],
                             actions_bne[has_won_already],

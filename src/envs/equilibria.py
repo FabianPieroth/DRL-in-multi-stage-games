@@ -77,7 +77,7 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
         super().__init__(agent_id)
 
     def _init_equ_method(self) -> Callable:
-        if self.equ_type == "fpsb_symmetric_uniform" and self.risk_aversion == 1.0:
+        if self.equ_type == "fpsb_symmetric_uniform":
             bid_function = self._get_fpsb_symmetric_uniform_equ()
         elif self.equ_type == "fpsb_symmetric_uniform_single_stage_risk_averse":
             bid_function = (

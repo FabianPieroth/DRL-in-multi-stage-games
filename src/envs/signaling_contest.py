@@ -32,7 +32,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.prior_low, self.prior_high = config["prior_bounds"]
         self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
         self.num_rounds_to_play = 2
-        # obs indizes
+        # obs indices
         self.group_split_index = int(config["num_agents"] / 2)
         self.allocation_index = self.valuation_size
         self.stage_index = self.valuation_size + 1
@@ -63,13 +63,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             "valuation_size": self.valuation_size,
             "payments_start_index": self.payments_start_index,
         }
-        return (
-            True,
-            {
-                agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
-                for agent_id in range(self.num_agents)
-            },
-        )
+        return {
+            agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
+            for agent_id in range(self.num_agents)
+        }
 
     def _is_equilibrium_ensured_to_exist(self):
         if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
