@@ -5,8 +5,12 @@ class UtilityTracker(object):
     def __init__(self, agent_id: int, device: int, requires_grad: bool = False) -> None:
         self.agent_id = agent_id
         self.device = device
-        self.cum_utility = torch.zeros(1, device=device, requires_grad=requires_grad)
-        self.cum_sim_count = torch.zeros(1, device=device, requires_grad=requires_grad)
+        self.cum_utility = torch.zeros(
+            1, device=device, dtype=torch.float, requires_grad=requires_grad
+        )
+        self.cum_sim_count = torch.zeros(
+            1, device=device, dtype=torch.int, requires_grad=requires_grad
+        )
 
     def add_utility(self, utilities: torch.Tensor):
         """Sum up utilities along batch dimension and add 
