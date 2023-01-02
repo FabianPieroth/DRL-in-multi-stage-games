@@ -13,7 +13,7 @@ device: 1  # Which device to use, e.g., "cpu", "cuda:X"
 seed: 0  # Random seed
 
 # Set number of outer and inner iterations 
-num_envs: 8_192
+num_envs: 20_000
 iteration_num: 1000
 n_steps_per_iteration: null
 total_training_steps: null

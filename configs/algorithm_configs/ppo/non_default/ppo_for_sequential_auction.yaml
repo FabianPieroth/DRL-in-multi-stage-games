@@ -2,4 +2,4 @@
 
 algorithm_configs:
   ppo:
-    n_rollout_steps: 16
+    n_rollout_steps: 8
