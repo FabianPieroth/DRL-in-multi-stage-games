@@ -112,7 +112,10 @@ def get_learner_and_policy(
         return Reinforce(
             policy=algorithm_config["policy"],
             env=env,
-            learning_rate=algorithm_config["learning_rate"],
+            learning_rate=get_lr_schedule(
+                algorithm_config["learning_rate_schedule"],
+                algorithm_config["learning_rate"],
+            ),
             n_steps=n_rollout_steps,
             batch_size=algorithm_config["n_rollout_steps"] * config["num_envs"],
             action_dependent_std=config.policy["action_dependent_std"],

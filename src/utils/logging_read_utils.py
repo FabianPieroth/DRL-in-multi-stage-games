@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+from tqdm import tqdm
 
 
 def metric_python2latex(metric_python_name: str):
@@ -41,7 +42,7 @@ def get_last_iter(
 
     # Limit data to last iteration
     df_select = df[df.metric.isin(metrics)]
-    df_select = df_select[df_select.time_step == max(df_select.time_step)]
+    df_select = df_select[df_select.step == max(df_select.step)]
     df_select.metric = df_select.metric.apply(metric_python2latex)
 
     # Clean up data and index
@@ -146,7 +147,7 @@ def get_log_df(path: str):
         raise FileNotFoundError(f"Directory {path} does not exist.")
 
     summary_df = pd.DataFrame()
-    for subdir, _, files in os.walk(path):
+    for subdir, _, files in tqdm(list(os.walk(path))):
 
         if not any(f.endswith("run_config.yaml") for f in files):
             continue  # Directory {path} does not contain results in proper format.")
@@ -205,35 +206,27 @@ def get_log_df(path: str):
 
 
 def tb2df(path: str):
-    """TensorBoard log to `DataFrame`.
-
-    TODO: I think this looping is slow AF!
-    """
-    dirs = os.listdir(path)
-    summary_iterators = [
-        EventAccumulator(os.path.join(path, name)).Reload() for name in os.listdir(path)
-    ]
-    tags = summary_iterators[0].Tags()["scalars"]
-
-    if len(tags) == 0:
+    """TensorBoard log to `DataFrame`."""
+    if len(os.listdir(path)) != 1:
         return pd.DataFrame()
 
-    out = dict()
-    steps = [e.step for e in summary_iterators[0].Scalars(tags[0])]
-    for tag in tags:
-        out[tag] = []
-        for events in zip(*[acc.Scalars(tag) for acc in summary_iterators]):
-            out[tag].append(events[0].value)
+    ea = EventAccumulator(os.path.join(path, os.listdir(path)[0])).Reload()
+    tags = ea.Tags()["scalars"]
 
-    tags, values = zip(*out.items())
-    # TODO: there's a length mismatch somewhere!
-    np_values = -np.ones([len(values), len(max(values, key=lambda x: len(x)))])
-    for i, j in enumerate(values):
-        np_values[i][0 : len(j)] = j
+    steps, values = dict(), dict()
+    for tag in tags:
+        steps[tag], values[tag] = [], []
+        for event in ea.Scalars(tag):
+            steps[tag].append(event.step)
+            values[tag].append(event.value)
 
     summary_df = pd.DataFrame()
-    for index, tag in enumerate(tags):
-        df = pd.DataFrame(np_values[index], index=steps, columns=[tag])
-        summary_df = pd.concat([summary_df, df], axis=1)
+    for tag in tags:
+        df = pd.DataFrame({"step": steps[tag], tag: values[tag]}).set_index("step")
+        summary_df = summary_df.join(df, how="outer")
+    summary_df.drop([0], inplace=True)  # drop empty 1st row
+
+    # NOTE: We fill metrics that are calculated less frequently with last value
+    summary_df.fillna(method="pad", inplace=True)
 
     return summary_df

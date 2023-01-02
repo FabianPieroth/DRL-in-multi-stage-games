@@ -24,9 +24,9 @@ from src.utils.coordinator_utils import get_env
 directory = f"{LOG_PATH}verifier/"
 
 # USER PARAMETERS
-num_rounds_to_play_options = [3]
+num_rounds_to_play_options = [2]
 num_simulations_options = [2 ** i for i in range(5, 25, 2)]
-action_discretization_options = [128, 64, 32, 16, 8]
+action_discretization_options = [128, 64, 32, 16]
 
 
 def enumerated_product(*args):
@@ -121,7 +121,7 @@ def _plot(metric, time):
         ax.grid(linestyle="--")
         ax.set_xscale("log", base=2)
     # axs[0].set_yscale('log', base=10)
-    axs[0].set_ylim([-0.005, 0.02])
+    axs[0].set_ylim([-0.003, 0.02])
     axs[1].set_yscale("log", base=2)
     axs[0].legend(title="discretization")
 

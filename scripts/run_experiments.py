@@ -17,17 +17,17 @@ def run_sequential_sales_experiment():
     device = 1
     verifier_device = "null"
     runs = 3
-    iteration_num = 2_000
+    iteration_num = 5_000
     policy_sharing = True
 
-    n_steps_per_iteration_options = [8, 32, 128]
-    n_rollout_steps_options = [8, 32, 128]
-    learning_rate_schedule_options = ["constant", "linear", "exponential"]
+    n_steps_per_iteration_options = [512]
+    n_rollout_steps_options = [8]
+    learning_rate_schedule_options = ["constant"]
     collapse_symmetric_opponents_options = [False]
     num_rounds_to_play_options = [1, 2, 4]
     mechanism_type_options = ["first"]
     algorithm_options = ["ppo"]
-    action_dependent_std_options = [True, False]
+    action_dependent_std_options = [True]
     options = product(
         n_steps_per_iteration_options,
         n_rollout_steps_options,
@@ -65,6 +65,7 @@ def run_sequential_sales_experiment():
                         f"iteration_num={iteration_num}",
                         f"n_steps_per_iteration=[{n_steps_per_iteration}]",
                         f"algorithm_configs.{algorithm}.n_rollout_steps={n_rollout_steps}",
+                        f"algorithm_configs.{algorithm}.learning_rate_schedule={learning_rate_schedule}",
                         f"policy_sharing={policy_sharing}",
                         f"policy.action_dependent_std=[{action_dependent_std}]",
                         f"log_path={LOG_PATH}",
