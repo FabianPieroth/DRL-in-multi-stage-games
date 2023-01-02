@@ -9,7 +9,7 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from tqdm import tqdm
 
 
-def metric_python2latex(metric_python_name: str):
+def metric_python2latex(metric_python_name: str) -> str:
     """Transform code naming of metric into proper LaTeX code."""
 
     if metric_python_name.startswith("eval/action_equ_L2_distance_stage_"):
@@ -25,6 +25,16 @@ def metric_python2latex(metric_python_name: str):
 
     # Fall back: No LaTeX formulation found
     return metric_python_name
+
+
+def param_python2latex(param_python_name: str) -> str:
+    """Transform code naming of parameter into proper LaTeX code."""
+
+    if param_python_name == "rl_envs.risk_aversion":
+        return "risk $\rho$"
+
+    # Fall back: No LaTeX formulation found
+    return param_python_name
 
 
 def get_last_iter(
@@ -69,6 +79,7 @@ def get_pivot_table(df: pd.DataFrame, hyperparameters: List[str]):
 
     # Formatting
     pivot = pivot.swaplevel(axis=1)
+    pivot.index.names = [param_python2latex(p) for p in pivot.index.names]
 
     pivot = pivot.round(decimals=4)
     final_df = pd.DataFrame()
@@ -79,7 +90,8 @@ def get_pivot_table(df: pd.DataFrame, hyperparameters: List[str]):
             + pivot[(algorithm, "std")].astype(str)
             + ")"
         )
-    return pivot
+
+    return final_df
 
 
 def save_df(df: pd.DataFrame, environment: str, path: str):
