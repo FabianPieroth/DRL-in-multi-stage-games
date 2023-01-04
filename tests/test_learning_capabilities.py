@@ -46,6 +46,7 @@ def test_learning_in_sequential_auction(
         f"num_envs={1024}",
         f"algorithms=[{learner}]",
         f"algorithm_configs.{learner}.n_rollout_steps={4}",
+        f"algorithm_configs.{learner}.learning_rate_schedule=constant",
         f"eval_freq={iteration_num + 2}",
         f"rl_envs=sequential_auction",
         f"rl_envs.mechanism_type={mechanism_type}",
@@ -76,8 +77,8 @@ ids_sc, testdata_sc = zip(
     *[
         ["symmetric_true_valuations", ("true_valuations", True, 100, 0.1)],
         ["non_symmetric_true_valuations", ("true_valuations", False, 100, 0.1)],
-        # ["symmetric_winning_bids",        ("winning_bids",    True,  300, 0.08)],
-        # ["non_symmetric_winning_bids",    ("winning_bids",    False, 300, 0.13)],
+        # ["symmetric_winning_bids",        ("winning_bids", True, 300, 0.25)],
+        # ["non_symmetric_winning_bids",    ("winning_bids", False, 300, 0.25)],
     ]
 )
 
@@ -103,12 +104,14 @@ def test_learning_in_signaling_contest(
         f"eval_freq={iteration_num + 2}",
         f"rl_envs=signaling_contest",
         f"rl_envs.information_case={information_case}",
+        f"algorithm_configs.ppo.n_rollout_steps={3}",
+        f"algorithm_configs.ppo.learning_rate_schedule=constant",
     ]
     config = io_ut.get_config(overrides=overrides)
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
-    _, _, l2_distances = ma_learner.env.model.do_equilibrium_and_actual_rollout(
+    _, _, l2_distances = ma_learner.env.model.eval_vs_equilibrium_strategies(
         ma_learner.learners, 2048
     )
     average_l2_distance = (
@@ -123,7 +126,7 @@ def test_learning_in_signaling_contest(
 
 
 ids_rps, testdata_rps = zip(
-    *[["dqn_vs_rock_rock", ("dqn", 60, 0.99)], ["ppo_vs_rock_rock", ("ppo", 60, 0.95)]]
+    *[["dqn_vs_rock_rock", ("dqn", 60, 0.99)], ["ppo_vs_rock_rock", ("ppo", 200, 0.95)]]
 )
 
 
@@ -145,6 +148,7 @@ def test_learning_in_rps(algo_name, iteration_num, error_bound):
         f"eval_freq={iteration_num + 2}",
         f"rl_envs=rockpaperscissors",
         f"rl_envs.num_agents={3}",
+        f"algorithm_configs.ppo.learning_rate_schedule=constant",
     ]
     config = io_ut.get_config(overrides=overrides)
 

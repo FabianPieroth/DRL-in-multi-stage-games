@@ -2,5 +2,5 @@
 
 algorithm_configs:
   ppo:
-    n_rollout_steps: 8
+    n_rollout_steps: 128
     gamma: 0.99
