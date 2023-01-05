@@ -12,23 +12,59 @@ DEVICE = "cuda:0" if torch.cuda.is_available() else "CPU"
 
 ids, testdata = zip(
     *[
-        ["first-price-ppo", ("first", "ppo", False, False, 300, 0.10)],
-        ["first-price-reinforce", ("first", "reinforce", False, False, 300, 0.10)],
-        ["second-price", ("second", "ppo", False, False, 300, 0.25)],
-        ["first-price_policy_sharing", ("first", "ppo", True, False, 300, 0.10)],
-        ["first-price_collapse_opponents", ("first", "ppo", True, True, 300, 0.10)],
+        [
+            "first-price-ppo",
+            ("first", "ppo", "symmetric_uniform", 3, 2, False, False, 300, 0.10),
+        ],
+        [
+            "first-price-reinforce",
+            ("first", "reinforce", "symmetric_uniform", 3, 2, False, False, 300, 0.10),
+        ],
+        [
+            "second-price",
+            ("second", "ppo", "symmetric_uniform", 3, 2, False, False, 300, 0.25),
+        ],
+        [
+            "first-price_policy_sharing",
+            ("first", "ppo", "symmetric_uniform", 3, 2, True, False, 300, 0.10),
+        ],
+        [
+            "first-price_collapse_opponents",
+            ("first", "ppo", "symmetric_uniform", 3, 2, True, True, 300, 0.10),
+        ],
+        [
+            "first-price-affiliated-values-ppo",
+            ("first", "ppo", "affiliated_uniform", 2, 1, False, False, 300, 0.10),
+        ],
+        [
+            "second-price-mineral-rights-ppo",
+            (
+                "second",
+                "ppo",
+                "mineral_rights_common_value",
+                3,
+                1,
+                False,
+                False,
+                300,
+                0.10,
+            ),
+        ],
     ]
 )
 
 
 @pytest.mark.parametrize(
-    "mechanism_type, learner, policy_sharing, collapse_symmetric_opponents, iteration_num, error_bound",
+    "mechanism_type, learner, sampler_type, num_agents, num_rounds, policy_sharing, collapse_symmetric_opponents, iteration_num, error_bound",
     testdata,
     ids=ids,
 )
 def test_learning_in_sequential_auction(
     mechanism_type: str,
     learner: str,
+    sampler_type: str,
+    num_agents: int,
+    num_rounds: int,
     policy_sharing: bool,
     collapse_symmetric_opponents: bool,
     iteration_num: int,
@@ -38,7 +74,6 @@ def test_learning_in_sequential_auction(
     io_ut.set_global_seed(0)
 
     # change some of the default configurations
-    num_agents = 3
     overrides = [
         f"device={DEVICE}",
         f"iteration_num={iteration_num}",
@@ -49,9 +84,10 @@ def test_learning_in_sequential_auction(
         f"algorithm_configs.{learner}.learning_rate_schedule=constant",
         f"eval_freq={iteration_num + 2}",
         f"rl_envs=sequential_auction",
+        f"rl_envs/sampler={sampler_type}",
         f"rl_envs.mechanism_type={mechanism_type}",
         f"rl_envs.num_agents={num_agents}",
-        f"rl_envs.num_rounds_to_play={num_agents - 1}",
+        f"rl_envs.num_rounds_to_play={num_rounds}",
         f"rl_envs.reduced_observation_space={True}",
         f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
     ]

@@ -1,0 +1,3 @@
+name: "symmetric_gaussian"
+mean: 15.0
+stddev: 5.0

@@ -382,7 +382,7 @@ class MATorchVecEnv(VecEnv):
             )
         self.current_states = next_states
 
-        n_dones = dones.sum()
+        n_dones = dones.sum().cpu().item()
         self.current_states[dones] = self.model.sample_new_states(n_dones)
 
         self.ep_stats["returns"] += torch.sum(

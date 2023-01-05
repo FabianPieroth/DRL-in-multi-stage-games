@@ -65,7 +65,9 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
         self.num_units = config["num_units"]
         self.player_position = agent_id
         self.equ_type = config["equ_type"]
-        self.payments_start_index = config["payments_start_index"]
+        self.obs_payments_start_index = (
+            config["payments_start_index"] - config["valuation_size"]
+        )
         self.reduced_obs_space = config["reduced_obs_space"]
         self.dummy_price_key = config["dummy_price_key"]
         self.valuations_start_index = config["valuations_start_index"]
@@ -85,6 +87,10 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
             )
         elif self.equ_type == "second_price_symmetric_uniform":
             bid_function = self._get_second_price_symmetric_uniform_equ()
+        elif self.equ_type == "second_price_3p_mineral_rights_prior":
+            bid_function = self._get_bne_3p_mineral_rights_prior()
+        elif self.equ_type == "first_price_2p_affiliated_values_uniform":
+            bid_function = self._get_bne_2p_affiliated_values_prior()
         else:
             raise ValueError("No valid equ_type selected - check: " + self.equ_type)
         return bid_function
@@ -111,7 +117,7 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
             return observation[0, 1].long().item()
         else:
             return (
-                observation[0, self.payments_start_index :]
+                observation[0, self.obs_payments_start_index :]
                 .tolist()
                 .index(self.dummy_price_key)
             )
@@ -165,6 +171,36 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
             bid = (
                 (self.num_agents - self.num_units) / (self.num_agents - stage - 1)
             ) * valuation
+
+            if won is not None:
+                bid[won, ...] = 0
+
+            return bid.view(-1, 1)
+
+        return bid_function
+
+    def _get_bne_3p_mineral_rights_prior(self):
+        """BNE in the 3-player 'Mineral Rights' setting.
+        Reference: Krishna (2009), Example 6.1"""
+
+        def bid_function(observation: torch.Tensor):
+            stage, valuation, won = self._get_info_from_observation(observation)
+            bid = (2 * valuation) / (2 + valuation)
+
+            if won is not None:
+                bid[won, ...] = 0
+
+            return bid.view(-1, 1)
+
+        return bid_function
+
+    def _get_bne_2p_affiliated_values_prior(self):
+        """Symmetric BNE in the 2p affiliated values model.
+        Reference: Krishna (2009), Example 6.2"""
+
+        def bid_function(observation: torch.Tensor):
+            stage, valuation, won = self._get_info_from_observation(observation)
+            bid = (2 / 3) * valuation
 
             if won is not None:
                 bid[won, ...] = 0

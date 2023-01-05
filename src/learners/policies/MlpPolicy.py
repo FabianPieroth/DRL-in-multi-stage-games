@@ -25,7 +25,7 @@ from stable_baselines3.common.torch_layers import (
 from stable_baselines3.common.type_aliases import Schedule
 from torch import nn
 
-from src.utils.distributions import DiagGaussianDistributionWithVariableStd
+from src.utils.distributions_and_priors import DiagGaussianDistributionWithVariableStd
 
 
 class Abs(nn.Module):
