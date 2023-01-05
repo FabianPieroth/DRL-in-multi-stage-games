@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from gym import spaces
 
+import src.utils.distributions_and_priors as dap_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SequentialAuctionEquilibrium
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
@@ -36,27 +37,22 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
 
         # NOTE: unit-demand only atm
         self.valuation_size = config.valuation_size
+        self.signal_size = self.valuation_size
         self.action_size = config.action_size
         self.payments_start_index = self.get_payments_start_index()
         self.valuations_start_index = 0
+        self.state_signal_start_index = (
+            self.valuations_start_index + self.valuation_size
+        )
         self.risk_aversion = config.risk_aversion
-
-        super().__init__(config, device)
+        self.sampler = self._init_sampler(config, device)
 
         # If the opponents are all symmetric, we may just sample from one
         # opponent with the max order statistic corresponding to the same
         # competition as the original opponents
         self.collapse_symmetric_opponents = config.collapse_symmetric_opponents
 
-        # `num_actual_agents` may be larger than `num_agents` when we use
-        # `collapse_symmetric_opponents`: Then `num_agents` will be lowered to
-        # correspond to the sole learner.
-        self.num_actual_agents = config.num_agents
-
-        if self.collapse_symmetric_opponents:
-            # Overwrite: external usage of this `BaseEnvForVec` should only
-            # interact via a single learner.
-            self.num_agents = 1
+        super().__init__(config, device)
 
     def _init_mechanism(self, config):
         if config.mechanism_type == "first":
@@ -77,7 +73,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self, agent_id: int
     ) -> SequentialAuctionEquilibrium:
         equilibrium_config = {
-            "num_agents": self.config["num_agents"],
+            "num_agents": self.config.num_agents,
             "num_units": self.num_rounds_to_play,
             "reduced_obs_space": self.reduced_observation_space,
             "payments_start_index": self.payments_start_index,
@@ -86,19 +82,47 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             "valuation_size": self.valuation_size,
             "risk_aversion": self.risk_aversion,
         }
-        if self.config.mechanism_type == "first" and self.risk_aversion == 1.0:
+        if (
+            self.config.mechanism_type == "first"
+            and self.risk_aversion == 1.0
+            and self.config.sampler.name == "symmetric_uniform"
+        ):
             equilibrium_config["equ_type"] = "fpsb_symmetric_uniform"
-        elif self.config.mechanism_type == "first" and self.num_rounds_to_play == 1:
+        elif (
+            self.config.mechanism_type == "first"
+            and self.num_rounds_to_play == 1
+            and self.config.sampler.name == "symmetric_uniform"
+        ):
             equilibrium_config[
                 "equ_type"
             ] = "fpsb_symmetric_uniform_single_stage_risk_averse"
-        elif self.config.mechanism_type in ["second", "vcg", "vickery"]:
+        elif (
+            self.config.mechanism_type in ["second", "vcg", "vickery"]
+            and self.risk_aversion == 1.0
+            and self.config.sampler.name == "symmetric_uniform"
+        ):
+            # TODO: @Nils: Is the equilibrium in second price also for risk? I would have thought it only to work for risk-neutral
             equilibrium_config["equ_type"] = "second_price_symmetric_uniform"
+        elif (
+            self.config.mechanism_type in ["second", "vcg", "vickery"]
+            and self.num_rounds_to_play == 1
+            and self.config.num_agents == 3
+            and self.config.sampler.name == "mineral_rights_common_value"
+        ):
+            equilibrium_config["equ_type"] = "second_price_3p_mineral_rights_prior"
+        elif (
+            self.config.mechanism_type == "first"
+            and self.num_rounds_to_play == 1
+            and self.config.num_agents == 2
+            and self.config.sampler.name == "affiliated_uniform"
+        ):
+            equilibrium_config["equ_type"] = "first_price_2p_affiliated_values_uniform"
         else:
             print("No analytical equilibrium available.")
             return None
         return SequentialAuctionEquilibrium(agent_id, equilibrium_config)
 
+    # TODO: @Nils: Is this redundant?
     def _init_dummy_strategies(self):
         return [
             lambda obs, deterministic=True: torch.zeros(
@@ -108,57 +132,81 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         ]
 
     def _get_num_agents(self) -> int:
-        return self.config.num_agents
+        num_agents = self.config.num_agents
+        # `num_actual_agents` may be larger than `num_agents` when we use
+        # `collapse_symmetric_opponents`: Then `num_agents` will be lowered to
+        # correspond to the sole learner.
+        self.num_actual_agents = num_agents
+
+        if self.collapse_symmetric_opponents:
+            assert (
+                self.config.sampler.name == "symmetric_uniform"
+            ), "Collapse_opponents is currently hard-coded for uniform_symmetric prior"
+            # Overwrite: external usage of this `BaseEnvForVec` should only
+            # interact via a single learner.
+            num_agents = 1
+        return num_agents
+
+    def _init_sampler(self, config, device):
+        num_agents = config.num_agents
+        if config.collapse_symmetric_opponents:
+            num_agents = 2
+        return dap_ut.get_sampler(
+            num_agents,
+            self.valuation_size,
+            self.signal_size,
+            config.sampler,
+            default_device=device,
+        )
 
     def _init_observation_spaces(self):
         """Returns dict with agent - observation space pairs.
         Returns:
             Dict[int, Space]: agent_id: observation space
         """
-        # unit-demand
-        self.valuation_size = 1
-        self.action_size = 1
-
-        # set up observation space
         # NOTE: does not support non unit-demand
         self.reduced_observation_space = self.config.reduced_observation_space
-        if self.reduced_observation_space:
-            # observations: valuation, stage, allocation (up to now)
-            low = [0.0] * 3
-            high = [1.0, self.num_rounds_to_play, 1.0]
-        else:
-            # observations: valuation, allocation (including in which stage
-            # obtained), previous prices (including in which stage payed)
-            low = (
-                [0.0]
-                + [0.0] * self.num_rounds_to_play
-                + [-1.0] * (self.num_rounds_to_play * 2)
+        observation_spaces_dict = {}
+        for agent_id in range(self.num_agents):
+            val_low = self.sampler.support_bounds[agent_id, 0, 0].cpu().detach().item()
+            val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
+            if self.reduced_observation_space:
+                # observations: valuation, stage, allocation (up to now)
+                low = [val_low, 0.0, 0.0]
+                high = [val_high, self.num_rounds_to_play, 1.0]
+            else:
+                # observations: valuation, allocation (including in which stage
+                # obtained), previous prices (including in which stage payed)
+                low = (
+                    [val_low]
+                    + [0.0] * self.num_rounds_to_play
+                    + [-1.0] * (self.num_rounds_to_play * 2)
+                )
+                high = (
+                    [val_high]
+                    + [1.0] * self.num_rounds_to_play
+                    + [val_high] * (self.num_rounds_to_play * 2)
+                )
+            self.OBSERVATION_DIM = len(low)
+            observation_spaces_dict[agent_id] = spaces.Box(
+                low=np.float32(low), high=np.float32(high)
             )
-            high = (
-                [1.0]
-                + [1.0] * self.num_rounds_to_play
-                + [SequentialAuction.ACTION_UPPER_BOUND] * (self.num_rounds_to_play * 2)
-            )
-        self.OBSERVATION_DIM = len(low)
-        return {
-            agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
-            for agent_id in range(self.num_agents)
-        }
+        return observation_spaces_dict
 
     def _init_action_spaces(self):
         """Returns dict with agent - action space pairs.
         Returns:
             Dict[int, Space]: agent_id: action space
         """
-        sa_action_space = spaces.Box(
-            low=np.float32(
-                [SequentialAuction.ACTION_LOWER_BOUND] * self.config.action_size
-            ),
-            high=np.float32(
-                [SequentialAuction.ACTION_UPPER_BOUND] * self.config.action_size
-            ),
-        )
-        return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
+        action_spaces_dict = {}
+        for agent_id in range(self.num_agents):
+            val_low = self.sampler.support_bounds[agent_id, 0, 0].cpu().detach().item()
+            val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
+            action_spaces_dict[agent_id] = spaces.Box(
+                low=np.float32([val_low] * self.config.action_size),
+                high=np.float32([val_high] * self.config.action_size),
+            )
+        return action_spaces_dict
 
     def to(self, device) -> Any:
         """Set device"""
@@ -168,6 +216,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     def sample_new_states(self, n: int) -> Any:
         """Create new initial states consisting of
             * one valuation per agent
+            * one signal per agent
             * num_rounds_to_play * allocation per agent
             * prices of all stages (-1 for future stages)
                 -> implicitly tells agents which the current round is
@@ -177,7 +226,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             dimension consists of the valuation, the allocations, and payments.
             Latter of which are kept track of over all stages.
         """
-        self.allocations_start_index = self.valuation_size
+        self.allocations_start_index = self.valuation_size + self.signal_size
         # NOTE: We keep track of all (incl. zero) payments for reward calculations
         states = torch.zeros(
             (
@@ -188,8 +237,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             device=self.device,
         )
 
-        # ipv symmetric uniform priors
-        states[:, :, : self.valuation_size].uniform_(0, 1)
+        # draw valuations and signals
+        valuations, signals = self.sampler.draw_profiles(n)
+        states[:, :, : self.valuation_size] = valuations
+        states[
+            :, :, self.valuation_size : self.valuation_size + self.signal_size
+        ] = signals
 
         if self.collapse_symmetric_opponents:
             # The maximum of multiple uniform random variables follows a Beta
@@ -198,7 +251,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 torch.tensor([self.num_actual_agents - 1], device=self.device),
                 torch.tensor([1.0], device=self.device),
             )
+            # NOTE: This samples from the valuations directly. In general, these may not be public to the agents.
+            # If necessary, use signals instead.
             states[:, 1, : self.valuation_size] = m.sample((n,))
+            states[
+                :, 1, self.valuation_size : self.valuation_size + self.signal_size
+            ] = states[:, 1, : self.valuation_size].clone()
 
         # dummy prices
         states[:, :, self.payments_start_index :] = SequentialAuction.DUMMY_PRICE_KEY
@@ -206,7 +264,17 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         return states
 
     def get_payments_start_index(self) -> int:
-        return self.valuation_size + self.valuation_size * self.num_rounds_to_play
+        """The payments start in die state after:
+        valuations, signals, allocations for each round and item
+
+        Returns:
+            int: _description_
+        """
+        return (
+            self.valuation_size
+            + self.signal_size
+            + self.valuation_size * self.num_rounds_to_play
+        )
 
     def compute_step(self, cur_states, actions: torch.Tensor):
         """Compute a step in the game.
@@ -270,6 +338,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             new_states[:, 1, : self.valuation_size] = highest_opponent * m.sample(
                 (batch_size,)
             )
+            new_states[
+                :, 1, self.valuation_size : self.valuation_size + self.signal_size
+            ] = new_states[:, 1, : self.valuation_size].clone()
 
             # force opponent's allocation to zero again s.t. it competes again
             # in next stage even if it has won already a good
@@ -380,18 +451,30 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 ] = states[
                     :,
                     agent_id,
-                    self.valuations_start_index : self.valuations_start_index
-                    + self.valuation_size,
+                    self.state_signal_start_index : self.state_signal_start_index
+                    + self.signal_size,
                 ]
                 observation_dict[agent_id][:, 1] = stage
                 observation_dict[agent_id][:, 2] = won[agent_id]
 
         else:
-            # Observation consists of: own valuation, own allocations, own
+            # Observation consists of: own signal, own allocations, own
             # payments and published (here = highest payments)
             obs_public = states[:, :, self.payments_start_index :].max(axis=1).values
             observation_dict = {
-                agent_id: torch.concat((states[:, agent_id, :], obs_public), axis=1)
+                agent_id: torch.concat(
+                    (
+                        states[
+                            :,
+                            agent_id,
+                            self.state_signal_start_index : self.state_signal_start_index
+                            + self.signal_size,
+                        ],
+                        states[:, agent_id, self.allocations_start_index :],
+                        obs_public,
+                    ),
+                    axis=1,
+                )
                 for agent_id in range(num_agents)
             }
 
@@ -626,13 +709,18 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                         alpha=0.1,
                         color=drawing.get_color(),
                     )
-            lin = np.linspace(0, 1, 2)
+            # NOTE: We take support of prior for agent 0 to do the plots!
+            lower_bound, upper_bound = (
+                self.sampler.support_bounds[0, 0, 0].item(),
+                self.sampler.support_bounds[0, 0, 1].item(),
+            )
+            lin = np.linspace(lower_bound, upper_bound, 2)
             ax.plot(lin, lin, "--", color="grey", alpha=0.5)
             ax.set_xlabel("valuation $v$")
             if stage == 0:
                 ax.set_ylabel("bid $b$")
-            ax.set_xlim([0, 1])
-            ax.set_ylim([-0.05, 1.05])
+            ax.set_xlim([lower_bound, upper_bound])
+            ax.set_ylim([lower_bound - 0.05, upper_bound + 0.05])
 
             # apply actions to get to next stage
             _, _, _, states = self.compute_step(states, ma_deterministic_actions)

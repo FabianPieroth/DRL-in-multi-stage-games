@@ -51,6 +51,7 @@ def get_config(
                 f"experiment_log_path='/{i}/'",
                 f"rl_envs=signaling_contest"
                 f"rl_envs.num_agents={9}",
+                f"rl_envs/sampler=uniform_symmetric"  # When overriding deeper nested defaults
             ]
     Returns:
         DictConfig:
@@ -125,7 +126,7 @@ def get_env_log_path_extension(config: DictConfig) -> str:
     if config.rl_envs.name == "rockpaperscissors":
         return ""
     elif config.rl_envs.name == "sequential_auction":
-        return "/" + config.rl_envs.mechanism_type
+        return "/" + config.rl_envs.mechanism_type + "/" + config.rl_envs.sampler.name
     elif config.rl_envs.name == "signaling_contest":
         return "/" + config.rl_envs.information_case
     elif config.rl_envs.name == "simple_soccer":

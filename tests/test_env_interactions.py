@@ -32,22 +32,53 @@ def test_learning_rockpaperscissors():
 
 ids_sequ_auction, testdata_sequ_auction = zip(
     *[
-        ["first-price", ("first", 2, True, False)],
-        ["second-price", ("second", 2, True, False)],
-        ["large", ("second", 4, True, False)],
-        ["non-reduced-observation-space", ("second", 2, False, False)],
-        ["collapse-symmetric-opponents", ("second", 3, False, True)],
+        ["first-price-uniform", ("first", 2, True, False, "symmetric_uniform")],
+        ["second-price-uniform", ("second", 2, True, False, "symmetric_uniform")],
+        ["large", ("second", 4, True, False, "symmetric_uniform")],
+        [
+            "non-reduced-observation-space",
+            ("second", 2, False, False, "symmetric_uniform"),
+        ],
+        [
+            "collapse-symmetric-opponents",
+            ("second", 3, False, True, "symmetric_uniform"),
+        ],
+        ["large-first-price-gaussian", ("first", 4, True, False, "symmetric_gaussian")],
+        [
+            "large-first-price-mineral-rights",
+            ("first", 4, True, False, "mineral_rights_common_value"),
+        ],
+        [
+            "large-first-price-affiliated_uniform",
+            ("first", 4, True, False, "affiliated_uniform"),
+        ],
+        [
+            "gaussian-non-reduced-observation-space",
+            ("second", 4, False, False, "symmetric_gaussian"),
+        ],
+        [
+            "mineral-rights-non-reduced-observation-space",
+            ("second", 4, False, False, "mineral_rights_common_value"),
+        ],
+        [
+            "affiliated-non-reduced-observation-space",
+            ("second", 4, False, False, "affiliated_uniform"),
+        ],
     ]
 )
 
 
 @pytest.mark.parametrize(
-    "mechanism_type,num_agents,reduced_observation_space,collapse_symmetric_opponents",
+    "mechanism_type,num_agents,reduced_observation_space,collapse_symmetric_opponents, sampler_type",
     testdata_sequ_auction,
     ids=ids_sequ_auction,
 )
 def test_learning_sequential_auctions(
-    mechanism_type, num_agents, reduced_observation_space, collapse_symmetric_opponents
+    mechanism_type,
+    num_agents,
+    reduced_observation_space,
+    collapse_symmetric_opponents,
+    sampler_type,
 ):
     """Runs multi agent learning in sequential auctions for specified parameters."""
     hydra.core.global_hydra.GlobalHydra().clear()
@@ -67,6 +98,7 @@ def test_learning_sequential_auctions(
         f"rl_envs.num_rounds_to_play={num_agents - 1}",
         f"rl_envs.reduced_observation_space={reduced_observation_space}",
         f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
+        f"rl_envs/sampler={sampler_type}",
     ]
     config = io_ut.get_config(overrides=overrides)
 
