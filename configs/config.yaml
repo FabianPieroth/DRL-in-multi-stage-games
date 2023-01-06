@@ -38,6 +38,7 @@ defaults:
   - algorithm_configs: all_algos
   - rl_envs: sequential_auction
   - policy: default_config
+  - optional policy/non_default: policy_for_${rl_envs}
   - space_translators: default_config
   - verifier: default_verifier
   - _self_
