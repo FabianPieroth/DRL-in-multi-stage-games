@@ -1,0 +1,7 @@
+# @package _global_
+
+policy:
+  net_arch:  # No. of layers and neurons
+    pi: [32, 32]
+    vf: [32, 32]
+  activation_fn: nn.SELU  # Activation function for inner neurons

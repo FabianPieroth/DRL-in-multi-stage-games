@@ -111,15 +111,14 @@ def test_learning_in_sequential_auction(
 
 ids_sc, testdata_sc = zip(
     *[
-        ["symmetric_true_valuations", ("true_valuations", True, 100, 0.1)],
-        ["non_symmetric_true_valuations", ("true_valuations", False, 100, 0.1)],
-        # ["symmetric_winning_bids",        ("winning_bids", True, 300, 0.25)],
-        # ["non_symmetric_winning_bids",    ("winning_bids", False, 300, 0.25)],
+        # ["symmetric_true_valuations", ("true_valuations", True, 1200, 0.2)],
+        ["non_symmetric_true_valuations", ("true_valuations", False, 800, 0.25)],
+        # ["symmetric_winning_bids",        ("winning_bids", True, 1200, 0.1)],
+        # ["non_symmetric_winning_bids",    ("winning_bids", False, 1200, 0.1)],
     ]
 )
 
 
-@pytest.mark.skip(reason="instable: unclear which hyperparameters are required")
 @pytest.mark.parametrize(
     "information_case, policy_sharing, iteration_num, error_bound",
     testdata_sc,
@@ -140,8 +139,8 @@ def test_learning_in_signaling_contest(
         f"eval_freq={iteration_num + 2}",
         f"rl_envs=signaling_contest",
         f"rl_envs.information_case={information_case}",
-        f"algorithm_configs.ppo.n_rollout_steps={3}",
-        f"algorithm_configs.ppo.learning_rate_schedule=constant",
+        f"algorithm_configs.ppo.learning_rate_schedule=exponential",
+        f"algorithm_configs.ppo.learning_rate=1e-2",
     ]
     config = io_ut.get_config(overrides=overrides)
 

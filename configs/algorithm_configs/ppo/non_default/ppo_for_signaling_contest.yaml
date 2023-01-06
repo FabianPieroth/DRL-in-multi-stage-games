@@ -2,4 +2,6 @@
 
 algorithm_configs:
   ppo:
-    n_rollout_steps: 8
+    n_rollout_steps: 2
+    learning_rate: 1e-2
+    learning_rate_schedule: "exponential"
