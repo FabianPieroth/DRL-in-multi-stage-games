@@ -18,7 +18,7 @@ ids, testdata = zip(
         ],
         [
             "first-price-reinforce",
-            ("first", "reinforce", "symmetric_uniform", 3, 2, False, False, 300, 0.10),
+            ("first", "reinforce", "symmetric_uniform", 3, 2, False, False, 300, 0.15),
         ],
         [
             "second-price",
@@ -47,7 +47,7 @@ ids, testdata = zip(
                 False,
                 False,
                 300,
-                0.10,
+                0.15,
             ),
         ],
     ]

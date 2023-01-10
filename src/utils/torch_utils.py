@@ -4,6 +4,24 @@ from typing import Callable, Dict, List, Tuple
 import torch
 
 
+class Abs(torch.nn.Module):
+    """Absolute value function as activation."""
+
+    __constants__ = ["inplace"]
+    inplace: bool
+
+    def __init__(self, inplace: bool = False):
+        super(Abs, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return torch.abs(input)
+
+    def extra_repr(self) -> str:
+        inplace_str = "inplace=True" if self.inplace else ""
+        return inplace_str
+
+
 def repeat_tensor_along_new_axis(
     data: torch.Tensor, pos: List[int], repeats: List[int]
 ) -> torch.Tensor:

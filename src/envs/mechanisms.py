@@ -176,7 +176,7 @@ class VickreyAuction(Mechanism):
         allocations.scatter_(player_dim, winning_bidders, 1)
 
         # Don't allocate items that have a winning bid of zero.
-        allocations.masked_fill_(mask=payments_per_item < 0, value=0)
+        allocations.masked_fill_(mask=payments_per_item <= 0, value=0)
         payments.masked_fill_(mask=payments < 0, value=0)
 
         if self.random_tie_break:  # restore bidder order

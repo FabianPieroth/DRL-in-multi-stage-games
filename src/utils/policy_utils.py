@@ -15,6 +15,7 @@ from src.learners.simple_soccer_policies.block_policy import BlockPolicy
 from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolicy
 from src.learners.simple_soccer_policies.goal_wall_policy import GoalWallPolicy
 from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPolicy
+from src.utils.torch_utils import Abs
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
@@ -47,12 +48,18 @@ def get_policy(config_policy):
 
 
 def get_lr_schedule(lr_schedule_name: str, initial_value: float) -> Callable:
+    MIN_LR = 1e-6
     if lr_schedule_name == "constant":
         return lambda x: initial_value
     elif lr_schedule_name == "linear":
-        return lambda progress_remaining: progress_remaining * initial_value
+        return (
+            lambda progress_remaining: (1 - progress_remaining) * MIN_LR
+            + progress_remaining * initial_value
+        )
     elif lr_schedule_name == "exponential":
-        return lambda progress_remaining: initial_value * (progress_remaining ** 10)
+        return lambda progress_remaining: max(
+            MIN_LR, initial_value * (progress_remaining ** 10)
+        )
     else:
         raise ValueError(f"Learning rate scheduler {lr_schedule_name} unknown.")
 
