@@ -47,7 +47,7 @@ ids, testdata = zip(
                 False,
                 False,
                 300,
-                0.15,
+                0.25,
             ),
         ],
     ]
