@@ -276,6 +276,21 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             + self.valuation_size * self.num_rounds_to_play
         )
 
+    def set_winners_bids_to_zero(
+        self, states, actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        """NOTE: We assume that all agents lose when they submit zero bids. If this is not the case, some agents may
+        win again even though they won already in a previous round!"""
+        # get current stage
+        stage = self._state2stage(states)
+
+        # set previous rounds winners' bids to zero
+        has_won_already = self._has_won_already_from_state(states, stage)
+        agent_ids = list(set(actions.keys()) & set(has_won_already.keys()))
+        for agent_id in agent_ids:
+            actions[agent_id][has_won_already[agent_id]] = 0.0
+        return actions
+
     def compute_step(self, cur_states, actions: torch.Tensor):
         """Compute a step in the game.
 
@@ -291,7 +306,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         player_positions_of_actions = set(actions.keys())
 
         if self.collapse_symmetric_opponents:
-            # simulate opponent actions
+            # simulate and append opponent actions
             opponent_obs = self.get_observations(cur_states)[1]
             with torch.no_grad():
                 opponent_actions = self.learners[0].policy._predict(
@@ -299,17 +314,18 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 )
             actions[1] = opponent_actions
 
-        # append opponents' actions
+        actions = self.set_winners_bids_to_zero(cur_states, actions)
+
         action_profile = torch.stack(tuple(actions.values()), dim=1)
+
+        # get current stage
+        stage = self._state2stage(cur_states)
 
         # run auction round
         allocations, payments = self.mechanism.run(action_profile)
 
         # states are for all agents, obs and rewards for `player_position` only
         new_states = cur_states.detach().clone()
-
-        # get current stage
-        stage = self._state2stage(cur_states)
 
         # update payments
         new_states[:, :, self.payments_start_index + stage] = payments
@@ -400,15 +416,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             self.payments_start_index + stage : self.payments_start_index + (stage + 1),
         ]
 
-        # set valuation to zero if we already own the unit
-        has_won_already = self._has_won_already_from_state(states, stage)[
-            agent_id
-        ].view_as(payments)
-
         # quasi-linear utility
-        payoff = (valuations * allocations) * torch.logical_not(
-            has_won_already
-        ) - payments
+        payoff = valuations * allocations - payments
 
         # Handle risk aversion and the case for negative utilities
         rewards = (
@@ -614,7 +623,11 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             ma_deterministic_actions = th_ut.get_ma_actions(
                 strategies, observations, True
             )
+            ma_deterministic_actions = self.set_winners_bids_to_zero(
+                states, ma_deterministic_actions
+            )
             ma_stddevs = self.get_ma_learner_stddevs(strategies, observations)
+            ma_stddevs = self.set_winners_bids_to_zero(states, ma_stddevs)
 
             unique_strategies = set(strategies.values())
             # NOTE: This breaks under asymmetries and partial policy sharing
@@ -781,6 +794,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 self.equilibrium_strategies, equ_observations
             )
             actual_actions = th_ut.get_ma_actions(learners, actual_observations)
+            actual_actions = self.set_winners_bids_to_zero(
+                actual_states, actual_actions
+            )
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions

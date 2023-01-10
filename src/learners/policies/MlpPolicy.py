@@ -87,6 +87,8 @@ class CustomActorCriticPolicy(ActorCriticPolicy):
         self.net_arch = net_arch
         self.activation_fn = activation_fn
         self.action_activation_fn = action_activation_fn
+        if action_activation_fn is not None:
+            self.action_activation_fn = self.action_activation_fn()
         self.ortho_init = ortho_init
 
         self.features_extractor = features_extractor_class(

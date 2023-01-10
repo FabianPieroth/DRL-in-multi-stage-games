@@ -1,6 +1,7 @@
 net_arch:  # No. of layers and neurons
-  pi: [32, 16, 4]
-  vf: [32, 16, 4]
-activation_fn: nn.ELU  # Activation function for inner neurons
-action_activation_fn: null  # activation function on output (action)
+  pi: [64, 64]
+  vf: [64, 64]
+activation_fn: nn.SELU  # Activation function for inner neurons
+action_activation_fn: None  # activation function on output (action),
+# any torch activation function, e.g., nn.Sigmoid or one of the following custom ones:[Abs]
 action_dependent_std: false  # SB3 only learns a fixed std in output (independent of observation)
