@@ -48,11 +48,11 @@ def get_config(
                 overrides = [
                 f"seed={i}",
                 f"device='cuda:1'",
-                f"experiment_log_path='/{i}/'",
-                f"rl_envs=signaling_contest"
                 f"rl_envs.num_agents={9}",
+                f"rl_envs=signaling_contest"
                 f"rl_envs/sampler=uniform_symmetric"  # When overriding deeper nested defaults
             ]
+            NOTE: The order in overrides matters! Deeper changes first
     Returns:
         DictConfig:
     """
