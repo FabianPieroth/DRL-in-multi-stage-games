@@ -149,6 +149,20 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         return states
 
+    def set_losers_bids_to_zero(
+        self, states, actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        """NOTE: Theoretically agents may still win the second round even if they lost in the first
+        but they still will not get any reward. It does skew the probabilities slightly for the first
+        rounds winners though!"""
+
+        # set previous rounds winners' bids to zero
+        has_lost_already = self._has_lost_already_from_state(states)
+        agent_ids = list(set(actions.keys()) & set(has_lost_already.keys()))
+        for agent_id in agent_ids:
+            actions[agent_id][has_lost_already[agent_id]] = 0.0
+        return actions
+
     def compute_step(self, cur_states, actions: torch.Tensor):
         """Compute a step in the game.
 
@@ -160,6 +174,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         :return episode-done markers:
         :return updated_states:
         """
+        actions = self.set_losers_bids_to_zero(cur_states, actions)
         action_profile = torch.stack(tuple(actions.values()), dim=1)
         new_states = cur_states.detach().clone()
         cur_stage = self._state2stage(cur_states)
@@ -501,7 +516,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     def _has_lost_already_from_state(
         self, state: torch.Tensor
     ) -> Dict[int, torch.Tensor]:
-        """Check if all players already have lost in previous round based on
+        """Check if player already has lost in previous round based on
         current state.
         """
         lost_already_dict = {}
@@ -566,7 +581,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             (30, 45),
         ]
         cmap = plt.get_cmap("gnuplot")
-        ax_second_round_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
+        agent_plot_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
         plt.rcParams["figure.figsize"] = (8, 5.5)
         fig = plt.figure(
             figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
@@ -586,14 +601,14 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             ma_deterministic_actions = th_ut.get_ma_actions(
                 learners, observations, deterministic=True
             )
-
-            ma_mixed_actions = th_ut.get_ma_actions(
-                learners, observations, deterministic=False
+            ma_deterministic_actions = self.set_losers_bids_to_zero(
+                states, ma_deterministic_actions
             )
 
-            num_agents_to_plot = self.num_agents
-            if self.config["plot_only_one_agent"]:
-                num_agents_to_plot = 1
+            ma_stddevs = th_ut.get_ma_learner_stddevs(learners, observations)
+            ma_stddevs = self.set_losers_bids_to_zero(states, ma_stddevs)
+
+            num_agents_to_plot = len(set(self.learners.values()))
             for agent_id in range(num_agents_to_plot):
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
@@ -607,13 +622,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 deterministic_actions = ma_deterministic_actions[agent_id][
                     increasing_order
                 ]
-                mixed_actions = ma_mixed_actions[agent_id][increasing_order]
+                agent_stddevs = ma_stddevs[agent_id][increasing_order]
 
                 # convert to numpy
                 agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
                 opponent_info = agent_obs[:, 3].detach().cpu().view(-1).numpy()
                 actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
-                mixed_actions = mixed_actions.view(-1).detach().cpu().numpy()
+                agent_stddevs = agent_stddevs.view(-1).detach().cpu().numpy()
                 has_lost_already = has_lost_already.cpu().numpy()
 
                 algo_name = pl_ut.get_algo_name(agent_id, config)
@@ -623,10 +638,11 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                         ax_first_round,
                         agent_id,
                         has_lost_already,
-                        mixed_actions,
+                        agent_stddevs,
                         agent_vals,
                         actions_array,
                         algo_name,
+                        agent_plot_colors[agent_id],
                     )
                 elif round == 2:
                     for ax_second_round, rotation in zip(
@@ -642,7 +658,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                             opponent_info,
                             actions_array,
                             algo_name,
-                            ax_second_round_colors[agent_id],
+                            agent_plot_colors[agent_id],
                         )
 
             # apply actions to get to next stage
@@ -660,6 +676,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         # reset seed
         self.seed(int(time.time()))
 
+    def sufficient_points_to_plot3d(self, mask: np.ndarray) -> bool:
+        return np.sum(mask) > 3
+
     def _plot_second_round_strategy(
         self,
         ax,
@@ -672,27 +691,39 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         color,
     ):
         ax.set_title("Second round")
-
+        # check whether there are at least three points to plot in the mask!
         mask = np.logical_and(~has_lost_already, opponent_info != 0)
-        ax.scatter(
-            agent_vals[mask],
-            opponent_info[mask],
-            actions_array[mask],
-            marker=".",
-            color=color,
-            label=f"bidder {agent_id} " + algo_name,
-            s=8,
-        )
+        if self.sufficient_points_to_plot3d(mask):
+            surf = ax.plot_trisurf(
+                agent_vals[mask],
+                opponent_info[mask],
+                actions_array[mask].squeeze(),
+                linewidth=0.3,
+                antialiased=True,
+                alpha=0.5,
+                color=color,
+                label=f"bidder {agent_id} " + algo_name,
+            )
+            # ## due to bug in matplotlib ## #
+            surf._facecolors2d = surf._facecolor3d
+            surf._edgecolors2d = surf._edgecolor3d
+            # ############################## #
         mask = np.logical_and(has_lost_already, opponent_info != 0)
-        ax.scatter(
-            agent_vals[mask],
-            opponent_info[mask],
-            actions_array[mask],
-            marker="1",
-            color=color,
-            label=f"bidder {agent_id} " + algo_name + " (lost)",
-            s=6,
-        )
+        if self.sufficient_points_to_plot3d(mask):
+            surf = ax.plot_trisurf(
+                agent_vals[mask],
+                opponent_info[mask],
+                actions_array[mask].squeeze(),
+                linewidth=0.2,
+                alpha=0.1,
+                antialiased=True,
+                color=color,
+                label=f"bidder {agent_id} " + algo_name + " (lost)",
+            )
+            # ## due to bug in matplotlib ## #
+            surf._facecolors2d = surf._facecolor3d
+            surf._edgecolors2d = surf._edgecolor3d
+            # ############################## #
         if agent_id == 0:
             self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
 
@@ -710,9 +741,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         val_x, opp_info, bid_z = self._get_actions_and_grid_in_second_stage(
             self.equilibrium_strategies[agent_id], plot_precision
         )
-        ax.plot_surface(
-            val_x.cpu().numpy(), opp_info.cpu().numpy(), bid_z.cpu().numpy(), alpha=0.2
+        surf = ax.plot_surface(
+            val_x.cpu().numpy(), opp_info.cpu().numpy(), bid_z.cpu().numpy(), alpha=0.8
         )
+        # ## due to bug in matplotlib ## #
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+        # ############################## #s
 
     def _get_actions_and_grid_in_second_stage(
         self, sa_learner, precision: int, won_first_round: float = 1.0
@@ -762,28 +797,34 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ax,
         agent_id,
         has_lost_already,
-        mixed_actions,
+        ma_stddevs,
         agent_vals,
         actions_array,
         algo_name,
+        agent_color,
     ):
         ax.set_title("First round")
         drawing, = ax.plot(
             agent_vals[~has_lost_already],
             actions_array[~has_lost_already],
-            linestyle="dotted",
-            marker="o",
-            markevery=32,
+            linestyle="-",
             label=f"bidder {agent_id} " + algo_name,
+            color=agent_color,
         )
-        ax.plot(
+        ax.fill_between(
             agent_vals[~has_lost_already],
-            mixed_actions[~has_lost_already],
-            ".",
+            (
+                actions_array[~has_lost_already].squeeze()
+                - ma_stddevs[~has_lost_already]
+            ).clip(min=0),
+            (
+                actions_array[~has_lost_already].squeeze()
+                + ma_stddevs[~has_lost_already]
+            ).clip(min=0),
             alpha=0.2,
             color=drawing.get_color(),
         )
-        self._plot_first_round_equilibrium_strategy(ax, agent_id)
+        self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
         lin = np.linspace(0, self.prior_high, 2)
         ax.plot(lin, lin, "--", color="grey")
         ax.set_xlabel("valuation $v$")
@@ -791,7 +832,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
 
     def _plot_first_round_equilibrium_strategy(
-        self, ax, agent_id: int, precision: int = 200
+        self, ax, agent_id: int, drawing, precision: int = 200
     ):
         val_xs, bid_ys = self._get_actions_and_grid_in_first_stage(
             self.equilibrium_strategies[agent_id], precision
@@ -799,7 +840,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ax.plot(
             val_xs.detach().cpu().numpy().squeeze(),
             bid_ys.squeeze().detach().cpu().numpy(),
-            linewidth=1,
+            linestyle="--",
+            color=drawing.get_color(),
+            label=f"bidder {agent_id+1} equ",
         )
 
     def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
@@ -872,6 +915,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             actual_actions = self.get_ma_clipped_bids(
                 learners, actual_observations, True
             )
+            actual_actions = self.set_losers_bids_to_zero(actual_states, actual_actions)
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions
@@ -900,14 +944,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                     + str(round_iter + 1),
                     distances_l2[agent_id][round_iter],
                 )
-                if round_iter == 1 and len(distances_l2[agent_id]) == 3:
-                    learner.logger.record(
-                        "eval/action_equ_L2_distance_"
-                        + add_specifier
-                        + "_lost_already_stage_"
-                        + str(round_iter + 1),
-                        distances_l2[agent_id][round_iter + 1],
-                    )
 
     def _get_mix_equ_learned_actions(
         self, agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
@@ -972,24 +1008,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             l2_distances[agent_id][1] = tensor_norm(
                 second_round_agent_actions_won_first_round.flatten(),
                 second_round_equ_actions_won_first_round.flatten(),
-            )
-
-            _, _, second_round_equ_actions_lost_first_round = self._get_actions_and_grid_in_second_stage(
-                self.equilibrium_strategies[agent_id],
-                second_round_precision,
-                won_first_round=0.0,
-            )
-
-            _, _, second_round_agent_actions_lost_first_round = self._get_actions_and_grid_in_second_stage(
-                learner, second_round_precision, won_first_round=0.0
-            )
-            second_round_agent_actions_lost_first_round = self.relu_layer(
-                second_round_agent_actions_lost_first_round
-            )
-
-            l2_distances[agent_id][2] = tensor_norm(
-                second_round_agent_actions_lost_first_round.flatten(),
-                second_round_equ_actions_lost_first_round.flatten(),
             )
 
         return l2_distances
