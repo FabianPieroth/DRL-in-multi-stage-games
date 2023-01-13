@@ -8,4 +8,4 @@ test:
   - virtualenv sequential-auctions-on-gpu
   - source sequential-auctions-on-gpu/bin/activate
   - pip install -r requirements.txt
-  - pytest --junitxml=report.xml
+  - pytest --cov-report term-missing --junitxml=report.xml
