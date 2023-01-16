@@ -112,6 +112,14 @@ def get_ma_actions(
         }
 
 
+def get_ma_learner_stddevs(learners, observations: Dict[int, torch.Tensor]):
+    agent_ids = list(set(learners.keys()) & set(observations.keys()))
+    return {
+        agent_id: learners[agent_id].policy.get_stddev(observations[agent_id])
+        for agent_id in agent_ids
+    }
+
+
 def torch_inverse_func(
     func: Callable, domain: Tuple[float, float], device="cpu", precision: float = 0.0001
 ) -> Callable:

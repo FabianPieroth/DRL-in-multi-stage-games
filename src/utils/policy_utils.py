@@ -72,6 +72,10 @@ def get_learner_and_policy(
     if algo_name == "ppo":
         algorithm_config = config["algorithm_configs"]["ppo"]
         n_rollout_steps = algorithm_config["n_rollout_steps"]
+        if algorithm_config.full_batch_updates:
+            batch_size = n_rollout_steps * config["num_envs"]
+        else:
+            batch_size = config["num_envs"]
         if config["policy_sharing"]:
             n_rollout_steps *= env.model.num_agents
         return VecPPO(
@@ -82,10 +86,10 @@ def get_learner_and_policy(
                 algorithm_config["learning_rate"],
             ),
             n_steps=n_rollout_steps,
-            batch_size=algorithm_config["n_rollout_steps"] * config["num_envs"],
+            batch_size=batch_size,
             action_dependent_std=config.policy["action_dependent_std"],
             gamma=algorithm_config["gamma"],
-            gae_lambda=0.95,
+            gae_lambda=algorithm_config.gae_lambda,
             clip_range=0.2,
             clip_range_vf=None,
             normalize_advantage=True,

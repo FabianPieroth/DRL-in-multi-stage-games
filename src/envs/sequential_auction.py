@@ -588,15 +588,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         if self.equilibrium_strategies_known:
             self.log_metrics_to_equilibrium(learners)
 
-    @staticmethod
-    def get_ma_learner_stddevs(learners, observations):
-        # NOTE: Can't iterate over obs because for `collapse_symmetric_opponents`
-        # we only have a single learner and more observations
-        return {
-            agent_id: learner.policy.get_stddev(observations[agent_id])
-            for agent_id, learner in learners.items()
-        }
-
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
     ):
@@ -626,7 +617,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             ma_deterministic_actions = self.set_winners_bids_to_zero(
                 states, ma_deterministic_actions
             )
-            ma_stddevs = self.get_ma_learner_stddevs(strategies, observations)
+            ma_stddevs = th_ut.get_ma_learner_stddevs(strategies, observations)
             ma_stddevs = self.set_winners_bids_to_zero(states, ma_stddevs)
 
             unique_strategies = set(strategies.values())
