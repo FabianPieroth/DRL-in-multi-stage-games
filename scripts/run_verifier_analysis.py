@@ -74,7 +74,7 @@ def run_verifier_analysis():
             ma_learner = MultiAgentCoordinator(config, env)
 
             tic = timer()
-            utility_losses_for_all_agents = ma_learner.verify_in_BNE().values()
+            utility_losses_for_all_agents = ma_learner.verify_br_against_BNE().values()
             elapsed_time = timer() - tic
 
             utility_losses[(i,) + idx] = np.mean(list(utility_losses_for_all_agents))

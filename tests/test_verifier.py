@@ -28,15 +28,13 @@ def test_verifier_in_bne(environment, add_info):
     """
     hydra.core.global_hydra.GlobalHydra().clear()
     io_ut.set_global_seed(0)
-    overrides = [f"device={DEVICE}", f"rl_envs={environment}"]
+    overrides = [f"device={DEVICE}", f"iteration_num=0", f"rl_envs={environment}"]
     if environment == "signaling_contest":
         overrides.append(f"rl_envs.information_case={add_info}")
-
     config = io_ut.get_config(overrides=overrides)
 
     ma_learner = coord_ut.start_ma_learning(config)
-
-    utility_losses = ma_learner.verify_in_BNE()
+    utility_losses = ma_learner.verify_br_against_BNE()
 
     for utility_loss in utility_losses.values():
         assert abs(utility_loss) < EPS
