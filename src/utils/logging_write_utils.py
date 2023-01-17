@@ -18,13 +18,15 @@ import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import MATorchVecEnv
 
 
-def logging_plots_to_gif(log_path: str, num_frames: int = 10):
+def logging_plots_to_gif(
+    log_path: str, num_frames: int = 10, starts_with: str = "plot_"
+):
     """Create GIF from plots."""
 
     # collect path to pictures
     paths = list()
     for file in os.listdir(log_path):
-        if file.endswith(".png"):
+        if file.endswith(".png") and file.startswith(starts_with):
             paths.append(f"{log_path}/{file}")
 
     # sort and subselect
@@ -35,7 +37,7 @@ def logging_plots_to_gif(log_path: str, num_frames: int = 10):
     images = []
     for path in paths:
         images.append(imageio.imread(path))
-    imageio.mimsave(f"{log_path}/movie.gif", images, duration=0.5)
+    imageio.mimsave(f"{log_path}/{starts_with}movie.gif", images, duration=0.5)
 
 
 def evaluate_policies(
