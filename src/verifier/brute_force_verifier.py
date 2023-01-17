@@ -1,5 +1,6 @@
 """Verifier"""
 import traceback
+from copy import deepcopy
 from typing import Dict, List, Tuple
 
 import torch
@@ -9,6 +10,7 @@ import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import VerifiableEnv
 from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.information_set_tree import InformationSetTree
+from src.verifier.mean_utility_tracker import UtilityTracker
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 _CPU_OOM_ERR_MSG_START = "[enforce fail at alloc_cpu.cpp:73]"
@@ -45,20 +47,53 @@ class BFVerifier:
         if self.env_is_compatible_with_verifier:
             self.num_rounds_to_play = self.env.model.num_rounds_to_play
 
-    def verify(
+    def verify_br(
         self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
     ):
+        """Use verifier to calculate estimated utility loss on grid."""
         agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
         utility_losses = {agent_id: 0 for agent_id in agent_ids}
+        relative_utility_losses = {agent_id: 0 for agent_id in agent_ids}
         best_responses = {agent_id: None for agent_id in agent_ids}
 
         for agent_id in agent_ids:
-            ul, br = self._get_agent_utility_loss_and_br(strategies, agent_id)
-            utility_losses[agent_id], best_responses[agent_id] = ul, br
+            (
+                utility_losses[agent_id],
+                relative_utility_losses[agent_id],
+                best_responses[agent_id],
+            ) = self._get_agent_br_utility_loss_and_br(strategies, agent_id)
 
-        return utility_losses, best_responses
+        return utility_losses, relative_utility_losses, best_responses
 
-    def _get_agent_utility_loss_and_br(self, learners, agent_id: int) -> float:
+    def verify_against_BNE(
+        self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
+    ):
+        """Use analytical BNE to estimate utility loss (exact ex post,
+        still approximates interim and ex ante).
+        """
+        agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
+        equ_strategies = self.env.model.equilibrium_strategies
+        utility_losses = {agent_id: None for agent_id in agent_ids}
+        relative_utility_losses = {agent_id: None for agent_id in agent_ids}
+
+        for agent_id in agent_ids:
+
+            # 1. Calculate BNE utility of this agent
+            bne_utility = self.estimate_agent_average_utility(equ_strategies, agent_id)
+
+            # 2. Calculate utility under current strategy
+            actual_vs_bne_strategies = deepcopy(equ_strategies)
+            actual_vs_bne_strategies[agent_id] = strategies[agent_id]
+            actual_utility = self.estimate_agent_average_utility(
+                actual_vs_bne_strategies, agent_id
+            )
+
+            utility_losses[agent_id] = bne_utility - actual_utility
+            relative_utility_losses[agent_id] = 1 - actual_utility / bne_utility
+
+        return utility_losses, relative_utility_losses
+
+    def _get_agent_br_utility_loss_and_br(self, learners, agent_id: int) -> float:
         """
         Args:
             learners (_type_): holds agents' strategies
@@ -76,21 +111,16 @@ class BFVerifier:
         )
         num_done_sims = 0
         batch_size = min(self.num_simulations, self.batch_size)
+        print(
+            f"Starting verification of agent {agent_id} with batch size {batch_size}."
+        )
         while num_done_sims <= self.num_simulations:
             try:
                 self._add_simulation_results_to_tree(
                     learners, agent_id, batch_size, information_tree
                 )
                 num_done_sims += batch_size
-                progress_message = (
-                    "Simulating for verification of agent "
-                    + str(agent_id)
-                    + " with batch size: "
-                    + str(batch_size)
-                )
-                io_ut.progress_bar(
-                    num_done_sims, self.num_simulations, progress_message
-                )
+                io_ut.progress_bar(num_done_sims, self.num_simulations)
             except RuntimeError as e:
                 """TODO: Some data seems to remain on the GPU if allocation
                 fails. If initial batch size = 2**18, then working batch_size =
@@ -99,7 +129,7 @@ class BFVerifier:
                 self._catch_failed_simulation(batch_size, e)
                 batch_size = int(batch_size / 2)
         return (
-            information_tree.get_utility_loss_estimate(),
+            *information_tree.get_utility_loss_estimate(),
             information_tree.get_best_response_estimate(),
         )
 
@@ -112,9 +142,12 @@ class BFVerifier:
             traceback.print_exc()
             raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
 
-    def get_actual_utility(
+    def get_rollout_utilities_from_states(
         self, states: torch.Tensor, learners: Dict[int, "Strategy"], agent_id: int
     ):
+        """Given a strategy profile `learners` and initial states `states`,
+        calculate the average utility.
+        """
         batch_size, device = states.shape[0], states.device
 
         actual_utility = torch.zeros((batch_size,), device=device)
@@ -124,6 +157,32 @@ class BFVerifier:
             actions = th_ut.get_ma_actions(learners, obs)
             obs, rewards, _, states = self.env.model.compute_step(states, actions)
             actual_utility += rewards[agent_id]
+
+        return actual_utility
+
+    def estimate_agent_average_utility(
+        self, learners: Dict[int, "Strategy"], agent_id: int
+    ):
+        """Given a strategy profile `learners` and an agent id `agent_id`,
+        estimate his or her average utility over self.num_simulations rollouts.
+        """
+        actual_utility_tracker = UtilityTracker(agent_id, self.device)
+
+        num_done_sims = 0
+        batch_size = min(self.num_simulations, self.batch_size)
+        while num_done_sims <= self.num_simulations:
+            try:
+                states = self.env.model.sample_new_states(batch_size).to(self.device)
+                actual_utility = self.get_rollout_utilities_from_states(
+                    states.clone(), learners, agent_id
+                )
+                actual_utility_tracker.add_utility(actual_utility)
+                num_done_sims += batch_size
+                io_ut.progress_bar(num_done_sims, self.num_simulations)
+            except RuntimeError as e:
+                self._catch_failed_simulation(batch_size, e)
+                batch_size = int(batch_size / 2)
+        actual_utility = actual_utility_tracker.get_mean_utility()
 
         return actual_utility
 
@@ -148,7 +207,9 @@ class BFVerifier:
         states = self.env.model.sample_new_states(batch_size).to(self.device)
 
         # A. Sample actual utility
-        actual_utility = self.get_actual_utility(states.clone(), learners, agent_id)
+        actual_utility = self.get_rollout_utilities_from_states(
+            states.clone(), learners, agent_id
+        )
 
         # B. Calculate best response utility
         best_response_utilities, sim_batch_indices = self.get_br_utilities_and_indices(
