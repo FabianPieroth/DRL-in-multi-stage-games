@@ -289,7 +289,9 @@ class SABaseAlgorithm(PPO, ABC):
         return actions, state
 
     def __str__(self):
-        return self.__class__.__name__
+        name = self.__class__.__name__
+        name = name[3:] if name.startswith("Vec") else name
+        return name
 
 
 class MABaseAlgorithm(BaseAlgorithm):
