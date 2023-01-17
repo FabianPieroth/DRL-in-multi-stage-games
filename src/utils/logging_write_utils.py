@@ -1,5 +1,6 @@
 """Utilities for logging"""
 import os
+import time
 import warnings
 from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -13,10 +14,12 @@ from stable_baselines3.common.vec_env import (
     VecMonitor,
     is_vecenv_wrapped,
 )
+from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import MATorchVecEnv
+from src.learners.utils import tensor_norm
 
 
 def logging_plots_to_gif(log_path: str, num_frames: int = 10):
@@ -118,3 +121,71 @@ def evaluate_policies(
             torch.std(torch.concat(episode_rewards[agent_id])).detach().item(),
         )
         learner.logger.record("eval/ep_len_mean", mean_episode_lengths)
+
+
+def log_training_progress(learners, iteration, log_interval, break_for_policy_sharing):
+    if log_interval is not None and iteration % log_interval == 0:
+        for agent_id, learner in learners.items():
+            if break_for_policy_sharing(agent_id):
+                break
+            fps = int(
+                (learner.num_timesteps - learner._num_timesteps_at_start)
+                / (time.time() - learner.start_time)
+            )
+            if len(learner.ep_info_buffer) > 0 and len(learner.ep_info_buffer[0]) > 0:
+                learner.logger.record(
+                    "rollout/ep_rew_mean",
+                    torch.mean(
+                        torch.concat(
+                            [
+                                ep_info[agent_id]["sa_episode_returns"]
+                                for ep_info in learner.ep_info_buffer
+                            ]
+                        )
+                    )
+                    .detach()
+                    .item(),
+                )
+                learner.logger.record(
+                    "rollout/ep_len_mean",
+                    torch.mean(
+                        torch.concat(
+                            [
+                                ep_info[agent_id]["sa_episode_lengths"]
+                                for ep_info in learner.ep_info_buffer
+                            ]
+                        )
+                    )
+                    .detach()
+                    .item(),
+                )
+            learner.logger.record("time/fps", fps)
+            learner.logger.record(
+                "time/time_elapsed", int(time.time() - learner.start_time)
+            )
+            learner.logger.record("time/total_timesteps", learner.num_timesteps)
+            learner.logger.dump(step=learner.num_timesteps)
+
+
+def change_in_parameter_space(learners, current_parameters, running_length):
+    prev_parameters = current_parameters
+    current_parameters = get_policy_parameters(learners)
+    for i, learner in learners.items():
+        running_length[i] += tensor_norm(current_parameters[i], prev_parameters[i])
+        learner.logger.record("train/running_length", running_length[i])
+
+    return current_parameters, running_length
+
+
+def get_policy_parameters(learners):
+    """Collect all current neural network parameters of the policy."""
+    param_dict = {}
+    for agent_id, learner in learners.items():
+        if learner.policy is not None:
+            param_dict[agent_id] = parameters_to_vector(
+                [_ for _ in learner.policy.parameters()]
+            )
+        else:
+            param_dict[agent_id] = torch.zeros(1)
+
+    return param_dict
