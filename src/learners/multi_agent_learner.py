@@ -223,8 +223,10 @@ class MultiAgentCoordinator:
             (self.env.num_envs,), dtype=bool, device=self.env.device
         )
 
-        num_timesteps = min(learner.num_timesteps for learner in self.learners.values())
-        while num_timesteps < total_timesteps:
+        while (
+            min(learner.num_timesteps for learner in self.learners.values())
+            < total_timesteps
+        ):
             if self._iteration_finished(self.config.n_steps_per_iteration):
                 print(f"Iteration {iteration} starts.")
 

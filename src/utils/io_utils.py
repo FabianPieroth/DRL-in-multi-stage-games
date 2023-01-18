@@ -94,6 +94,8 @@ def remove_unused_algorithm_settings(config: DictConfig):
 
 
 def get_n_steps_per_iteration(config: DictConfig) -> int:
+    if config.n_steps_per_iteration is not None:
+        return config.n_steps_per_iteration  # Don't change user input
     n_rollout_steps = None
     for agent_id in range(config.rl_envs.num_agents):
         algo_name = pl_ut.get_algo_name(agent_id, config)
