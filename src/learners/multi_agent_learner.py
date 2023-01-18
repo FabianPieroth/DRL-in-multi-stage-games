@@ -1,18 +1,15 @@
 """Multi agent learning for SB3"""
-import time
 from typing import Dict
 
 import matplotlib.pyplot as plt
 import torch
 from stable_baselines3.common.policies import register_policy
-from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils.io_utils as io_ut
 import src.utils.logging_write_utils as log_ut
 import src.utils.policy_utils as pl_ut
 from src.learners.policies.MlpPolicy import CustomActorCriticPolicy
-from src.learners.utils import tensor_norm
 from src.verifier import BFVerifier
 
 
@@ -37,22 +34,10 @@ class MultiAgentCoordinator:
         # Keep track of running length as Mertikopoulos suggests to detect
         # oscillations
         self.running_length = [0] * len(self.learners)
-        self.current_parameters = self._get_policy_parameters(self.learners)
+        self.current_parameters = log_ut.get_policy_parameters(self.learners)
 
         # Setup verifier
         self.verifier = self._setup_verifier()
-
-    def _get_policy_parameters(self, learners):
-        """Collect all current neural network parameters of the policy."""
-        param_dict = {}
-        for agent_id, learner in learners.items():
-            if learner.policy is not None:
-                param_dict[agent_id] = parameters_to_vector(
-                    [_ for _ in learner.policy.parameters()]
-                )
-            else:
-                param_dict[agent_id] = torch.zeros(1, device=self.config.device)
-        return param_dict
 
     def _setup_verifier(self):
         """Use appropriate verifier."""
@@ -110,69 +95,26 @@ class MultiAgentCoordinator:
                 callbacks[agent_id],
             )
 
-    def _do_break_for_policy_sharing(self, agent_id: int):
+    def _break_for_policy_sharing(self, agent_id: int):
         """If all agents share the same policy, we only train the one at 
         index 0.
         """
         return self.config.policy_sharing and agent_id > 0
 
-    def _display_and_log_training_progress(self):
-        for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
-                break
-            fps = int(
-                (learner.num_timesteps - learner._num_timesteps_at_start)
-                / (time.time() - learner.start_time)
-            )
-            if len(learner.ep_info_buffer) > 0 and len(learner.ep_info_buffer[0]) > 0:
-                learner.logger.record(
-                    "rollout/ep_rew_mean",
-                    torch.mean(
-                        torch.concat(
-                            [
-                                ep_info[agent_id]["sa_episode_returns"]
-                                for ep_info in learner.ep_info_buffer
-                            ]
-                        )
-                    )
-                    .detach()
-                    .item(),
-                )
-                learner.logger.record(
-                    "rollout/ep_len_mean",
-                    torch.mean(
-                        torch.concat(
-                            [
-                                ep_info[agent_id]["sa_episode_lengths"]
-                                for ep_info in learner.ep_info_buffer
-                            ]
-                        )
-                    )
-                    .detach()
-                    .item(),
-                )
-            learner.logger.record("time/fps", fps)
-            learner.logger.record(
-                "time/time_elapsed", int(time.time() - learner.start_time)
-            )
-            learner.logger.record("time/total_timesteps", learner.num_timesteps)
-            learner.logger.dump(step=learner.num_timesteps)
-
-    def _evaluate_policies(
-        self, iteration: int, n_eval_episodes: int, callbacks: None
-    ) -> None:
+    def _evaluate_policies(self, iteration: int, n_eval_episodes: int) -> None:
         """Evaluate current training progress."""
         log_ut.evaluate_policies(
             self.learners,
             self.env,
-            callbacks=callbacks,
             device=self.config.device,
             n_eval_episodes=n_eval_episodes,
+        )
+        self.current_parameters, self.running_length = log_ut.change_in_parameter_space(
+            self.learners, self.current_parameters, self.running_length
         )
         self.env.model.custom_evaluation(
             self.learners, self.env, self.writer, iteration + 1, self.config
         )
-        self._log_change_in_parameter_space()
 
     def verify_policies_br(self, iteration: int) -> None:
         """Use our verifier to evaluate each learned strategy against the
@@ -205,7 +147,7 @@ class MultiAgentCoordinator:
             log_ut.log_figure_to_writer(
                 self.writer, br_plot, iteration, "estimated_br_strategies"
             )
-            plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
+            # plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
             plt.close()
 
     def verify_policies_in_BNE(self) -> None:
@@ -257,15 +199,6 @@ class MultiAgentCoordinator:
             utility_losses[agent_id] = utility_loss[agent_id]
         return utility_losses
 
-    def _log_change_in_parameter_space(self):
-        prev_parameters = self.current_parameters
-        self.current_parameters = self._get_policy_parameters(self.learners)
-        for i, learner in self.learners.items():
-            self.running_length[i] += tensor_norm(
-                self.current_parameters[i], prev_parameters[i]
-            )
-            learner.logger.record("train/running_length", self.running_length[i])
-
     def learn(self) -> "OnPolicyAlgorithm":
         """Main training loop for multi-agent learning: Here, (1) the agents
         are asked to submit actions, (2) these are passed to the environment,
@@ -299,11 +232,14 @@ class MultiAgentCoordinator:
 
                 # Evaluate & log
                 if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
-                    self._display_and_log_training_progress()
                     with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
-                        self._evaluate_policies(
-                            iteration, self.config.n_eval_episodes, callbacks
+                        log_ut.log_training_progress(
+                            self.learners,
+                            iteration,
+                            self.config.train_log_freq,
+                            self._break_for_policy_sharing,
                         )
+                        self._evaluate_policies(iteration, self.config.n_eval_episodes)
                         self.verify_policies_br(iteration)
                         self.verify_policies_in_BNE()
 
@@ -361,7 +297,7 @@ class MultiAgentCoordinator:
             callbacks = [None] * len(self.learners)
 
         for agent_id, learner in self.learners.items():
-            if self._do_break_for_policy_sharing(agent_id):
+            if self._break_for_policy_sharing(agent_id):
                 callbacks = [callbacks[0] for i in range(len(callbacks))]
                 break
             timesteps, callbacks[agent_id] = learner._setup_learn(

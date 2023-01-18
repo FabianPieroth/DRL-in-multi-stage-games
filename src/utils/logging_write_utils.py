@@ -1,6 +1,8 @@
 """Utilities for logging"""
 import os
+import time
 import warnings
+from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import imageio
@@ -12,10 +14,12 @@ from stable_baselines3.common.vec_env import (
     VecMonitor,
     is_vecenv_wrapped,
 )
+from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import MATorchVecEnv
+from src.learners.utils import tensor_norm
 
 
 def logging_plots_to_gif(
@@ -43,69 +47,35 @@ def logging_plots_to_gif(
     imageio.mimsave(f"{log_path}/{starts_with}movie.gif", images, duration=0.5)
 
 
+def log_data_dict_to_learner_loggers(
+    learners, data_dict: Dict[int, float], data_name: str
+):
+    for agent_id, learner in learners.items():
+        learner.logger.record(data_name, data_dict[agent_id])
+
+
+def log_figure_to_writer(
+    writer: SummaryWriter, fig: plt.Figure, iteration: int, name: str
+):
+    if fig is not None:
+        writer.add_figure(name, fig, iteration)
+
+
 def evaluate_policies(
     learners,
     env: MATorchVecEnv,
     device: Union[str, int] = None,
     n_eval_episodes: int = 20,
     deterministic: bool = True,
-    render: bool = False,
-    callbacks: Optional[Callable[[Dict[str, Any], Dict[str, Any]], None]] = None,
-    reward_threshold: Optional[float] = None,
-    return_episode_rewards: bool = False,
-    warn: bool = False,
-) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
-    """
-    Runs policy for ``n_eval_episodes`` episodes and returns average reward.
-    If a vector env is passed in, this divides the episodes to evaluate onto the
-    different elements of the vector env. This static division of work is done to
-    remove bias. See https://github.com/DLR-RM/stable-baselines3/issues/402 for more
-    details and discussion.
+):
+    """Runs policy for ``n_eval_episodes`` episodes and logs average reward.
 
-    .. note::
-        If environment has not been wrapped with ``Monitor`` wrapper, reward and
-        episode lengths are counted as it appears with ``env.step`` calls. If
-        the environment contains wrappers that modify rewards or episode lengths
-        (e.g. reward scaling, early episode reset), these will affect the evaluation
-        results as well. You can avoid this by wrapping environment with ``Monitor``
-        wrapper before anything else.
-
-    :param model: The RL agent you want to evaluate.
+    :param learners: The RL learners to evaluate.
     :param env: The gym environment or ``VecEnv`` environment.
     :param n_eval_episodes: Number of episode to evaluate the agent
     :param deterministic: Whether to use deterministic or stochastic actions
-    :param render: Whether to render the environment or not
-    :param callback: callback function to do additional checks,
-        called after each step. Gets locals() and globals() passed as parameters.
-    :param reward_threshold: Minimum expected reward per episode,
-        this will raise an error if the performance is not met
-    :param return_episode_rewards: If True, a list of rewards and episode lengths
-        per episode will be returned instead of the mean.
-    :param warn: If True (default), warns user about lack of a Monitor wrapper in the
-        evaluation environment.
-    :return: Mean reward per episode, std of reward per episode.
-        Returns ([float], [int]) when ``return_episode_rewards`` is True, first
-        list containing per-episode rewards and second containing per-episode lengths
-        (in number of steps).
     """
-    is_monitor_wrapped = False
-    # Avoid circular import
-    from stable_baselines3.common.monitor import Monitor
-
-    if not isinstance(env, VecEnv):
-        env = DummyVecEnv([lambda: env])
-
-    is_monitor_wrapped = (
-        is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]
-    )
-
-    if not is_monitor_wrapped and warn:
-        warnings.warn(
-            "Evaluation environment is not wrapped with a ``Monitor`` wrapper. "
-            "This may result in reporting modified episode lengths and rewards, if other wrappers happen to modify these. "
-            "Consider wrapping environment first with ``Monitor`` wrapper.",
-            UserWarning,
-        )
+    env = copy(env)
 
     episode_iter = 0
     n_envs = env.num_envs
@@ -141,12 +111,11 @@ def evaluate_policies(
                 episode_rollout_ends = torch.zeros(
                     (env.num_envs), dtype=bool, device=env.device
                 )
-        if render:
-            env.render()
 
     mean_episode_lengths = (
         torch.mean(torch.concat(episode_lengths).float()).detach().item()
     )
+
     for agent_id, learner in learners.items():
         learner.logger.record(
             "eval/ep_rew_mean",
@@ -157,18 +126,71 @@ def evaluate_policies(
             torch.std(torch.concat(episode_rewards[agent_id])).detach().item(),
         )
         learner.logger.record("eval/ep_len_mean", mean_episode_lengths)
-    return episode_rewards, episode_lengths
 
 
-def log_data_dict_to_learner_loggers(
-    learners, data_dict: Dict[int, float], data_name: str
-):
+def log_training_progress(learners, iteration, log_interval, break_for_policy_sharing):
+    if log_interval is not None and iteration % log_interval == 0:
+        for agent_id, learner in learners.items():
+            if break_for_policy_sharing(agent_id):
+                break
+            fps = int(
+                (learner.num_timesteps - learner._num_timesteps_at_start)
+                / (time.time() - learner.start_time)
+            )
+            if len(learner.ep_info_buffer) > 0 and len(learner.ep_info_buffer[0]) > 0:
+                learner.logger.record(
+                    "rollout/ep_rew_mean",
+                    torch.mean(
+                        torch.concat(
+                            [
+                                ep_info[agent_id]["sa_episode_returns"]
+                                for ep_info in learner.ep_info_buffer
+                            ]
+                        )
+                    )
+                    .detach()
+                    .item(),
+                )
+                learner.logger.record(
+                    "rollout/ep_len_mean",
+                    torch.mean(
+                        torch.concat(
+                            [
+                                ep_info[agent_id]["sa_episode_lengths"]
+                                for ep_info in learner.ep_info_buffer
+                            ]
+                        )
+                    )
+                    .detach()
+                    .item(),
+                )
+            learner.logger.record("time/fps", fps)
+            learner.logger.record(
+                "time/time_elapsed", int(time.time() - learner.start_time)
+            )
+            learner.logger.record("time/total_timesteps", learner.num_timesteps)
+            learner.logger.dump(step=learner.num_timesteps)
+
+
+def change_in_parameter_space(learners, current_parameters, running_length):
+    prev_parameters = current_parameters
+    current_parameters = get_policy_parameters(learners)
+    for i, learner in learners.items():
+        running_length[i] += tensor_norm(current_parameters[i], prev_parameters[i])
+        learner.logger.record("train/running_length", running_length[i])
+
+    return current_parameters, running_length
+
+
+def get_policy_parameters(learners):
+    """Collect all current neural network parameters of the policy."""
+    param_dict = {}
     for agent_id, learner in learners.items():
-        learner.logger.record(data_name, data_dict[agent_id])
+        if learner.policy is not None:
+            param_dict[agent_id] = parameters_to_vector(
+                [_ for _ in learner.policy.parameters()]
+            )
+        else:
+            param_dict[agent_id] = torch.zeros(1)
 
-
-def log_figure_to_writer(
-    writer: SummaryWriter, fig: plt.Figure, iteration: int, name: str
-):
-    if fig is not None:
-        writer.add_figure(name, fig, iteration)
+    return param_dict

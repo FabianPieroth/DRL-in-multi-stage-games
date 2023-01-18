@@ -592,8 +592,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
     ):
         """Evaluate and log current strategies."""
-        seed = 69
-
         plt.style.use("ggplot")
         fig, axs = plt.subplots(
             nrows=1,
@@ -605,7 +603,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
-        self.seed(seed)
         states = self.sample_new_states(num_samples)
 
         for stage, ax in zip(range(self.num_rounds_to_play), axs):
@@ -736,13 +733,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         writer.add_figure("images", fig, iteration)
         plt.close()
 
-        # reset seed
-        self.seed(int(time.time()))
-
     def log_metrics_to_equilibrium(self, strategies, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
-        seed = 69
-        self.seed(seed)
 
         learned_utilities, equ_utilities, l2_distances = self.do_equilibrium_and_actual_rollout(
             strategies, num_samples
@@ -755,9 +747,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             strategies, learned_utilities, "eval/utility_actual"
         )
         self._log_l2_distances(strategies, l2_distances)
-
-        # reset seed
-        self.seed(int(time.time()))
 
     def do_equilibrium_and_actual_rollout(self, learners, num_samples: int):
         """Staring from state `states` we want to compute
