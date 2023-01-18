@@ -2,6 +2,7 @@ import warnings
 
 from omegaconf import DictConfig
 
+import src.utils.logging_write_utils as log_ut
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.sequential_auction import SequentialAuction
 from src.envs.signaling_contest import SignalingContest
@@ -34,4 +35,5 @@ def start_ma_learning(config: DictConfig) -> MultiAgentCoordinator:
     env = get_env(config)
     ma_learner = MultiAgentCoordinator(config, env)
     ma_learner.learn()
+    log_ut.logging_plots_to_gif(ma_learner.config.experiment_log_path)
     return ma_learner

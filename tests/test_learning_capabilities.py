@@ -114,7 +114,7 @@ ids_sc, testdata_sc = zip(
         # ["symmetric_true_valuations", ("true_valuations", True, 1200, 0.2)],
         ["non_symmetric_true_valuations", ("true_valuations", False, 800, 0.25)],
         # ["symmetric_winning_bids",        ("winning_bids", True, 1200, 0.1)],
-        # ["non_symmetric_winning_bids",    ("winning_bids", False, 1200, 0.1)],
+        ["non_symmetric_winning_bids", ("winning_bids", False, 800, 0.25)],
     ]
 )
 

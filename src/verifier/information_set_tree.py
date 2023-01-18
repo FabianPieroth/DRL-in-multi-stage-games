@@ -129,10 +129,24 @@ class InformationSetTree(object):
                 dim=self._get_stage_obs_summing_dim(stage)
             )
 
+        estimated_br_utilities = estimated_br_utilities.item()
+
         # Now we have a scalar estimate of the utility when playing the BR
         self._calculate_best_responses()
         actual_utility_estimate = self.actual_utility_tracker.get_mean_utility()
-        return estimated_br_utilities.item() - actual_utility_estimate
+
+        # Final ex ante utility loss
+        estimated_utility_loss = estimated_br_utilities - actual_utility_estimate
+
+        # Relative ex ante utility loss
+        if estimated_br_utilities == 0:  # catch div. by 0
+            estimated_relative_util_loss = 1
+        else:
+            estimated_relative_util_loss = (
+                1 - actual_utility_estimate / estimated_br_utilities
+            )
+
+        return estimated_utility_loss, estimated_relative_util_loss
 
     def _calc_visitation_probabilities_and_update_nodes_counts(
         self, nodes_counts: torch.LongTensor, br_indices: torch.LongTensor, stage: int

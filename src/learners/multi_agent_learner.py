@@ -101,63 +101,102 @@ class MultiAgentCoordinator:
         """
         return self.config.policy_sharing and agent_id > 0
 
-    def _evaluate_policies(
-        self, iteration: int, eval_freq: int, n_eval_episodes: int, callbacks: None
-    ) -> None:
+    def _evaluate_policies(self, iteration: int, n_eval_episodes: int) -> None:
         """Evaluate current training progress."""
-        if iteration == 0 or (iteration + 1) % eval_freq == 0:
-            log_ut.evaluate_policies(
+        log_ut.evaluate_policies(
+            self.learners,
+            self.env,
+            device=self.config.device,
+            n_eval_episodes=n_eval_episodes,
+        )
+        self.current_parameters, self.running_length = log_ut.change_in_parameter_space(
+            self.learners, self.current_parameters, self.running_length
+        )
+        self.env.model.custom_evaluation(
+            self.learners, self.env, self.writer, iteration + 1, self.config
+        )
+
+    def verify_policies_br(self, iteration: int) -> None:
+        """Use our verifier to evaluate each learned strategy against the
+        current opponents. The verifier estimates the best response of each agent
+        against the opponent strategies to estimate the agent utility loss.
+        Estimates: 
+            sup_{beta_i \in \Sigma_i} \hat(u)_i(beta_i, beta_{-i})
+            by approximating the best response beta_i^* in the space of step functions.
+        """
+        if self.verifier.env_is_compatible_with_verifier and self.config.verify_br:
+            # Estimate the ex ante utility loss (i.e., averaged loss over prior)
+            (
+                estimated_utility_loss,
+                estimated_relative_utility_loss,
+                best_responses,
+            ) = self.verifier.verify_br(self.learners)
+
+            # Logging
+            log_ut.log_data_dict_to_learner_loggers(
+                self.learners, estimated_utility_loss, "eval/estimated_utility_loss"
+            )
+            log_ut.log_data_dict_to_learner_loggers(
                 self.learners,
-                self.env,
-                device=self.config.device,
-                n_eval_episodes=n_eval_episodes,
-            )
-            self.current_parameters, self.running_length = log_ut.change_in_parameter_space(
-                self.learners, self.current_parameters, self.running_length
-            )
-            self.env.model.custom_evaluation(
-                self.learners, self.env, self.writer, iteration + 1, self.config
+                estimated_relative_utility_loss,
+                "eval/estimated_relative_utility_loss",
             )
 
-    def _verify_policies(self, iteration: int, eval_freq: int) -> None:
-        if (
-            (iteration == 0 or (iteration + 1) % eval_freq == 0)
-            and self.verifier.env_is_compatible_with_verifier
-            and self.config.verify_br
-        ):
-            utility_loss, best_responses = self.verifier.verify(self.learners)
-            log_ut.log_data_dict_to_learner_loggers(
-                self.learners, utility_loss, "eval/utility_loss"
-            )
+            # Plotting
             br_plot = self.env.model.plot_br_strategy(best_responses)
             log_ut.log_figure_to_writer(
                 self.writer, br_plot, iteration, "estimated_br_strategies"
             )
-            plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
+            # plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
             plt.close()
 
-    def verify_in_BNE(self) -> None:
-        # TODO: @Nils: Move the logic into the verifier - check if loop is necessary.
+    def verify_policies_in_BNE(self) -> None:
+        """If a BNE is available, we can evaluate learned strategies against
+        the BNE opponents. Estimate the utility in for all agents playing BNE
+        and for one agent playing its real strategy. Use this to estimate the
+        utility loss.
+        Estimate:
+            \hat(u)_i(\beta_i, \beta_{-i}^*)
+            where \beta^*=(\beta_i^*, \beta_{-i}^*) is a BNE strategy
+        """
         if not (
             self.verifier.env_is_compatible_with_verifier
             and self.env.model.equilibrium_strategies_known
         ):
-            return None
+            return
 
+        utility_losses, relative_utility_losses = self.verifier.verify_against_BNE(
+            self.learners
+        )
+
+        # Logging
+        log_ut.log_data_dict_to_learner_loggers(
+            self.learners, utility_losses, "eval/utility_loss"
+        )
+        log_ut.log_data_dict_to_learner_loggers(
+            self.learners, relative_utility_losses, "eval/relative_utility_loss"
+        )
+
+    def verify_br_against_BNE(self) -> float:
+        """Approximate the best responses in BNE using our verifier. If
+        everything works out, the loss should be zero in expectation for all
+        players.
+        Estimate:
+            sup_{beta_i \in \Sigma_i} \hat(u)_i(beta_i, beta_{-i}^*)
+            by approximating the best response beta_i^* in the space of step functions
+            and \beta^*=(\beta_i^*, \beta_{-i}^*) is a BNE strategy.
+        """
+        assert (
+            self.verifier.env_is_compatible_with_verifier
+            and self.env.model.equilibrium_strategies_known
+        )
         equ_strategies = self.env.model.equilibrium_strategies
-
         utility_losses = {agent_id: None for agent_id in equ_strategies.keys()}
         for agent_id in equ_strategies.keys():
-            utility_loss, best_response = self.verifier.verify(
+            utility_loss, _, _ = self.verifier.verify_br(
                 equ_strategies, agent_ids=[agent_id]
             )
             utility_losses[agent_id] = utility_loss[agent_id]
-
-            # Debug plotting
-            self.env.model.plot_br_strategy(best_response)
-            plt.savefig(f"./logs/{self.env.model}_{agent_id}_br.png")
-            plt.close()
-
         return utility_losses
 
     def learn(self) -> "OnPolicyAlgorithm":
@@ -184,28 +223,23 @@ class MultiAgentCoordinator:
             (self.env.num_envs,), dtype=bool, device=self.env.device
         )
 
-        while (
-            min(learner.num_timesteps for learner in self.learners.values())
-            < total_timesteps
-        ):
+        num_timesteps = min(learner.num_timesteps for learner in self.learners.values())
+        while num_timesteps < total_timesteps:
             if self._iteration_finished(self.config.n_steps_per_iteration):
                 print(f"Iteration {iteration} starts.")
 
                 # Evaluate & log
-                with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
-                    log_ut.log_training_progress(
-                        self.learners,
-                        iteration,
-                        self.config.train_log_freq,
-                        self._break_for_policy_sharing,
-                    )
-                    self._evaluate_policies(
-                        iteration,
-                        self.config.eval_freq,
-                        self.config.n_eval_episodes,
-                        callbacks,
-                    )
-                    self._verify_policies(iteration, self.config.eval_freq)
+                if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
+                    with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
+                        log_ut.log_training_progress(
+                            self.learners,
+                            iteration,
+                            self.config.train_log_freq,
+                            self._break_for_policy_sharing,
+                        )
+                        self._evaluate_policies(iteration, self.config.n_eval_episodes)
+                        self.verify_policies_br(iteration)
+                        self.verify_policies_in_BNE()
 
             actions_for_env, actions, additional_actions_data = self.get_ma_action(
                 last_obs
