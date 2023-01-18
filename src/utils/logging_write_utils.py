@@ -29,6 +29,9 @@ def logging_plots_to_gif(
         if file.endswith(".png") and file.startswith(starts_with):
             paths.append(f"{log_path}/{file}")
 
+    if len(paths) == 0:
+        return  # No figures found
+
     # sort and subselect
     paths = sorted(paths, key=lambda x: int(x[x.rfind("_") + 1 : -4]))
     paths = paths[0 :: max(1, int(len(paths) / num_frames))]
