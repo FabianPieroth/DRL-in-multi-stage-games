@@ -10,7 +10,7 @@ from scripts.run_experiments import LOG_PATH
 
 def evaluate_sequential_sales_experiment():
     environment = "sequential_auction"
-    path = LOG_PATH + environment
+    path = f"{LOG_PATH}/{environment}_experiment/{environment}"
     df = ex_ut.get_log_df(path)
 
     hyperparameters = [
@@ -54,7 +54,7 @@ def evaluate_sequential_sales_experiment():
 
 def evaluate_sequential_sales_risk_experiment():
     environment = "sequential_auction"
-    path = f"{LOG_PATH}/sequential_sales_risk_experiment/{environment}"
+    path = f"{LOG_PATH}/{environment}_risk_experiment/{environment}"
     df = ex_ut.get_log_df(path)
 
     hyperparameters = ["rl_envs.risk_aversion"]
@@ -74,7 +74,7 @@ def evaluate_sequential_sales_risk_experiment():
 
 def evaluate_signaling_contest_experiment():
     environment = "signaling_contest"
-    path = LOG_PATH + environment
+    path = f"{LOG_PATH}/{environment}_experiment/{environment}"
     df = ex_ut.get_log_df(path)
 
     hyperparameters = ["rl_envs.information_case"]
