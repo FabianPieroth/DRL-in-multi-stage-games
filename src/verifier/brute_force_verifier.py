@@ -89,7 +89,10 @@ class BFVerifier:
             )
 
             utility_losses[agent_id] = bne_utility - actual_utility
-            relative_utility_losses[agent_id] = 1 - actual_utility / bne_utility
+            if bne_utility != 0:
+                relative_utility_losses[agent_id] = 1 - actual_utility / bne_utility
+            else:
+                relative_utility_losses[agent_id] = -actual_utility
 
         return utility_losses, relative_utility_losses
 
