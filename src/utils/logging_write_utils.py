@@ -168,7 +168,6 @@ def log_training_progress(learners, iteration, break_for_policy_sharing):
             "time/time_elapsed", int(time.time() - learner.start_time)
         )
         learner.logger.record("time/total_timesteps", learner.num_timesteps)
-        learner.logger.dump(step=learner.num_timesteps)
 
 
 def change_in_parameter_space(learners, current_parameters, running_length):

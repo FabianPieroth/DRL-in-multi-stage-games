@@ -101,21 +101,6 @@ class MultiAgentCoordinator:
         """
         return self.config.policy_sharing and agent_id > 0
 
-    def _evaluate_policies(self, iteration: int, n_eval_episodes: int) -> None:
-        """Evaluate current training progress."""
-        log_ut.evaluate_policies(
-            self.learners,
-            self.env,
-            device=self.config.device,
-            n_eval_episodes=n_eval_episodes,
-        )
-        self.current_parameters, self.running_length = log_ut.change_in_parameter_space(
-            self.learners, self.current_parameters, self.running_length
-        )
-        self.env.model.custom_evaluation(
-            self.learners, self.env, self.writer, iteration + 1, self.config
-        )
-
     def verify_policies_br(self, iteration: int) -> None:
         """Use our verifier to evaluate each learned strategy against the
         current opponents. The verifier estimates the best response of each agent
@@ -229,22 +214,7 @@ class MultiAgentCoordinator:
         ):
             if self._iteration_finished(self.config.n_steps_per_iteration):
                 print(f"Iteration {iteration} starts.")
-
-                # Evaluate & log
-                if (
-                    iteration == 0
-                    or self.config.train_log_freq is not None
-                    and (iteration + 1) % self.config.train_log_freq == 0
-                ):
-                    log_ut.log_training_progress(
-                        self.learners, iteration, self._break_for_policy_sharing
-                    )
-
-                if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
-                    with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
-                        self._evaluate_policies(iteration, self.config.n_eval_episodes)
-                        self.verify_policies_br(iteration)
-                        self.verify_policies_in_BNE()
+                self._log(iteration)
 
             actions_for_env, actions, additional_actions_data = self.get_ma_action(
                 last_obs
@@ -283,6 +253,44 @@ class MultiAgentCoordinator:
 
         io_ut.wrap_up_learning_logging(self.config)
         return self
+
+    def _log(self, iteration: int):
+        """Evaluate & log"""
+        # 1. Train log
+        if (
+            iteration == 0
+            or self.config.train_log_freq is not None
+            and (iteration + 1) % self.config.train_log_freq == 0
+        ):
+            log_ut.log_training_progress(
+                self.learners, iteration, self._break_for_policy_sharing
+            )
+
+        # 2. Eval log
+        if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
+            with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
+                self._evaluate_policies(iteration, self.config.n_eval_episodes)
+                self.verify_policies_br(iteration)
+                self.verify_policies_in_BNE()
+
+        # 3. Update `num_timesteps` in logs
+        for learner in self.learners.values():
+            learner.logger.dump(step=learner.num_timesteps)
+
+    def _evaluate_policies(self, iteration: int, n_eval_episodes: int) -> None:
+        """Evaluate current training progress."""
+        log_ut.evaluate_policies(
+            self.learners,
+            self.env,
+            device=self.config.device,
+            n_eval_episodes=n_eval_episodes,
+        )
+        self.current_parameters, self.running_length = log_ut.change_in_parameter_space(
+            self.learners, self.current_parameters, self.running_length
+        )
+        self.env.model.custom_evaluation(
+            self.learners, self.env, self.writer, iteration + 1, self.config
+        )
 
     def _iteration_finished(self, n_steps_per_iteration: int):
         return self.n_step % n_steps_per_iteration == 0
