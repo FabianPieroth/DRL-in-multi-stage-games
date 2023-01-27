@@ -145,7 +145,7 @@ class MultiAgentCoordinator:
             # Plotting
             br_plot = self.env.model.plot_br_strategy(best_responses)
             log_ut.log_figure_to_writer(
-                self.writer, br_plot, iteration, "estimated_br_strategies"
+                self.writer, br_plot, iteration + 1, "estimated_br_strategies"
             )
             # plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
             plt.close()
@@ -234,13 +234,13 @@ class MultiAgentCoordinator:
                 if (
                     iteration == 0
                     or self.config.train_log_freq is not None
-                    and iteration % self.config.train_log_freq == 0
+                    and (iteration + 1) % self.config.train_log_freq == 0
                 ):
                     log_ut.log_training_progress(
                         self.learners, iteration, self._break_for_policy_sharing
                     )
 
-                if iteration == 0 or iteration % self.config.eval_freq == 0:
+                if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
                     with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
                         self._evaluate_policies(iteration, self.config.n_eval_episodes)
                         self.verify_policies_br(iteration)
