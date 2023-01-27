@@ -40,41 +40,36 @@ def param_python2latex(param_python_name: str) -> str:
 def get_last_iter(
     df: pd.DataFrame, hyperparameters: List[str], metrics: List[str]
 ) -> pd.DataFrame:
-    """Limit DataFrame to last iteration."""
-    hyperparameters += ["seed", "algorithms"]
-    try:
-        df.set_index(hyperparameters, inplace=True)
-    except TypeError as error:
-        print(error.args)
-        raise ValueError(
-            f"Hyperparameters {hyperparameters} are incomplete and cannot be used as index."
-        )
+    """Limit DataFrame to metrics of interest and last iteration."""
+
+    # Limit data to metrics of interest
+    df_select = df[df.metric.isin(metrics)]
+
+    # Limit data to relevant columns
+    columns = hyperparameters.copy()
+    columns += ["seed", "algorithms", "step", "metric", "value"]
+    df_select = df_select[columns]
+
+    # Beautify
+    df_select.metric = df_select.metric.apply(metric_python2latex)
+    df_select.algorithms = df_select.algorithms.apply(metric_python2latex)
 
     # Limit data to last iteration
-    df_select = df[df.metric.isin(metrics)]
-    df_select = df_select[df_select.step == max(df_select.step)]
-    df_select.metric = df_select.metric.apply(metric_python2latex)
-
-    # Clean up data and index
-    reduced_index = hyperparameters
-    reduced_index.remove("seed")
-    reduced_index.remove("algorithms")
-    reduced_index.append("metric")
-    df_select = df_select.reset_index()
-    df_select = df_select.set_index(reduced_index)
-    df_select.algorithms = df_select.algorithms.apply(metric_python2latex)
+    columns.remove("value")
+    columns.remove("step")
+    df_select = df_select.groupby(columns).max("step")
+    df_select.drop("step", axis=1, inplace=True)
 
     return df_select
 
 
 def get_pivot_table(df: pd.DataFrame, hyperparameters: List[str]):
     """Create pivot table"""
+
+    idx = hyperparameters.copy()
+    idx += ["metric"]
     pivot = pd.pivot_table(
-        df,
-        values="value",
-        index=hyperparameters,
-        columns=["algorithms"],
-        aggfunc=[np.mean, np.std],
+        df, values="value", index=idx, columns=["algorithms"], aggfunc=[np.mean, np.std]
     )
 
     # Formatting
