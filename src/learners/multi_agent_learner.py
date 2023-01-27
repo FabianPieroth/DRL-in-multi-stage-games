@@ -231,14 +231,17 @@ class MultiAgentCoordinator:
                 print(f"Iteration {iteration} starts.")
 
                 # Evaluate & log
-                if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
+                if (
+                    iteration == 0
+                    or self.config.train_log_freq is not None
+                    and iteration % self.config.train_log_freq == 0
+                ):
+                    log_ut.log_training_progress(
+                        self.learners, iteration, self._break_for_policy_sharing
+                    )
+
+                if iteration == 0 or iteration % self.config.eval_freq == 0:
                     with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
-                        log_ut.log_training_progress(
-                            self.learners,
-                            iteration,
-                            self.config.train_log_freq,
-                            self._break_for_policy_sharing,
-                        )
                         self._evaluate_policies(iteration, self.config.n_eval_episodes)
                         self.verify_policies_br(iteration)
                         self.verify_policies_in_BNE()

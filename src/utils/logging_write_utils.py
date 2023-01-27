@@ -128,48 +128,47 @@ def evaluate_policies(
         learner.logger.record("eval/ep_len_mean", mean_episode_lengths)
 
 
-def log_training_progress(learners, iteration, log_interval, break_for_policy_sharing):
-    if log_interval is not None and iteration % log_interval == 0:
-        for agent_id, learner in learners.items():
-            if break_for_policy_sharing(agent_id):
-                break
-            fps = int(
-                (learner.num_timesteps - learner._num_timesteps_at_start)
-                / (time.time() - learner.start_time)
-            )
-            if len(learner.ep_info_buffer) > 0 and len(learner.ep_info_buffer[0]) > 0:
-                learner.logger.record(
-                    "rollout/ep_rew_mean",
-                    torch.mean(
-                        torch.concat(
-                            [
-                                ep_info[agent_id]["sa_episode_returns"]
-                                for ep_info in learner.ep_info_buffer
-                            ]
-                        )
-                    )
-                    .detach()
-                    .item(),
-                )
-                learner.logger.record(
-                    "rollout/ep_len_mean",
-                    torch.mean(
-                        torch.concat(
-                            [
-                                ep_info[agent_id]["sa_episode_lengths"]
-                                for ep_info in learner.ep_info_buffer
-                            ]
-                        )
-                    )
-                    .detach()
-                    .item(),
-                )
-            learner.logger.record("time/fps", fps)
+def log_training_progress(learners, iteration, break_for_policy_sharing):
+    for agent_id, learner in learners.items():
+        if break_for_policy_sharing(agent_id):
+            break
+        fps = int(
+            (learner.num_timesteps - learner._num_timesteps_at_start)
+            / (time.time() - learner.start_time)
+        )
+        if len(learner.ep_info_buffer) > 0 and len(learner.ep_info_buffer[0]) > 0:
             learner.logger.record(
-                "time/time_elapsed", int(time.time() - learner.start_time)
+                "rollout/ep_rew_mean",
+                torch.mean(
+                    torch.concat(
+                        [
+                            ep_info[agent_id]["sa_episode_returns"]
+                            for ep_info in learner.ep_info_buffer
+                        ]
+                    )
+                )
+                .detach()
+                .item(),
             )
-            learner.logger.record("time/total_timesteps", learner.num_timesteps)
-            learner.logger.dump(step=learner.num_timesteps)
+            learner.logger.record(
+                "rollout/ep_len_mean",
+                torch.mean(
+                    torch.concat(
+                        [
+                            ep_info[agent_id]["sa_episode_lengths"]
+                            for ep_info in learner.ep_info_buffer
+                        ]
+                    )
+                )
+                .detach()
+                .item(),
+            )
+        learner.logger.record("time/fps", fps)
+        learner.logger.record(
+            "time/time_elapsed", int(time.time() - learner.start_time)
+        )
+        learner.logger.record("time/total_timesteps", learner.num_timesteps)
+        learner.logger.dump(step=learner.num_timesteps)
 
 
 def change_in_parameter_space(learners, current_parameters, running_length):

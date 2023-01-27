@@ -16,9 +16,9 @@ def run_sequential_sales_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_experiment/"
 
-    device = 1
-    runs = 5
-    iteration_num = 5_000
+    device = 2
+    runs = 3
+    iteration_num = 5000
     policy_sharing = True
     # learning_rate_schedule = "exponential"
     collapse_symmetric_opponents = False
@@ -118,8 +118,8 @@ def run_signaling_contest_experiment():
     environment = "signaling_contest"
     log_path = f"{LOG_PATH}/{environment}_experiment/"
 
-    device = 1
-    runs = 5
+    device = 3
+    runs = 3
     iteration_num = 5_000
     policy_sharing = False
 
@@ -157,6 +157,6 @@ def run_signaling_contest_experiment():
 
 
 if __name__ == "__main__":
-    run_sequential_sales_experiment()
-    run_sequential_sales_risk_experiment()
+    # run_sequential_sales_experiment()
+    # run_sequential_sales_risk_experiment()
     run_signaling_contest_experiment()
