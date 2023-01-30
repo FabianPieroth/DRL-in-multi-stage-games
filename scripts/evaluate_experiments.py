@@ -65,8 +65,8 @@ def evaluate_signaling_contest_experiment():
 
     hyperparameters = ["rl_envs.information_case"]
     metrics = [
-        "eval/action_equ_L2_distance_round_1",
-        "eval/action_equ_L2_distance_round_2",
+        "eval/action_equ_L2_distance_over_learner_distribution_stage_1",
+        "eval/action_equ_L2_distance_over_learner_distribution_stage_2",
         "eval/utility_loss",
     ]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)
