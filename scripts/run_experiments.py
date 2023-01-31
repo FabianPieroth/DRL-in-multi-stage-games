@@ -69,7 +69,6 @@ def run_sequential_sales_risk_experiment():
     runs = 5
     iteration_num = 5_000
     policy_sharing = True
-    # learning_rate_schedule = "exponential"
     collapse_symmetric_opponents = False
 
     num_rounds_to_play_options = [2]
@@ -96,7 +95,7 @@ def run_sequential_sales_risk_experiment():
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
-                    # f"algorithm_configs.{algorithm}.learning_rate_schedule={learning_rate_schedule}",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
                     f"policy_sharing={policy_sharing}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
@@ -157,6 +156,6 @@ def run_signaling_contest_experiment():
 
 
 if __name__ == "__main__":
-    # run_sequential_sales_experiment()
-    # run_sequential_sales_risk_experiment()
+    run_sequential_sales_experiment()
+    run_sequential_sales_risk_experiment()
     run_signaling_contest_experiment()

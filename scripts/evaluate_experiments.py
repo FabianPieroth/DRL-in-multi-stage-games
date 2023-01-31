@@ -14,18 +14,18 @@ def evaluate_sequential_sales_experiment():
     df = ex_ut.get_log_df(path)
 
     hyperparameters = [
-        "rl_envs.collapse_symmetric_opponents",
-        "policy_sharing",
+        # "rl_envs.collapse_symmetric_opponents",
+        # "policy_sharing",
         "rl_envs.mechanism_type",
         "rl_envs.num_rounds_to_play",
-        "policy.action_dependent_std",
-        "n_steps_per_iteration",
+        # "policy.action_dependent_std",
     ]
     metrics = [
         "eval/action_equ_L2_distance_stage_0",
         "eval/action_equ_L2_distance_stage_1",
         "eval/action_equ_L2_distance_stage_2",
         "eval/action_equ_L2_distance_stage_3",
+        "eval/estimated_utility_loss",
         "eval/utility_loss",
     ]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)
@@ -44,15 +44,12 @@ def evaluate_sequential_sales_risk_experiment():
     df = ex_ut.get_log_df(path)
 
     hyperparameters = ["rl_envs.risk_aversion"]
-    metrics = ["eval/utility_loss"]
+    metrics = ["eval/estimated_utility_loss"]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)
 
     # Create pivot table
     assert df.size > 0, "No experiments were run for these parameters."
     pivot = ex_ut.get_pivot_table(df, hyperparameters)
-
-    # NOTE: possibly want to rearrange the columns
-    # pivot = pivot[pivot.columns[[0, 2, 1, 3]]]
 
     # Write to disk
     ex_ut.save_df(pivot, environment + "_risk", path)
@@ -67,6 +64,7 @@ def evaluate_signaling_contest_experiment():
     metrics = [
         "eval/action_equ_L2_distance_over_learner_distribution_stage_1",
         "eval/action_equ_L2_distance_over_learner_distribution_stage_2",
+        "eval/estimated_utility_loss",
         "eval/utility_loss",
     ]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)

@@ -9,32 +9,33 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from tqdm import tqdm
 
 
-def metric_python2latex(metric_python_name: str) -> str:
-    """Transform code naming of metric into proper LaTeX code."""
+def python2latex(python_name: str) -> str:
+    """Transform code naming of metrics and parameters into proper text and
+    LaTeX format.
+    """
 
-    if metric_python_name.startswith("eval/action_equ_L2_distance_stage_"):
-        stage = int(metric_python_name[metric_python_name.rfind("_") + 1 :]) + 1
+    if python_name.startswith("eval/action_equ_L2_distance_stage_"):
+        stage = int(python_name[python_name.rfind("_") + 1 :]) + 1
         return "$L_2^{S" + str(stage) + "}$"
 
-    if metric_python_name == "eval/utility_loss":
-        return "$\ell$"
-
-    algorithm_dict = {"ppo": "PPO", "reinforce": "REINFORCE"}
-    if metric_python_name in algorithm_dict.keys():
-        return algorithm_dict[metric_python_name]
+    p2l = {
+        # algorithms
+        "ppo": "PPO",
+        "reinforce": r"\textsc{Reinforce}",
+        # metrics
+        "eval/utility_loss": "$\ell$",
+        "eval/estimated_utility_loss": r"$\ell^\text{est}$",
+        # game
+        "rl_envs.risk_aversion": r"risk $\rho$",
+        "rl_envs.num_rounds_to_play": "rounds $k$",
+        "rl_envs.mechanism_type": "mechanism",
+        "rl_envs.information_case": "information",
+    }
+    if python_name in p2l.keys():
+        return p2l[python_name]
 
     # Fall back: No LaTeX formulation found
-    return metric_python_name
-
-
-def param_python2latex(param_python_name: str) -> str:
-    """Transform code naming of parameter into proper LaTeX code."""
-
-    if param_python_name == "rl_envs.risk_aversion":
-        return "risk $\rho$"
-
-    # Fall back: No LaTeX formulation found
-    return param_python_name
+    return python_name
 
 
 def get_last_iter(
@@ -51,8 +52,8 @@ def get_last_iter(
     df_select = df_select[columns]
 
     # Beautify
-    df_select.metric = df_select.metric.apply(metric_python2latex)
-    df_select.algorithms = df_select.algorithms.apply(metric_python2latex)
+    df_select.metric = df_select.metric.apply(python2latex)
+    df_select.algorithms = df_select.algorithms.apply(python2latex)
 
     # Limit data to last iteration
     columns.remove("value")
@@ -74,7 +75,7 @@ def get_pivot_table(df: pd.DataFrame, hyperparameters: List[str]):
 
     # Formatting
     pivot = pivot.swaplevel(axis=1)
-    pivot.index.names = [param_python2latex(p) for p in pivot.index.names]
+    pivot.index.names = [python2latex(p) for p in pivot.index.names]
 
     pivot = pivot.round(decimals=4)
     final_df = pd.DataFrame()
@@ -231,7 +232,10 @@ def tb2df(path: str):
     for tag in tags:
         df = pd.DataFrame({"step": steps[tag], tag: values[tag]}).set_index("step")
         summary_df = summary_df.join(df, how="outer")
-    summary_df.drop([0], inplace=True)  # drop empty 1st row
+
+    # drop empty 1st row
+    if len(summary_df) > 0:
+        summary_df.drop([0], inplace=True)
 
     # NOTE: We fill metrics that are calculated less frequently with last value
     summary_df.fillna(method="pad", inplace=True)
