@@ -30,18 +30,6 @@ class VecPPO(SABaseAlgorithm):
             )
         return clipped_actions, actions, (values, log_probs)
 
-    def handle_dones(self, dones, infos, sa_rewards, agent_id: int):
-        """
-        Computes predicted values for terminal states.
-        """
-        # compute values for episode dones
-        if dones.any():
-            terminal_obs = infos["terminal_observation"][agent_id]
-            with th.no_grad():
-                terminal_value = self.policy.predict_values(terminal_obs)[:, 0]
-            sa_rewards[dones] += self.gamma * terminal_value
-        return sa_rewards
-
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         with th.no_grad():
             if policy_sharing:

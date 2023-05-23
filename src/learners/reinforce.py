@@ -44,10 +44,6 @@ class Reinforce(SABaseAlgorithm):
             )
         return clipped_actions, actions, (None, log_probs)
 
-    def handle_dones(self, dones, infos, sa_rewards, agent_id: int):
-        """Fake method to use common base class with PPO."""
-        return sa_rewards
-
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         # Placeholder values that have the length needed for `compute_returns`
         if policy_sharing:

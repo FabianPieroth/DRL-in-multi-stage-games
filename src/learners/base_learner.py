@@ -83,10 +83,6 @@ class SABaseAlgorithm(PPO, ABC):
             actions = actions.reshape(-1, 1)
         return actions
 
-    @abstractmethod
-    def handle_dones(self, dones, infos, sa_rewards, agent_id: int):
-        pass
-
     def ingest_data_to_learner(
         self,
         sa_last_obs,
@@ -112,7 +108,6 @@ class SABaseAlgorithm(PPO, ABC):
         # Add all data to buffer even when it comes from multiple agents
         # sharing the same policy -> more efficient usage of game data
         sa_actions = self.prepare_actions_for_buffer(sa_actions)
-        sa_rewards = self.handle_dones(dones, infos, sa_rewards, agent_id)
         self.add_data_to_replay_buffer(
             sa_last_obs,
             last_episode_starts,
