@@ -34,7 +34,7 @@ ids, testdata = zip(
         ],
         [
             "first-price-affiliated-values-ppo",
-            ("first", "ppo", "affiliated_uniform", 2, 1, False, False, 300, 0.10),
+            ("first", "ppo", "affiliated_uniform", 2, 1, False, False, 400, 0.10),
         ],
         [
             "second-price-mineral-rights-ppo",

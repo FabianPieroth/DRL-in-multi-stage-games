@@ -382,9 +382,6 @@ class MATorchVecEnv(VecEnv):
             )
         self.current_states = next_states
 
-        n_dones = dones.sum().cpu().item()
-        self.current_states[dones] = self.model.sample_new_states(n_dones)
-
         self.ep_stats["returns"] += torch.sum(
             torch.stack(tuple(rewards.values())), axis=0
         )  # global rewards
@@ -395,6 +392,11 @@ class MATorchVecEnv(VecEnv):
         self.ep_stats["lengths"][dones] = 0
 
         infos = dict(episode_returns=episode_returns, episode_lengths=episode_lengths)
+        if dones.any():
+            terminal_obs = self.model.get_observations(self.current_states[dones])
+            infos["terminal_observation"] = self.clone_tensor_dict(terminal_obs)
+        n_dones = dones.sum().cpu().item()
+        self.current_states[dones] = self.model.sample_new_states(n_dones)
 
         for agent_id in range(self.model.num_agents):
             self.sa_ep_stats[agent_id]["returns"] += rewards[agent_id]
@@ -411,12 +413,7 @@ class MATorchVecEnv(VecEnv):
             )
 
         if dones.any():
-            infos["terminal_observation"] = self.model.get_observations(
-                self.current_states[dones]
-            )
-
-            # Override observations for resetted environments after using them to
-            # set "terminal_observation"
+            # Override observations for resetted environments
             newly_sampled_obses = self.model.get_observations(
                 self.current_states[dones]
             )
