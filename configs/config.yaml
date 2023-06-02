@@ -21,7 +21,7 @@ total_training_steps: null
 
 train_log_freq: 1  # How often should training metrics be logged
 n_eval_episodes: 5  # How many full episodes should be run for train-eval
-eval_freq: 100  # How often the evaluation should be run in between learning
+eval_freq: 20  # How often the evaluation should be run in between learning
 verify_br: false  # Wether or not to use the best response verifier
 
 # List of algorithms that maps agents to algorithms. If list of length one is

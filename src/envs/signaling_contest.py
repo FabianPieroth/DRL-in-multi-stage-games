@@ -23,7 +23,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     """
 
     DUMMY_PRICE_KEY = -1
-    OBSERVATION_DIM = 2
     ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):

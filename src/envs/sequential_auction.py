@@ -28,7 +28,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     DUMMY_PRICE_KEY = -1
     ACTION_LOWER_BOUND = 0.0
     ACTION_UPPER_BOUND = 1.1
-    OBSERVATION_DIM = None
     ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
@@ -187,7 +186,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     + [1.0] * self.num_rounds_to_play
                     + [val_high] * (self.num_rounds_to_play * 2)
                 )
-            self.OBSERVATION_DIM = len(low)
             observation_spaces_dict[agent_id] = spaces.Box(
                 low=np.float32(low), high=np.float32(high)
             )
