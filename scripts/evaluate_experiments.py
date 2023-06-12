@@ -55,6 +55,30 @@ def evaluate_sequential_sales_risk_experiment():
     ex_ut.save_df(pivot, environment + "_risk", path)
 
 
+def evaluate_sequential_sales_interdependent_experiment():
+    environment = "sequential_auction"
+    path = f"{LOG_PATH}/{environment}_interdependent_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.mechanism_type", "rl_envs.num_rounds_to_play"]
+    metrics = [
+        "eval/action_equ_L2_distance_stage_0",
+        "eval/action_equ_L2_distance_stage_1",
+        "eval/action_equ_L2_distance_stage_2",
+        "eval/action_equ_L2_distance_stage_3",
+        "eval/estimated_utility_loss",
+        "eval/utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "_interdependent", path)
+
+
 def evaluate_signaling_contest_experiment():
     environment = "signaling_contest"
     path = f"{LOG_PATH}/{environment}_experiment/{environment}"
@@ -80,4 +104,5 @@ def evaluate_signaling_contest_experiment():
 if __name__ == "__main__":
     evaluate_sequential_sales_experiment()
     evaluate_sequential_sales_risk_experiment()
+    evaluate_sequential_sales_interdependent_experiment()
     evaluate_signaling_contest_experiment()
