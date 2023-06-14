@@ -30,7 +30,7 @@ class Reinforce(SABaseAlgorithm):
     """
 
     def get_actions_with_data(self, sa_obs: th.Tensor):
-        self.prepare_step(self.rollout_buffer.pos, self.env)
+        self.prepare_step(self.rollout_buffer.pos, self.env)  # TODO: redundant
         with th.no_grad():
             actions, _, log_probs = self.policy.forward(sa_obs)
             # NOTE: `value` predictions disregarded

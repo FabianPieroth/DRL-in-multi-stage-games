@@ -144,7 +144,7 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
-        self.returns = self.rewards
+        self.returns = self.rewards.detach().clone()
         for step in reversed(range(self.buffer_size)):
             if step >= self.buffer_size - len(last_values):
                 next_non_terminal = th.logical_not(dones)
@@ -157,6 +157,8 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
                     self.gamma
                     * self.returns[step + step_size_to_data][next_non_terminal]
                 )
+        self.returns -= self.returns.min()
+        self.returns /= self.returns.max()
 
     def _get_samples(
         self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None
