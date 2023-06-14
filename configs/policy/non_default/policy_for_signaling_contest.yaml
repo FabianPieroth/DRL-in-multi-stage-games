@@ -1,8 +1,4 @@
 # @package _global_
 
 policy:
-  net_arch:  # No. of layers and neurons
-    pi: [64, 64]
-    vf: [64, 64]
-  activation_fn: nn.SELU  # Activation function for inner neurons
   action_dependent_std: true  # SB3 only learns a fixed std in output (independent of observation)
