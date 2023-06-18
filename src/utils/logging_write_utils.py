@@ -50,8 +50,8 @@ def logging_plots_to_gif(
 def log_data_dict_to_learner_loggers(
     learners, data_dict: Dict[int, float], data_name: str
 ):
-    for agent_id, learner in learners.items():
-        learner.logger.record(data_name, data_dict[agent_id])
+    for agent_id, agent_data in data_dict.items():
+        learners[agent_id].logger.record(data_name, agent_data)
 
 
 def log_figure_to_writer(
@@ -170,12 +170,18 @@ def log_training_progress(learners, iteration, break_for_policy_sharing):
         learner.logger.record("time/total_timesteps", learner.num_timesteps)
 
 
-def change_in_parameter_space(learners, current_parameters, running_length):
+def change_in_parameter_space(
+    learners, current_parameters, running_length, break_for_policy_sharing
+):
     prev_parameters = current_parameters
     current_parameters = get_policy_parameters(learners)
-    for i, learner in learners.items():
-        running_length[i] += tensor_norm(current_parameters[i], prev_parameters[i])
-        learner.logger.record("train/running_length", running_length[i])
+    for agent_id, learner in learners.items():
+        if break_for_policy_sharing(agent_id):
+            break
+        running_length[agent_id] += tensor_norm(
+            current_parameters[agent_id], prev_parameters[agent_id]
+        )
+        learner.logger.record("train/running_length", running_length[agent_id])
 
     return current_parameters, running_length
 

@@ -95,8 +95,8 @@ class MultiAgentCoordinator:
                 callbacks[agent_id],
             )
 
-    def _break_for_policy_sharing(self, agent_id: int):
-        """If all agents share the same policy, we only train the one at 
+    def break_for_policy_sharing(self, agent_id: int):
+        """If all agents share the same policy, we only train and log with the one at 
         index 0.
         """
         return self.config.policy_sharing and agent_id > 0
@@ -111,11 +111,15 @@ class MultiAgentCoordinator:
         """
         if self.verifier.env_is_compatible_with_verifier and self.config.verify_br:
             # Estimate the ex ante utility loss (i.e., averaged loss over prior)
+            print(f"Verifying against current strategies:")
+            agent_ids = self.learners.keys()
+            if self.config.policy_sharing:
+                agent_ids = [0]
             (
                 estimated_utility_loss,
                 estimated_relative_utility_loss,
                 best_responses,
-            ) = self.verifier.verify_br(self.learners)
+            ) = self.verifier.verify_br(self.learners, agent_ids=agent_ids)
 
             # Logging
             log_ut.log_data_dict_to_learner_loggers(
@@ -132,7 +136,6 @@ class MultiAgentCoordinator:
             log_ut.log_figure_to_writer(
                 self.writer, br_plot, iteration + 1, "estimated_br_strategies"
             )
-            # plt.savefig(f"{self.writer.log_dir}/br_plot_{iteration}.png")
             plt.close()
 
     def verify_policies_in_BNE(self) -> None:
@@ -149,9 +152,13 @@ class MultiAgentCoordinator:
             and self.env.model.equilibrium_strategies_known
         ):
             return
+        print(f"\nVerifying against known equilibrium strategies:")
+        agent_ids = self.learners.keys()
+        if self.config.policy_sharing:
+            agent_ids = [0]
 
         utility_losses, relative_utility_losses = self.verifier.verify_against_BNE(
-            self.learners
+            self.learners, agent_ids=agent_ids
         )
 
         # Logging
@@ -175,13 +182,12 @@ class MultiAgentCoordinator:
             self.verifier.env_is_compatible_with_verifier
             and self.env.model.equilibrium_strategies_known
         )
-        equ_strategies = self.env.model.equilibrium_strategies
-        utility_losses = {agent_id: None for agent_id in equ_strategies.keys()}
-        for agent_id in equ_strategies.keys():
-            utility_loss, _, _ = self.verifier.verify_br(
-                equ_strategies, agent_ids=[agent_id]
-            )
-            utility_losses[agent_id] = utility_loss[agent_id]
+        agent_ids = self.learners.keys()
+        if self.config.policy_sharing:
+            agent_ids = [0]
+        utility_losses, _, _ = self.verifier.verify_br(
+            self.env.model.equilibrium_strategies, agent_ids=agent_ids
+        )
         return utility_losses
 
     def learn(self) -> "OnPolicyAlgorithm":
@@ -263,15 +269,17 @@ class MultiAgentCoordinator:
             and (iteration + 1) % self.config.train_log_freq == 0
         ):
             log_ut.log_training_progress(
-                self.learners, iteration, self._break_for_policy_sharing
+                self.learners, iteration, self.break_for_policy_sharing
             )
 
         # 2. Eval log
         if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
+            print(f"\nStart evaluation:")
             with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
                 self._evaluate_policies(iteration, self.config.n_eval_episodes)
                 self.verify_policies_br(iteration)
                 self.verify_policies_in_BNE()
+            print(f"\nEnd evaluation.\n")
 
         # 3. Update `num_timesteps` in logs
         for learner in self.learners.values():
@@ -286,7 +294,10 @@ class MultiAgentCoordinator:
             n_eval_episodes=n_eval_episodes,
         )
         self.current_parameters, self.running_length = log_ut.change_in_parameter_space(
-            self.learners, self.current_parameters, self.running_length
+            self.learners,
+            self.current_parameters,
+            self.running_length,
+            self.break_for_policy_sharing,
         )
         self.env.model.custom_evaluation(
             self.learners, self.env, self.writer, iteration + 1, self.config
@@ -308,7 +319,7 @@ class MultiAgentCoordinator:
             callbacks = [None] * len(self.learners)
 
         for agent_id, learner in self.learners.items():
-            if self._break_for_policy_sharing(agent_id):
+            if self.break_for_policy_sharing(agent_id):
                 callbacks = [callbacks[0] for i in range(len(callbacks))]
                 break
             timesteps, callbacks[agent_id] = learner._setup_learn(
