@@ -111,10 +111,10 @@ def test_learning_in_sequential_auction(
 
 ids_sc, testdata_sc = zip(
     *[
-        # ["symmetric_true_valuations", ("true_valuations", True, 1200, 0.2)],
-        ["non_symmetric_true_valuations", ("true_valuations", False, 800, 0.25)],
-        # ["symmetric_winning_bids",        ("winning_bids", True, 1200, 0.1)],
-        ["non_symmetric_winning_bids", ("winning_bids", False, 800, 0.25)],
+        ["symmetric_true_valuations", ("true_valuations", True, 800, 0.2)],
+        # ["non_symmetric_true_valuations", ("true_valuations", False, 800, 0.25)],
+        ["symmetric_winning_bids", ("winning_bids", True, 800, 0.2)],
+        # ["non_symmetric_winning_bids", ("winning_bids", False, 800, 0.25)],
     ]
 )
 
@@ -139,8 +139,6 @@ def test_learning_in_signaling_contest(
         f"eval_freq={iteration_num + 2}",
         f"rl_envs=signaling_contest",
         f"rl_envs.information_case={information_case}",
-        f"algorithm_configs.ppo.learning_rate_schedule=exponential",
-        f"algorithm_configs.ppo.learning_rate=1e-2",
     ]
     config = io_ut.get_config(overrides=overrides)
 

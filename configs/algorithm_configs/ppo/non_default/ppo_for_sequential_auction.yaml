@@ -3,3 +3,4 @@
 algorithm_configs:
   ppo:
     n_rollout_steps: 4
+    learning_rate: 8e-6

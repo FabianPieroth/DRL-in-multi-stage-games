@@ -7,31 +7,32 @@ sys.path.append(os.path.realpath("."))
 
 import src.utils.coordinator_utils as coord_ut
 import src.utils.io_utils as io_ut
-from src.learners.multi_agent_learner import MultiAgentCoordinator
 
-LOG_PATH = "./logs/test"
+LOG_PATH = "./logs/experiments_to_report"
 
 
 def run_sequential_sales_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_experiment/"
 
-    device = 2
-    runs = 3
-    iteration_num = 5000
+    device = 6
+    runs = 10
+    iteration_num = 10_000
     policy_sharing = True
-    # learning_rate_schedule = "exponential"
-    collapse_symmetric_opponents = False
 
-    num_rounds_to_play_options = [1, 2, 4]
-    mechanism_type_options = ["first", "second"]
-    algorithm_options = ["ppo", "reinforce"]
+    num_rounds_to_play_options = [4]
+    mechanism_type_options = ["second"]
+    algorithm_options = ["reinforce"]
+    verifier_discretization = 64
     options = product(
         num_rounds_to_play_options, mechanism_type_options, algorithm_options
     )
 
     for option in options:
         num_rounds_to_play, mechanism_type, algorithm = option
+
+        if num_rounds_to_play > 3:
+            verifier_discretization = 16
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -43,12 +44,53 @@ def run_sequential_sales_experiment():
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
-                    # f"algorithm_configs.{algorithm}.learning_rate_schedule={learning_rate_schedule}",
+                    f"eval_freq={iteration_num}",
                     f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
                     f"policy_sharing={policy_sharing}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
-                    f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
+                    f"verifier.action_discretization={verifier_discretization}",
+                    f"verifier.obs_discretization={verifier_discretization}",
+                    f"rl_envs.mechanism_type={mechanism_type}",
+                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
+                    f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
+def run_asymmetric_second_price_sequential_sales_experiment():
+    environment = "asymmetric_second_price_sequential_sales"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 1
+    runs = 10
+    iteration_num = 10_000
+
+    num_rounds_to_play = 2
+    mechanism_type = "second"
+    algorithm_options = ["ppo", "reinforce"]
+
+    for algorithm in algorithm_options:
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
+                    f"policy_sharing={False}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
                     f"rl_envs.mechanism_type={mechanism_type}",
                     f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
                     f"rl_envs.num_agents={num_rounds_to_play + 1}",
@@ -65,16 +107,15 @@ def run_sequential_sales_risk_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_risk_experiment/"
 
-    device = 1
-    runs = 5
-    iteration_num = 5_000
+    device = 2
+    runs = 10
+    iteration_num = 10_000
     policy_sharing = True
-    collapse_symmetric_opponents = False
 
     num_rounds_to_play_options = [2]
     mechanism_type_options = ["first", "second"]
     algorithm_options = ["ppo", "reinforce"]
-    risk_aversion_options = [0.5, 0.75, 1.0]
+    risk_aversion_options = [0.25, 0.5, 0.75, 1.0]
     options = product(
         num_rounds_to_play_options,
         mechanism_type_options,
@@ -95,11 +136,11 @@ def run_sequential_sales_risk_experiment():
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
                     f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
                     f"policy_sharing={policy_sharing}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
-                    f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
                     f"rl_envs.mechanism_type={mechanism_type}",
                     f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
                     f"rl_envs.num_agents={num_rounds_to_play + 1}",
@@ -117,14 +158,13 @@ def run_sequential_sales_interdependent_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_interdependent_experiment/"
 
-    device = 1
-    runs = 2
-    iteration_num = 500
-    policy_sharing = False
-    collapse_symmetric_opponents = False
+    device = 3
+    runs = 10
+    iteration_num = 10_000
+    policy_sharing = True
 
     num_rounds_to_play_options = [1, 2]
-    algorithm_options = ["ppo"]  # , "reinforce"
+    algorithm_options = ["ppo", "reinforce"]
 
     settings = [
         dict(
@@ -150,11 +190,11 @@ def run_sequential_sales_interdependent_experiment():
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
                     f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
                     f"policy_sharing={policy_sharing}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
-                    f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
                     f"rl_envs.mechanism_type={setting['mechanism_type']}",
                     f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
                     f"rl_envs.num_agents={setting['num_agents'] + (num_rounds_to_play - 1)}",
@@ -173,17 +213,19 @@ def run_signaling_contest_experiment():
     log_path = f"{LOG_PATH}/{environment}_experiment/"
 
     device = 3
-    runs = 3
-    iteration_num = 5_000
-    policy_sharing = False
+    runs = 10
+    iteration_num = 10_000
+    policy_sharing = True
 
     information_cases = ["true_valuations", "winning_bids"]
     algorithms = ["ppo", "reinforce"]
-    action_dependent_stds = [False, True]
-    options = product(algorithms, information_cases, action_dependent_stds)
+    options = product(algorithms, information_cases)
+    log_std_init = -3.0
 
     for option in options:
-        algorithm, information_case, action_dependent_std = option
+        algorithm, information_case = option
+        if algorithm == "reinforce" and information_case == "winning_bids":
+            log_std_init = -2.0
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -195,12 +237,13 @@ def run_signaling_contest_experiment():
                     f"seed={i}",
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
                     f"policy_sharing={policy_sharing}",
-                    f"policy.action_dependent_std={action_dependent_std}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
                     f"rl_envs=signaling_contest",
                     f"rl_envs.information_case={information_case}",
+                    f"policy.log_std_init={log_std_init}",
                 ]
             )
 
@@ -212,6 +255,7 @@ def run_signaling_contest_experiment():
 
 if __name__ == "__main__":
     run_sequential_sales_experiment()
-    run_sequential_sales_risk_experiment()
-    run_sequential_sales_interdependent_experiment()
-    run_signaling_contest_experiment()
+    # run_asymmetric_second_price_sequential_sales_experiment()
+    # run_sequential_sales_risk_experiment()
+    # run_sequential_sales_interdependent_experiment()
+    # run_signaling_contest_experiment()
