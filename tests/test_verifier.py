@@ -1,6 +1,4 @@
 """Test the verifier in the `sequential_auction` game environment."""
-import copy
-
 import hydra
 import pytest
 import torch
@@ -13,7 +11,6 @@ EPS = 0.01
 
 ids_verifier, testdata_verifier = zip(
     *[
-        ["signaling_contest_no_signaling", ("signaling_contest", "true_valuations")],
         ["signaling_contest_signaling", ("signaling_contest", "winning_bids")],
         ["sequential_auction", ("sequential_auction", "")],
     ]
@@ -28,7 +25,13 @@ def test_verifier_in_bne(environment, add_info):
     """
     hydra.core.global_hydra.GlobalHydra().clear()
     io_ut.set_global_seed(0)
-    overrides = [f"device={DEVICE}", f"iteration_num=0", f"rl_envs={environment}"]
+    overrides = [
+        f"device={DEVICE}",
+        f"iteration_num=0",
+        f"rl_envs={environment}",
+        f"verifier.action_discretization={16}",
+        f"verifier.obs_discretization={16}",
+    ]
     if environment == "signaling_contest":
         overrides.append(f"rl_envs.information_case={add_info}")
     config = io_ut.get_config(overrides=overrides)

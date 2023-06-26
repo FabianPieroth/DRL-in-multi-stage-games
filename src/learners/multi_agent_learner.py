@@ -273,7 +273,7 @@ class MultiAgentCoordinator:
             )
 
         # 2. Eval log
-        if iteration == 0 or (iteration + 1) % self.config.eval_freq == 0:
+        if (iteration + 1) % self.config.eval_freq == 0:
             print(f"\nStart evaluation:")
             with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
                 self._evaluate_policies(iteration, self.config.n_eval_episodes)

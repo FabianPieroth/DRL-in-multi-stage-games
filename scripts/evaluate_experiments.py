@@ -38,12 +38,31 @@ def evaluate_sequential_sales_experiment():
     ex_ut.save_df(pivot, environment, path)
 
 
+def evaluate_asymmetric_second_price_sequential_sales_experiment():
+    environment = "sequential_auction"
+    path = (
+        f"{LOG_PATH}/asymmetric_second_price_sequential_sales_experiment/{environment}"
+    )
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.mechanism_type", "rl_envs.num_rounds_to_play"]
+    metrics = ["eval/estimated_utility_loss"]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "_asymmetric_second_price", path)
+
+
 def evaluate_sequential_sales_risk_experiment():
     environment = "sequential_auction"
     path = f"{LOG_PATH}/{environment}_risk_experiment/{environment}"
     df = ex_ut.get_log_df(path)
 
-    hyperparameters = ["rl_envs.risk_aversion"]
+    hyperparameters = ["rl_envs.mechanism_type", "rl_envs.risk_aversion"]
     metrics = ["eval/estimated_utility_loss"]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)
 
@@ -104,5 +123,6 @@ def evaluate_signaling_contest_experiment():
 if __name__ == "__main__":
     evaluate_sequential_sales_experiment()
     evaluate_sequential_sales_risk_experiment()
+    evaluate_asymmetric_second_price_sequential_sales_experiment()
     evaluate_sequential_sales_interdependent_experiment()
     evaluate_signaling_contest_experiment()

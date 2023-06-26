@@ -1,4 +1,0 @@
-# @package _global_
-
-policy:
-  action_dependent_std: true  # SB3 only learns a fixed std in output (independent of observation)
