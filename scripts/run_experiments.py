@@ -15,14 +15,14 @@ def run_sequential_sales_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_experiment/"
 
-    device = 6
+    device = 1
     runs = 10
     iteration_num = 10_000
     policy_sharing = True
 
-    num_rounds_to_play_options = [4]
-    mechanism_type_options = ["second"]
-    algorithm_options = ["reinforce"]
+    num_rounds_to_play_options = [1, 2, 4]
+    mechanism_type_options = ["first", "second"]
+    algorithm_options = ["ppo", "reinforce"]
     verifier_discretization = 64
     options = product(
         num_rounds_to_play_options, mechanism_type_options, algorithm_options
@@ -73,7 +73,7 @@ def run_asymmetric_second_price_sequential_sales_experiment():
 
     num_rounds_to_play = 2
     mechanism_type = "second"
-    algorithm_options = ["ppo", "reinforce"]
+    algorithm_options = ["reinforce", "ppo"]
 
     for algorithm in algorithm_options:
         for i in range(runs):
@@ -107,7 +107,7 @@ def run_sequential_sales_risk_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_risk_experiment/"
 
-    device = 2
+    device = 1
     runs = 10
     iteration_num = 10_000
     policy_sharing = True
@@ -158,7 +158,7 @@ def run_sequential_sales_interdependent_experiment():
     environment = "sequential_auction"
     log_path = f"{LOG_PATH}/{environment}_interdependent_experiment/"
 
-    device = 3
+    device = 1
     runs = 10
     iteration_num = 10_000
     policy_sharing = True
@@ -212,7 +212,7 @@ def run_signaling_contest_experiment():
     environment = "signaling_contest"
     log_path = f"{LOG_PATH}/{environment}_experiment/"
 
-    device = 3
+    device = 1
     runs = 10
     iteration_num = 10_000
     policy_sharing = True
@@ -255,7 +255,7 @@ def run_signaling_contest_experiment():
 
 if __name__ == "__main__":
     run_sequential_sales_experiment()
-    # run_asymmetric_second_price_sequential_sales_experiment()
-    # run_sequential_sales_risk_experiment()
-    # run_sequential_sales_interdependent_experiment()
-    # run_signaling_contest_experiment()
+    run_asymmetric_second_price_sequential_sales_experiment()
+    run_sequential_sales_risk_experiment()
+    run_sequential_sales_interdependent_experiment()
+    run_signaling_contest_experiment()
