@@ -8,5 +8,6 @@ mechanism_type: "first"
 reduced_observation_space: true
 collapse_symmetric_opponents: false
 risk_aversion: 1.0
+budgets: null # Can be null, float value, list of floats
 defaults:
   - sampler: symmetric_uniform

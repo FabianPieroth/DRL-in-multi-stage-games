@@ -4,12 +4,13 @@ Simple sequential auction game following Krishna.
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym import spaces
+from omegaconf import listconfig
 
 import src.utils.distributions_and_priors as dap_ut
 import src.utils.torch_utils as th_ut
@@ -45,6 +46,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             self.valuations_start_index + self.valuation_size
         )
         self.risk_aversion = config.risk_aversion
+        self.budget_is_limited, self.budgets = self._get_bugdets(
+            config["budgets"], config["num_agents"]
+        )
         self.sampler = self._init_sampler(config, device)
 
         # If the opponents are all symmetric, we may just sample from one
@@ -121,6 +125,18 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             print("No analytical equilibrium available.")
             return None
         return SequentialAuctionEquilibrium(agent_id, equilibrium_config)
+
+    def _get_bugdets(
+        self, budgets: Optional[Union[List[float], float]], num_agents: int
+    ) -> Tuple[bool, Optional[List[float]]]:
+        if budgets is None:
+            return False, None
+        elif isinstance(budgets, float):
+            return True, [budgets for _ in range(num_agents)]
+        elif isinstance(budgets, listconfig.ListConfig) and len(budgets) == num_agents:
+            return True, list(budgets)
+        else:
+            "No valid budgets provided. If a list is provided, the length of budgets must equal num_agents."
 
     # TODO: @Nils: Is this redundant?
     def _init_dummy_strategies(self):
@@ -291,6 +307,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             actions[agent_id][has_won_already[agent_id]] = 0.0
         return actions
 
+    def apply_budget_constraints(
+        self, actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        if not self.budget_is_limited:
+            return actions
+        else:
+            for agent_id, sa_actions in actions.items():
+                actions[agent_id] = torch.clamp(sa_actions, max=self.budgets[agent_id])
+            return actions
+
     def compute_step(self, cur_states, actions: torch.Tensor):
         """Compute a step in the game.
 
@@ -315,6 +341,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             actions[1] = opponent_actions
 
         actions = self.set_winners_bids_to_zero(cur_states, actions)
+
+        actions = self.apply_budget_constraints(actions)
 
         action_profile = torch.stack(tuple(actions.values()), dim=1)
 
@@ -614,8 +642,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             ma_deterministic_actions = self.set_winners_bids_to_zero(
                 states, ma_deterministic_actions
             )
+            ma_deterministic_actions = self.apply_budget_constraints(
+                ma_deterministic_actions
+            )
             ma_stddevs = th_ut.get_ma_learner_stddevs(strategies, observations)
             ma_stddevs = self.set_winners_bids_to_zero(states, ma_stddevs)
+            ma_stddevs = self.apply_budget_constraints(ma_stddevs)
 
             unique_strategies = set(strategies.values())
             # NOTE: This breaks under asymmetries and partial policy sharing
@@ -777,6 +809,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             actual_actions = self.set_winners_bids_to_zero(
                 actual_states, actual_actions
             )
+            actual_actions = self.apply_budget_constraints(actual_actions)
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions
