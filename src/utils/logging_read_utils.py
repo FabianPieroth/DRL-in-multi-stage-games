@@ -27,7 +27,8 @@ def python2latex(python_name: str) -> str:
         "eval/estimated_utility_loss": r"$\ell^\text{est}$",
         # game
         "rl_envs.risk_aversion": r"risk $\rho$",
-        "rl_envs.num_rounds_to_play": "rounds $k$",
+        "rl_envs.num_rounds_to_play": "$k$",
+        "agent_id": "$i$",
         "rl_envs.mechanism_type": "mechanism",
         "rl_envs.information_case": "information",
     }
@@ -191,6 +192,10 @@ def get_log_df(path: str):
 
             # Delete empty rows
             w = w[w.value != -1]
+
+            # Add agent id
+            agent_id = int(agent[agent.rfind("_") + 1 :]) + 1
+            w["agent_id"] = agent_id
 
             # Add hyperparameters from config
             for hp_key, hp_value in config.items():
