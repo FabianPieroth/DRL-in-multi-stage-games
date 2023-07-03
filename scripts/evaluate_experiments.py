@@ -74,6 +74,46 @@ def evaluate_sequential_sales_risk_experiment():
     ex_ut.save_df(pivot, environment + "_risk", path)
 
 
+def evaluate_sequential_sales_interdependent_plus_risk_experiment():
+    environment = "sequential_auction"
+    path = f"{LOG_PATH}/{environment}_interdependent_plus_risk_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = [
+        "rl_envs.mechanism_type",
+        "rl_envs.sampler.name",
+        "rl_envs.risk_aversion",
+    ]
+    metrics = ["eval/estimated_utility_loss"]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "_interdependence_plus_risk", path)
+
+
+def evaluate_sequential_sales_symmetric_budget_constraints_experiment():
+    environment = "sequential_auction"
+    path = (
+        f"{LOG_PATH}/symmetric_budget_constraint_experiments_experiment/{environment}"
+    )
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.mechanism_type", "rl_envs.budgets"]
+    metrics = ["eval/estimated_utility_loss"]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "_symmetric_budget_constraints", path)
+
+
 def evaluate_sequential_sales_interdependent_experiment():
     environment = "sequential_auction"
     path = f"{LOG_PATH}/{environment}_interdependent_experiment/{environment}"
@@ -121,8 +161,10 @@ def evaluate_signaling_contest_experiment():
 
 
 if __name__ == "__main__":
-    evaluate_sequential_sales_experiment()
-    evaluate_sequential_sales_risk_experiment()
-    evaluate_asymmetric_second_price_sequential_sales_experiment()
-    evaluate_sequential_sales_interdependent_experiment()
-    evaluate_signaling_contest_experiment()
+    # evaluate_sequential_sales_experiment()
+    # evaluate_sequential_sales_risk_experiment()
+    # evaluate_sequential_sales_interdependent_plus_risk_experiment()
+    evaluate_sequential_sales_symmetric_budget_constraints_experiment()
+    # evaluate_asymmetric_second_price_sequential_sales_experiment()
+    # evaluate_sequential_sales_interdependent_experiment()
+    # evaluate_signaling_contest_experiment()
