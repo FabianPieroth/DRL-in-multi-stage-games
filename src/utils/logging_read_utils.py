@@ -25,6 +25,7 @@ def python2latex(python_name: str) -> str:
         # metrics
         "eval/utility_loss": "$\ell$",
         "eval/estimated_utility_loss": r"$\ell^\text{est}$",
+        "eval/L2": r"$L_2^\text{avg}$",
         # game
         "rl_envs.risk_aversion": r"risk $\rho$",
         "rl_envs.num_rounds_to_play": "$k$",
@@ -40,7 +41,7 @@ def python2latex(python_name: str) -> str:
 
 
 def get_last_iter(
-    df: pd.DataFrame, hyperparameters: List[str], metrics: List[str]
+    df: pd.DataFrame, hyperparameters: List[str], metrics: List[str], L2_average=True
 ) -> pd.DataFrame:
     """Limit DataFrame to metrics of interest and last iteration."""
 
@@ -50,16 +51,24 @@ def get_last_iter(
     # Limit data to relevant columns
     columns = hyperparameters.copy()
     columns += ["seed", "algorithms", "step", "metric", "value"]
+
+    if L2_average:
+        # Take the average of the L2 norm across all stages
+        def L2_rename(name):
+            return name if name.find("L2") == -1 else "eval/L2"
+
+        df_select.metric = df_select.metric.apply(L2_rename)
+
     df_select = df_select[columns]
 
     # Beautify
     df_select.metric = df_select.metric.apply(python2latex)
     df_select.algorithms = df_select.algorithms.apply(python2latex)
 
-    # Limit data to last iteration
+    # Limit data to last iteration & possibly take L2 average
     columns.remove("value")
     columns.remove("step")
-    df_select = df_select.groupby(columns).max("step")
+    df_select.groupby(columns).agg({"step": "max", "value": "mean"})
     df_select.drop("step", axis=1, inplace=True)
 
     return df_select
