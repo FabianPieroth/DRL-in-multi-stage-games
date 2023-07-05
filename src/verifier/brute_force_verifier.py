@@ -52,18 +52,20 @@ class BFVerifier:
     ):
         """Use verifier to calculate estimated utility loss on grid."""
         agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
+        actual_utilities = {agent_id: 0 for agent_id in agent_ids}
         utility_losses = {agent_id: 0 for agent_id in agent_ids}
         relative_utility_losses = {agent_id: 0 for agent_id in agent_ids}
         best_responses = {agent_id: None for agent_id in agent_ids}
 
         for agent_id in agent_ids:
             (
+                actual_utilities[agent_id],
                 utility_losses[agent_id],
                 relative_utility_losses[agent_id],
                 best_responses[agent_id],
             ) = self._get_agent_br_utility_loss_and_br(strategies, agent_id)
 
-        return utility_losses, relative_utility_losses, best_responses
+        return actual_utilities, utility_losses, relative_utility_losses, best_responses
 
     def verify_against_BNE(
         self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
@@ -96,14 +98,18 @@ class BFVerifier:
 
         return utility_losses, relative_utility_losses
 
-    def _get_agent_br_utility_loss_and_br(self, learners, agent_id: int) -> float:
+    def _get_agent_br_utility_loss_and_br(self, learners, agent_id: int) -> Tuple:
         """
         Args:
             learners (_type_): holds agents' strategies
             agent_id (int): 
 
         Returns:
-            float: estimated utility loss
+            Tuple: 
+                estimated utility of learner
+                estimated utility loss
+                estimated relative utility loss
+                best response strategies
         """
         information_tree = InformationSetTree(
             agent_id,
