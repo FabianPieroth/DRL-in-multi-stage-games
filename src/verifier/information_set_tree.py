@@ -89,13 +89,18 @@ class InformationSetTree(object):
         # store actual utilities to tracker
         self.actual_utility_tracker.add_utility(actual_utilities)
 
-    def get_utility_loss_estimate(self):
+    def get_utility_loss_estimate(self) -> Tuple[float]:
         """Iteratively compute best-response utility estimate.
         Shape of self.nodes_utility_estimates = (N_V^1, N_A, ..., N_V^k, N_A).
         Visitation counts are identical in size. Iterate reversely over stages:
         1. max over last dim (br given previous trajectory)
         2. calculate visitation probabilities over obs
         3. weight utilities of br by visitation probabilities
+        Returns:
+            Tuple(float): 
+                estimated utility of learner
+                estimated utility loss
+                estimated relative utility loss
         """
         assert (
             self.env.model.ACTION_DIM == 1
@@ -146,7 +151,11 @@ class InformationSetTree(object):
                 1 - actual_utility_estimate / estimated_br_utilities
             )
 
-        return estimated_utility_loss, estimated_relative_util_loss
+        return (
+            actual_utility_estimate,
+            estimated_utility_loss,
+            estimated_relative_util_loss,
+        )
 
     def _calc_visitation_probabilities_and_update_nodes_counts(
         self, nodes_counts: torch.LongTensor, br_indices: torch.LongTensor, stage: int

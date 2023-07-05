@@ -116,12 +116,18 @@ class MultiAgentCoordinator:
             if self.config.policy_sharing:
                 agent_ids = [0]
             (
+                estimated_actual_utilities,
                 estimated_utility_loss,
                 estimated_relative_utility_loss,
                 best_responses,
             ) = self.verifier.verify_br(self.learners, agent_ids=agent_ids)
 
             # Logging
+            log_ut.log_data_dict_to_learner_loggers(
+                self.learners,
+                estimated_actual_utilities,
+                "eval/estimated_actual_utilities",
+            )
             log_ut.log_data_dict_to_learner_loggers(
                 self.learners, estimated_utility_loss, "eval/estimated_utility_loss"
             )
@@ -185,7 +191,7 @@ class MultiAgentCoordinator:
         agent_ids = self.learners.keys()
         if self.config.policy_sharing:
             agent_ids = [0]
-        utility_losses, _, _ = self.verifier.verify_br(
+        _, utility_losses, _, _ = self.verifier.verify_br(
             self.env.model.equilibrium_strategies, agent_ids=agent_ids
         )
         return utility_losses
