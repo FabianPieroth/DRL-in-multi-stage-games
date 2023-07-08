@@ -621,13 +621,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     ):
         """Evaluate and log current strategies."""
         plt.style.use("ggplot")
+        plt.rc("xtick", labelsize=12)
+        plt.rc("ytick", labelsize=12)
         fig, axs = plt.subplots(
             nrows=1,
             ncols=self.num_rounds_to_play,
             sharey=True,
             figsize=(5 * self.num_rounds_to_play, 5),
         )
-        fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
+        if not self.config["prettify_plots"]:
+            fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
         if self.num_rounds_to_play == 1:
             axs = [axs]
 
@@ -653,6 +656,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             # NOTE: This breaks under asymmetries and partial policy sharing
             # (like in an LLG auction)
             for agent_id, strategy in enumerate(unique_strategies):
+                plotting_settings = self._get_plotting_settings(
+                    stage, agent_id, strategy, unique_strategies
+                )
                 agent_obs = observations[agent_id]
                 increasing_order = agent_obs[:, 0].sort(axis=0)[1]
 
@@ -688,15 +694,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     agent_obs[~has_won_already],
                     actions_array[~has_won_already],
                     linestyle="-",
-                    label=f"bidder {agent_id+1} {strategy}",
+                    label=plotting_settings["label_bid_strategy"],
                 )
-                if self.equilibrium_strategies_known:
+                if self.equilibrium_strategies_known and agent_id == 0:
+                    # NOTE: prettify_plots excludes asymmetric equilibria!
                     ax.plot(
                         agent_obs[~has_won_already],
                         actions_bne[~has_won_already],
                         linestyle="--",
                         color=drawing.get_color(),
-                        label=f"bidder {agent_id+1} BNE",
+                        label=plotting_settings["label_BNE_strategy"],
                     )
                 ax.fill_between(
                     agent_obs[~has_won_already],
@@ -711,14 +718,14 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     alpha=0.2,
                     color=drawing.get_color(),
                 )
-                if stage > 0:
+                if stage > 0 and not self.config["prettify_plots"]:
                     ax.plot(
                         agent_obs[has_won_already],
                         actions_array[has_won_already],
                         linestyle="dotted",
                         color=drawing.get_color(),
                         alpha=0.5,
-                        label=f"bidder {agent_id+1} {strategy} (won)",
+                        label=plotting_settings["label_bid_strategy"] + " (won)",
                     )
                     if self.equilibrium_strategies_known:
                         ax.plot(
@@ -727,7 +734,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                             linestyle="--",
                             color=drawing.get_color(),
                             alpha=0.5,
-                            label=f"bidder {agent_id+1} BNE (won)",
+                            label=plotting_settings["label_BNE_strategy"] + " (won)",
                         )
                     ax.fill_between(
                         agent_obs[has_won_already],
@@ -749,9 +756,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             )
             lin = np.linspace(lower_bound, upper_bound, 2)
             ax.plot(lin, lin, "--", color="grey", alpha=0.5)
-            ax.set_xlabel("valuation $v$")
+            ax.set_xlabel(plotting_settings["x_axis_label"])
             if stage == 0:
-                ax.set_ylabel("bid $b$")
+                ax.set_ylabel(plotting_settings["y_axis_label"])
             ax.set_xlim([lower_bound, upper_bound])
             ax.set_ylim([lower_bound - 0.05, upper_bound + 0.05])
 
@@ -759,11 +766,40 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             _, _, _, states = self.compute_step(states, ma_deterministic_actions)
 
         handles, labels = ax.get_legend_handles_labels()
-        axs[0].legend(handles, labels, ncol=2)
+        axs[0].legend(handles, labels, ncol=2, fontsize=12)
         plt.tight_layout()
-        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
+        plt.savefig(
+            f"{writer.log_dir}/plot_{iteration}.png",
+            dpi=plotting_settings["dpi_default"],
+        )
         writer.add_figure("images", fig, iteration)
         plt.close()
+
+    def _get_plotting_settings(
+        self, stage: int, agent_id: int, strategy, unique_strategies
+    ) -> Dict:
+        dpi_default = 100
+        if self.config["prettify_plots"]:
+            dpi_default = 600
+        label_bid_strategy = str(strategy) + " bidder"
+        label_BNE_strategy = "symmetric BNE"
+        if len(unique_strategies) > 1:
+            label_bid_strategy += " " + str(agent_id + 1)
+        x_axis_label = "valuation $v$"
+        y_axis_label = "bid $b$"
+        if self.config.sampler.name in [
+            "affiliated_uniform",
+            "mineral_rights_common_value",
+        ]:
+            x_axis_label = "observation $x$"
+
+        return {
+            "label_bid_strategy": label_bid_strategy,
+            "label_BNE_strategy": label_BNE_strategy,
+            "dpi_default": dpi_default,
+            "x_axis_label": x_axis_label,
+            "y_axis_label": y_axis_label,
+        }
 
     def log_metrics_to_equilibrium(self, strategies, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""

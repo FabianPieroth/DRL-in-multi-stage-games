@@ -199,8 +199,8 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
         Reference: Krishna (2009), Example 6.2"""
 
         def bid_function(observation: torch.Tensor):
-            stage, valuation, won = self._get_info_from_observation(observation)
-            bid = (2 / 3) * valuation
+            stage, noisy_valuation, won = self._get_info_from_observation(observation)
+            bid = (2 / 3) * noisy_valuation
 
             if won is not None:
                 bid[won, ...] = 0

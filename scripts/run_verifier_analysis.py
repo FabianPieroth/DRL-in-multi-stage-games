@@ -117,7 +117,7 @@ def _plot(metric, time):
                 alpha=0.4,
                 color=colors[j],
             )
-        ax.set_xlabel("number of simulations")
+        ax.set_xlabel("number of initial states $M_{IS}$")
         ax.grid(linestyle="--")
         ax.set_xscale("log", base=2)
     # axs[0].set_yscale('log', base=10)
@@ -133,16 +133,19 @@ def evaluate_verifier_analysis():
     # Load
     utility_losses = np.load(f"{directory}utility_losses.npy")
     elapsed_times = np.load(f"{directory}elapsed_times.npy")
+    plt.rc("xtick", labelsize=12)
+    plt.rc("ytick", labelsize=12)
 
     # Plot
     for j, num_rounds_to_play in enumerate(num_rounds_to_play_options):
         axs = _plot(utility_losses[:, j, :, :], elapsed_times[:, j, :, :])
         # plt.suptitle(f"Sequential sales: {num_rounds_to_play} stages")
-        axs[0].set_ylabel("approximate utility loss")
-        axs[1].set_ylabel("run time (seconds)")
+        axs[0].set_ylabel("approximate utility loss $\ell^{ver}$", fontsize=12)
+        axs[1].set_ylabel("run time (seconds)", fontsize=14)
         plt.tight_layout()
         plt.savefig(
-            f"{directory}/utility_loss_analysis_{num_rounds_to_play}_stages.pdf"
+            f"{directory}/utility_loss_analysis_{num_rounds_to_play}_stages.pdf",
+            dpi=600,
         )
 
 
