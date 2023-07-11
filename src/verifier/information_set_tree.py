@@ -174,9 +174,9 @@ class InformationSetTree(object):
         """
 
         # Subselect the counts for the paths reaching the BR action
-        nodes_counts = torch.gather(
-            nodes_counts, -1, br_indices.unsqueeze(-1)
-        ).squeeze()
+        nodes_counts = torch.gather(nodes_counts, -1, br_indices.unsqueeze(-1)).squeeze(
+            -1
+        )
 
         # Sum counts over all states for counts of taking actions iny previous stage
         summing_dim = self._get_stage_obs_summing_dim(stage)
