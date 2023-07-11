@@ -225,14 +225,18 @@ class VerifiableEnv(ABC):
         """The verifier needs some information from the environment to
         discretize the observation and action spaces accordingly.
         By leaving some choices in the env allows for some expert knowledge control.
+        We assume each observation to be structured as follows:
+            observations: [batch_size, num_agents, num_local_obs]
+
+        For each local_obs we need information when and how to discretize what.
         For every stage and every agent one needs to provide
         the following:
         discretization-for-obs(Tuple[int]): how many discretization
-                        points along each obs dim
+                        points along each local_obs dim
         indices-for-obs-infos(Tuple[int]): which indizes in the
-                        observation contain the infos to discretize
+                        local_obs contain the infos to discretize
         boundary-values-for-obs(Dict[str, Tuple[int]]): lower and upper bound
-                        for each observation dimension
+                        for each local_obs dimension
         """
 
     def get_verifier_env_infos(self, obs_discretization: int) -> VerfierEnvInfo:
