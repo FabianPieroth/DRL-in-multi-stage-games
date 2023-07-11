@@ -185,6 +185,33 @@ class BaseEnvForVec(ABC):
         torch.manual_seed(seed)
 
 
+class VerfierEnvInfo(object):
+    """Each VerifiableEnv needs to return such an object
+    so that the verifier knows how to discretize the
+    observation spaces.
+    """
+
+    def __init__(self, num_agents: int, num_stages: int) -> None:
+        self.num_agents = num_agents
+        self.num_stages = num_stages
+        self.discretizations = self._init_info_dict()
+        self.obs_info_indices = self._init_info_dict()
+        self.boundary_values = self._init_info_dict()
+
+    def _init_info_dict(self, inner_info: Optional[Dict] = None) -> Dict:
+        info_dict = {}
+        for stage in range(self.num_stages):
+            agent_dict = {agent_id: inner_info for agent_id in range(self.num_agents)}
+            info_dict[stage] = agent_dict
+        return info_dict
+
+    def get_info(self, stage: int, agent_id: int) -> Tuple:
+        discr = self.discretizations[stage][agent_id]
+        indices = self.obs_info_indices[stage][agent_id]
+        boundaries = self.boundary_values[stage][agent_id]
+        return discr, indices, boundaries
+
+
 class VerifiableEnv(ABC):
     """Inherit from this class if you want your env to use the BFVerifier.
     Do NOT implement an __init__ method here as this might give conflicts due to
@@ -192,37 +219,70 @@ class VerifiableEnv(ABC):
     """
 
     @abstractmethod
-    def get_obs_discretization_shape(
-        self, agent_id: int, obs_discretization: int, stage: int
-    ) -> Tuple[int]:
-        """For the verifier, we return a discretized observation space."""
-
-    @abstractmethod
-    def get_obs_bin_indices(
-        self,
-        agent_obs: torch.Tensor,
-        agent_id: int,
-        stage: int,
-        obs_discretization: int,
-    ) -> torch.LongTensor:
-        """Determines the bin indices for the given observations with discrete
-        values between 0 and obs_discretization.
-
-        Args:
-            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
-            agent_id (int): 
-            stage (int): 
-            obs_discretization (int): number of discretization points
-
-        Returns:
-            torch.LongTensor: shape=(batch_size, )
+    def provide_env_verifier_info(
+        self, stage: int, agent_id: int, obs_discretization: int
+    ) -> Tuple:
+        """The verifier needs some information from the environment to
+        discretize the observation and action spaces accordingly.
+        By leaving some choices in the env allows for some expert knowledge control.
+        For every stage and every agent one needs to provide
+        the following:
+        discretization-for-obs(Tuple[int]): how many discretization
+                        points along each obs dim
+        indices-for-obs-infos(Tuple[int]): which indizes in the
+                        observation contain the infos to discretize
+        boundary-values-for-obs(Dict[str, Tuple[int]]): lower and upper bound
+                        for each observation dimension
         """
-        # TODO: Catch "Index out of bounds" error if the given agent_obs are incorrect.
 
-    def plot_br_strategy(
-        self, br_strategies: Dict[int, Callable]
-    ) -> Optional[plt.Figure]:
-        return None
+    def get_verifier_env_infos(self, obs_discretization: int) -> VerfierEnvInfo:
+        v_env_info = VerfierEnvInfo(
+            num_agents=self.num_agents, num_stages=self.num_stages
+        )
+        for stage in range(self.num_stages):
+            for agent_id in range(self.num_agents):
+                discre, indices, boundaries = self.provide_env_verifier_info(
+                    stage=stage,
+                    agent_id=agent_id,
+                    obs_discretization=obs_discretization,
+                )
+                v_env_info.discretizations[stage][agent_id] = discre
+                v_env_info.obs_info_indices[stage][agent_id] = indices
+                v_env_info.boundary_values[stage][agent_id] = boundaries
+        # TODO: Pull default boundaries away from specific env to here
+        return v_env_info
+
+    def get_obs_bin_indices(
+        self, agent_id: int, agent_obs: torch.Tensor, stage: int
+    ) -> torch.Tensor:
+        discr, indices, boundaries = self.verfier_env_info.get_info(stage, agent_id)
+
+        obs_bins = torch.zeros(
+            (agent_obs.shape[0], len(indices)), dtype=torch.long, device=self.device
+        )
+
+        for k, obs_dim in enumerate(indices):
+            sliced_agent_obs = agent_obs[:, obs_dim]
+            low = boundaries["low"][k]
+            high = boundaries["high"][k]
+
+            obs_bins[:, k] = self._get_single_dim_obs_bins(
+                sliced_agent_obs, discr[k], low, high
+            )
+        return obs_bins
+
+    def _get_single_dim_obs_bins(
+        self,
+        sliced_agent_obs: torch.Tensor,
+        num_discretization: int,
+        low: float,
+        high: float,
+    ) -> torch.LongTensor:
+        if num_discretization == 1:  # No additional info along this dim
+            return 0
+        obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
+        single_dim_obs_bins = torch.bucketize(sliced_agent_obs, obs_grid)
+        return single_dim_obs_bins
 
 
 class MATorchVecEnv(VecEnv):

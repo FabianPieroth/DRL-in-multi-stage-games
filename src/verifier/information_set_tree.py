@@ -11,16 +11,15 @@ class InformationSetTree(object):
         self,
         agent_id: int,
         env,
-        obs_discretization: int,
+        obs_discretizations: Dict,
         action_discretization: int,
         device,
     ) -> None:
         self.agent_id = agent_id
         self.env = env
         self.num_agents = self.env.model.num_agents
-        self.obs_discretization = obs_discretization
         self.action_discretization = action_discretization
-        self.num_rounds_to_play = self.env.model.num_rounds_to_play
+        self.num_stages = self.env.model.num_stages
         self.action_dim = env.model.ACTION_DIM
         self.device = device
 
@@ -30,7 +29,7 @@ class InformationSetTree(object):
         self.best_responses = self._init_stage_to_data_dict()
 
         # Dict of obs shapes for all stages
-        self.obs_discretization_shapes = self._get_obs_discretization_shapes()
+        self.obs_discretizations = obs_discretizations
 
         # Expand to account for all possible actions
         self.all_nodes_shape = self._get_all_nodes_shape()
@@ -46,20 +45,20 @@ class InformationSetTree(object):
         )
 
     def _init_stage_to_data_dict(self):
-        return {stage: None for stage in range(self.num_rounds_to_play)}
+        return {stage: None for stage in range(self.num_stages)}
 
     def _get_obs_discretization_shapes(self) -> Dict[int, Tuple[int]]:
         return {
             stage: self.env.model.get_obs_discretization_shape(
                 self.agent_id, self.obs_discretization, stage
             )
-            for stage in range(self.num_rounds_to_play)
+            for stage in range(self.num_stages)
         }
 
     def _get_all_nodes_shape(self) -> int:
         all_nodes_shape = tuple()
-        for _, obs_shape in self.obs_discretization_shapes.items():
-            all_nodes_shape += obs_shape + (self.action_discretization,)
+        for _, obs_shapes in self.obs_discretizations.items():
+            all_nodes_shape += obs_shapes[self.agent_id] + (self.action_discretization,)
         return all_nodes_shape
 
     def _init_nodes_utility_estimates(self) -> torch.Tensor:
@@ -111,7 +110,7 @@ class InformationSetTree(object):
         nodes_counts = self.nodes_counts.view(self.all_nodes_shape)
 
         # Backwards traversal of game tree
-        for stage in reversed(range(self.num_rounds_to_play)):
+        for stage in reversed(range(self.num_stages)):
 
             # Select action with highest utility
             estimated_br_utilities, br_indices = torch.max(
@@ -189,10 +188,10 @@ class InformationSetTree(object):
                 [-1]
                 * (
                     len(nodes_counts_obs_sum.shape)
-                    - len(self.obs_discretization_shapes[stage])
+                    - len(self.obs_discretizations[stage][self.agent_id])
                 )
             )
-            + self.obs_discretization_shapes[stage]
+            + self.obs_discretizations[stage][self.agent_id]
         )
         expanded_nodes_counts_obs_sum = nodes_counts_obs_sum.expand(expansion_dim)
 
@@ -204,7 +203,10 @@ class InformationSetTree(object):
 
     def _get_stage_obs_summing_dim(self, stage):
         return tuple(
-            [-(k + 1) for k in range(len(self.obs_discretization_shapes[stage]))]
+            [
+                -(k + 1)
+                for k in range(len(self.obs_discretizations[stage][self.agent_id]))
+            ]
         )
 
     def calc_monte_carlo_utility_estimations(self):
@@ -237,7 +239,7 @@ class InformationSetTree(object):
             def best_response(agent_obs: torch.Tensor):
                 # NOTE: This may be highly inefficient as one needs to keep all br_indices in memory!
                 obs_bin_indices = self.env.model.get_obs_bin_indices(
-                    agent_obs, self.agent_id, stage, self.obs_discretization
+                    self.agent_id, agent_obs, stage
                 )
                 action_bins = br_indices[obs_bin_indices.squeeze()]
                 agent_grid_actions = self.env.get_action_grid(
