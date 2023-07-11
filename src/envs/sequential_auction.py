@@ -4,6 +4,7 @@ Simple sequential auction game following Krishna.
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
 import time
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -558,8 +559,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             if self.reduced_observation_space:
                 obs_indices = (2,)
             else:
-                raise NotImplementedError(
-                    "Needs to be handled differently. Win/lose is given per round here."
+                warnings.warn(
+                    "Verifier only implemented for reduced_observation_space=True. Win/lose is given per round here."
                 )
                 obs_indices = (stage,)
         return obs_indices
