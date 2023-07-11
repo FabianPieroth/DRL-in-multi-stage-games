@@ -28,7 +28,7 @@ def python2latex(python_name: str) -> str:
         "eval/L2": r"$L_2^\text{avg}$",
         # game
         "rl_envs.risk_aversion": r"risk $\rho$",
-        "rl_envs.num_rounds_to_play": "$k$",
+        "rl_envs.num_stages": "$k$",
         "agent_id": "$i$",
         "rl_envs.mechanism_type": "mechanism",
         "rl_envs.information_case": "information",

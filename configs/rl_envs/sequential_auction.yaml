@@ -1,6 +1,6 @@
 name: "sequential_auction"
 num_agents: 3
-num_rounds_to_play: 2
+num_stages: 2
 action_size: 1
 valuation_size: 1
 available_mechanism_types: ["first", "second"]

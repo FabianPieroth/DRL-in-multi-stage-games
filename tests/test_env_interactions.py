@@ -95,7 +95,7 @@ def test_learning_sequential_auctions(
         f"rl_envs=sequential_auction",
         f"rl_envs.mechanism_type={mechanism_type}",
         f"rl_envs.num_agents={num_agents}",
-        f"rl_envs.num_rounds_to_play={num_agents - 1}",
+        f"rl_envs.num_stages={num_agents - 1}",
         f"rl_envs.reduced_observation_space={reduced_observation_space}",
         f"rl_envs.collapse_symmetric_opponents={collapse_symmetric_opponents}",
         f"rl_envs/sampler={sampler_type}",

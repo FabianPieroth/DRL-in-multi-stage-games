@@ -1,4 +1,4 @@
 name: "rockpaperscissors"
 num_agents: 3
-num_rounds_to_play: 10
+num_stages: 10
 variable_num_rounds: true
