@@ -557,8 +557,8 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
 
         Args:
             agent_obs (torch.Tensor): shape=(batch_size, obs_size)
-            agent_id (int): 
-            stage (int): 
+            agent_id (int):
+            stage (int):
             obs_discretization (int): number of discretization points
 
         Returns:
@@ -690,7 +690,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 has_won_already = has_won_already.cpu().numpy()
 
                 # plotting
-                drawing, = ax.plot(
+                (drawing,) = ax.plot(
                     agent_obs[~has_won_already],
                     actions_array[~has_won_already],
                     linestyle="-",
@@ -804,9 +804,11 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     def log_metrics_to_equilibrium(self, strategies, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
 
-        learned_utilities, equ_utilities, l2_distances = self.do_equilibrium_and_actual_rollout(
-            strategies, num_samples
-        )
+        (
+            learned_utilities,
+            equ_utilities,
+            l2_distances,
+        ) = self.do_equilibrium_and_actual_rollout(strategies, num_samples)
 
         self._log_metric_dict_to_individual_learners(
             strategies, equ_utilities, "eval/utility_equilibrium"
@@ -834,7 +836,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         equ_rewards_total = {i: 0 for i in learners.keys()}
 
         for stage in range(self.num_rounds_to_play):
-
             equ_actions_in_actual_play = th_ut.get_ma_actions(
                 self.equilibrium_strategies, actual_observations
             )

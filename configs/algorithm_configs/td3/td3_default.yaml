@@ -1,0 +1,22 @@
+policy: "MlpPolicy"
+learning_rate: 5e-4
+learning_rate_schedule: "linear"
+n_rollout_steps: 4
+gamma: 1.0
+gradient_steps: 2
+batch_size: 40_000
+tau: 1.0
+buffer_size: 400_000
+learning_starts: 400_000
+policy_delay: 2
+target_policy_noise: 0.2
+target_noise_clip: 0.5
+translate_action_spaces_for_agents: None
+translate_observation_spaces_for_agents: None
+action_space_translator: "identity"
+observation_space_translator: "identity"
+action_noise: ['NormalActionNoise',{'mean': 0.0,'sigma': 0.5},
+                {schedule_type: 'Linear',
+                  params: {'start': 1.0, 'end': 0.1, 'end_fraction': 0.7}
+                }
+              ]

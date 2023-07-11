@@ -129,7 +129,6 @@ def _plot(metric, time):
 
 
 def evaluate_verifier_analysis():
-
     # Load
     utility_losses = np.load(f"{directory}utility_losses.npy")
     elapsed_times = np.load(f"{directory}elapsed_times.npy")
