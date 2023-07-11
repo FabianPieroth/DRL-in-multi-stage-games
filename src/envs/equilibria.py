@@ -100,7 +100,7 @@ class SequentialAuctionEquilibrium(EquilibriumStrategy):
     ) -> Tuple[int, torch.Tensor, torch.Tensor]:
         """Takes the agent observation and returns relevant info for equilibrium computation.
         Args:
-            observation (torch.Tensor): 
+            observation (torch.Tensor):
         Returns:
             Tuple[int, torch.Tensor, torch.Tensor]: stage, valuation, won
         """
@@ -291,7 +291,7 @@ class SignalingContestEquilibrium(EquilibriumStrategy):
     ) -> Tuple[int, torch.Tensor, torch.Tensor]:
         """Takes the agent observation and returns relevant info for equilibrium computation.
         Args:
-            observation (torch.Tensor): 
+            observation (torch.Tensor):
         Returns:
             Tuple[int, torch.Tensor, torch.Tensor]: stage, valuation, lost
         """

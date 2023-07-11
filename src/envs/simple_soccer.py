@@ -164,8 +164,8 @@ class SimpleSoccer(BaseEnvForVec):
         self.resting_recovery = 0.3  # recovery rate when not dashing
         self.dashing_cost = 1.0  # cost of dashing
         self.dash_gain = (
-            2.0
-        )  # how much faster when dashing (1.0 = 100% = twice as fast)
+            2.0  # how much faster when dashing (1.0 = 100% = twice as fast)
+        )
 
         self.min_kick_displacement = 0.1
         self.kick_strengths = torch.tensor([0.0, 1200.0, 4000.0], device=self.device)
@@ -637,9 +637,11 @@ class SimpleSoccer(BaseEnvForVec):
         actions = {}
         additional_actions_data = {}
         for agent_id, learner in learners.items():
-            sa_actions_for_env, sa_actions, sa_additional_actions_data = learner.get_actions_with_data(
-                agent_id
-            )
+            (
+                sa_actions_for_env,
+                sa_actions,
+                sa_additional_actions_data,
+            ) = learner.get_actions_with_data(agent_id)
             actions_for_env[agent_id] = sa_actions_for_env
             actions[agent_id] = sa_actions
             additional_actions_data[agent_id] = sa_additional_actions_data

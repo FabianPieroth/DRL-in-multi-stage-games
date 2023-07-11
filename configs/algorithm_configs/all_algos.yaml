@@ -3,6 +3,7 @@ defaults:
   - ppo: ppo_default
   - reinforce: reinforce_default
   - dqn: dqn_default
+  - td3: td3_default
   - rps_single_action: single_action_default
   - soccer_chase_ball: chase_ball_default
   - soccer_goal_wall: goal_wall_default

@@ -112,7 +112,6 @@ class InformationSetTree(object):
 
         # Backwards traversal of game tree
         for stage in reversed(range(self.num_rounds_to_play)):
-
             # Select action with highest utility
             estimated_br_utilities, br_indices = torch.max(
                 estimated_br_utilities, dim=-1
@@ -123,7 +122,10 @@ class InformationSetTree(object):
 
             # Weight the utilities by their reach probabilities (sample mean of
             # utility for previous stage following the BR actions)
-            visitation_probabilities, nodes_counts = self._calc_visitation_probabilities_and_update_nodes_counts(
+            (
+                visitation_probabilities,
+                nodes_counts,
+            ) = self._calc_visitation_probabilities_and_update_nodes_counts(
                 nodes_counts, br_indices, stage
             )
             estimated_br_utilities *= visitation_probabilities
@@ -161,12 +163,12 @@ class InformationSetTree(object):
         self, nodes_counts: torch.LongTensor, br_indices: torch.LongTensor, stage: int
     ) -> Tuple[torch.Tensor, torch.LongTensor]:
         """
-        1. Calculate the visitation probabilities for each branch of the current stage (=depth in tree). 
+        1. Calculate the visitation probabilities for each branch of the current stage (=depth in tree).
         2. Update the nodes_counts for next iteration (to tree depth - 1)
         # TODO: Separate these two things without redundant operations.
         Args:
-            nodes_counts (torch.LongTensor): 
-            br_indices (torch.LongTensor): best-response indices of current stage 
+            nodes_counts (torch.LongTensor):
+            br_indices (torch.LongTensor): best-response indices of current stage
             stage (int): depth in information tree
 
         Returns:
@@ -220,9 +222,10 @@ class InformationSetTree(object):
     def _calculate_best_responses(self):
         prev_stage_br_slice = None
         for stage, br_indices in self.stored_br_indices.items():
-            self.best_responses[
-                stage
-            ], prev_stage_br_slice = self._calculate_stage_br_from_indices(
+            (
+                self.best_responses[stage],
+                prev_stage_br_slice,
+            ) = self._calculate_stage_br_from_indices(
                 stage, br_indices, prev_stage_br_slice
             )
 

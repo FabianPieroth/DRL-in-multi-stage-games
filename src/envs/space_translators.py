@@ -9,7 +9,7 @@ import src.utils.spaces_utils as sp_ut
 
 
 class BaseSpaceTranslator(ABC):
-    """ Handles a mapping from one gym space to another. 
+    """Handles a mapping from one gym space to another.
     These might be lossfull mappings.
     """
 

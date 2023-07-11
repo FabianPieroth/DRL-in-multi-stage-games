@@ -3,7 +3,6 @@ import src.utils.io_utils as io_ut
 
 
 def main():
-
     for i in range(1):  # You can change adapted config with overrides inside the loop
         config = io_ut.get_config()
         # run learning

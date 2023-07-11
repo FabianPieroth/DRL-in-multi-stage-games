@@ -21,13 +21,17 @@ class ValuationObservationSampler(ABC):
         default_batch_size=1,
         default_device=None,
     ):
-        self.num_agents: int = num_agents  # The number of players in the valuation profile
-        self.valuation_size: int = valuation_size  # The dimensionality / length of a single valuation vector
+        self.num_agents: int = (
+            num_agents  # The number of players in the valuation profile
+        )
+        self.valuation_size: int = (
+            valuation_size  # The dimensionality / length of a single valuation vector
+        )
         self.observation_size: int = observation_size  # The dimensionality / length of a single observation vector
         self.default_batch_size: int = default_batch_size  # a default batch size
         self.default_device: Device = (
-            default_device or "cuda"
-        ) if torch.cuda.is_available() else "cpu"
+            (default_device or "cuda") if torch.cuda.is_available() else "cpu"
+        )
         self.sampler_config = sampler_config  # The sampler specific config
         self.support_bounds = self._init_support_bounds()
         assert self.support_bounds.size() == torch.Size(
@@ -41,7 +45,7 @@ class ValuationObservationSampler(ABC):
         self, batch_sizes_argument: Union[int, List[int], None]
     ) -> List[int]:
         """Parses an integer batch_size_argument into a list. If none given,
-           defaults to the list containing the default_batch_size of the instance.
+        defaults to the list containing the default_batch_size of the instance.
         """
         batch_sizes = batch_sizes_argument or self.default_batch_size
         if isinstance(batch_sizes, int):
@@ -343,18 +347,18 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
 class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
-       This is a private values model.
+    This is a private values model.
 
-       Two bidders have signals
+    Two bidders have signals
 
-        .. math::
-        o_i = z_i + s
+     .. math::
+     o_i = z_i + s
 
-        and valuations
-        .. math::
-        v_i = s + (z_1+z_2)/2 = mean_i(o_i)
+     and valuations
+     .. math::
+     v_i = s + (z_1+z_2)/2 = mean_i(o_i)
 
-        where z_i and s are i.i.d. standard uniform.
+     where z_i and s are i.i.d. standard uniform.
     """
 
     def __init__(

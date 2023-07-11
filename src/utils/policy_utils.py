@@ -15,6 +15,7 @@ from src.learners.simple_soccer_policies.block_policy import BlockPolicy
 from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolicy
 from src.learners.simple_soccer_policies.goal_wall_policy import GoalWallPolicy
 from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPolicy
+from src.learners.td3 import TD3
 from src.utils.torch_utils import Abs
 
 
@@ -189,6 +190,7 @@ def get_learner_and_policy(
     elif algo_name == "dqn":
         dqn_config = config["algorithm_configs"]["dqn"]
         if config["policy_sharing"]:
+            n_rollout_steps = dqn_config["n_rollout_steps"]
             n_rollout_steps *= env.model.num_agents
         return GPUDQN(
             policy=dqn_config["policy"],
@@ -209,6 +211,43 @@ def get_learner_and_policy(
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
             seed=None,
+            device=config["device"],
+        )
+    elif algo_name == "td3":
+        td3_config = config["algorithm_configs"]["td3"]
+        if config["policy_sharing"]:
+            n_rollout_steps = td3_config["n_rollout_steps"]
+            n_rollout_steps *= env.model.num_agents
+        else:
+            n_rollout_steps = td3_config["n_rollout_steps"]
+
+        learning_rate = (
+            get_lr_schedule(
+                td3_config["learning_rate_schedule"], td3_config["learning_rate"]
+            )
+            if "learning_rate_schedule" in td3_config
+            else td3_config["learning_rate"]
+        )
+
+        return TD3(
+            policy=td3_config["policy"],
+            env=env,
+            learning_rate=learning_rate,
+            buffer_size=td3_config["buffer_size"],
+            learning_starts=td3_config["learning_starts"],
+            batch_size=td3_config["batch_size"],
+            tau=td3_config["tau"],
+            gradient_steps=td3_config["gradient_steps"],
+            action_noise=td3_config["action_noise"],
+            gamma=td3_config["gamma"],
+            train_freq=(n_rollout_steps, "step"),
+            optimize_memory_usage=False,
+            policy_delay=td3_config["policy_delay"],
+            target_policy_noise=td3_config["target_policy_noise"],
+            target_noise_clip=td3_config["target_noise_clip"],
+            tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            verbose=0,
+            seed=config.seed,
             device=config["device"],
         )
     else:
