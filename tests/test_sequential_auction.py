@@ -28,7 +28,7 @@ def test_sequential_auction_in_bne():
     rewards_total = {i: 0 for i in range(env.num_agents)}
 
     # Simulate game
-    for stage in range(env.num_rounds_to_play):
+    for stage in range(env.num_stages):
 
         has_won_already = env._has_won_already_from_state(states, stage)
         actions = th_ut.get_ma_actions(env.equilibrium_strategies, observations)

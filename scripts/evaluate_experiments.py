@@ -17,7 +17,7 @@ def evaluate_sequential_sales_experiment():
         # "rl_envs.collapse_symmetric_opponents",
         # "policy_sharing",
         "rl_envs.mechanism_type",
-        "rl_envs.num_rounds_to_play",
+        "rl_envs.num_stages",
         # "policy.action_dependent_std",
     ]
     metrics = [
