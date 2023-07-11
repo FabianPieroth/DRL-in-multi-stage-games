@@ -568,10 +568,15 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     def _get_ver_boundaries(
         self, agent_id: int, obs_indices: Tuple[int]
     ) -> Dict[str, Tuple[int]]:
-        return {
-            "low": self.observation_spaces[agent_id].low[[obs_indices]],
-            "high": self.observation_spaces[agent_id].high[[obs_indices]],
-        }
+        low = [
+            self.observation_spaces[agent_id].low[obs_index]
+            for obs_index in obs_indices
+        ]
+        high = [
+            self.observation_spaces[agent_id].high[obs_index]
+            for obs_index in obs_indices
+        ]
+        return {"low": low, "high": high}
 
     def _has_won_already_from_state(
         self, state: torch.Tensor, stage: int

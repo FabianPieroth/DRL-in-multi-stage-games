@@ -314,9 +314,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     def _get_ver_boundaries(
         self, agent_id: int, stage: int, obs_indices: Tuple[int]
     ) -> Tuple[float]:
-        assert (
-            len(self.observation_spaces[agent_id].low.shape) == 1
-        ), "The observation spaces changed!"
         low = [
             self.observation_spaces[agent_id].low[obs_index]
             for obs_index in obs_indices
@@ -325,9 +322,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             self.observation_spaces[agent_id].high[obs_index]
             for obs_index in obs_indices
         ]
-
-        # low = self.observation_spaces[agent_id].low[[obs_indices]]
-        # high = self.observation_spaces[agent_id].high[[obs_indices]]
         if stage == 1:
             if self.config["information_case"] == "true_valuations":
                 low[-1], high[-1] = self.prior_low, self.prior_high
