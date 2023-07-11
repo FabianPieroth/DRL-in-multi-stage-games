@@ -267,8 +267,8 @@ class VerifiableEnv(ABC):
 
         for k, obs_dim in enumerate(indices):
             sliced_agent_obs = agent_obs[:, obs_dim]
-            low = boundaries["low"][k]
-            high = boundaries["high"][k]
+            low = float(boundaries["low"][k])
+            high = float(boundaries["high"][k])
 
             obs_bins[:, k] = self._get_single_dim_obs_bins(
                 sliced_agent_obs, discr[k], low, high
