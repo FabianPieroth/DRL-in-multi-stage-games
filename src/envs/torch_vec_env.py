@@ -268,7 +268,7 @@ class VerifiableEnv(ABC):
                         points along each local_obs dim
         indices-for-obs-infos(Tuple[int]): which indizes in the
                         local_obs contain the infos to discretize
-        boundary-values-for-obs(Dict[str, Tuple[int]]): lower and upper bound
+        boundary-values-for-obs(Dict[str, Tuple[float]]): lower and upper bound
                         for each local_obs dimension
         """
 

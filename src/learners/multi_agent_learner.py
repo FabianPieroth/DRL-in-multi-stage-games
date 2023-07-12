@@ -6,6 +6,7 @@ import torch
 from stable_baselines3.common.policies import register_policy
 from torch.utils.tensorboard import SummaryWriter
 
+import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
 import src.utils.logging_write_utils as log_ut
 import src.utils.policy_utils as pl_ut
@@ -173,6 +174,13 @@ class MultiAgentCoordinator:
         )
         log_ut.log_data_dict_to_learner_loggers(
             self.learners, relative_utility_losses, "eval/relative_utility_loss"
+        )
+        ev_ut.log_l2_distance_to_equilibrium(
+            env=self.env.model,
+            learners=self.learners,
+            equ_strategies=self.env.model.equilibrium_strategies,
+            num_envs=2 ** 18,
+            num_stages=self.env.model.num_stages,
         )
 
     def verify_br_against_BNE(self) -> float:

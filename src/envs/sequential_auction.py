@@ -3,7 +3,6 @@ Simple sequential auction game following Krishna.
 
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
-import time
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -18,7 +17,6 @@ import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SequentialAuctionEquilibrium
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
-from src.learners.utils import tensor_norm
 
 
 class SequentialAuction(VerifiableEnv, BaseEnvForVec):
@@ -615,8 +613,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             iteration: current training iteration
         """
         self.plot_strategies_vs_bne(learners, writer, iteration, config)
-        if self.equilibrium_strategies_known:
-            self.log_metrics_to_equilibrium(learners)
 
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
@@ -798,78 +794,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             "y_axis_label": y_axis_label,
         }
 
-    def log_metrics_to_equilibrium(self, strategies, num_samples: int = 4096):
-        """Evaluate learned strategies vs BNE."""
-
-        (
-            learned_utilities,
-            equ_utilities,
-            l2_distances,
-        ) = self.do_equilibrium_and_actual_rollout(strategies, num_samples)
-
-        self._log_metric_dict_to_individual_learners(
-            strategies, equ_utilities, "eval/utility_equilibrium"
-        )
-        self._log_metric_dict_to_individual_learners(
-            strategies, learned_utilities, "eval/utility_actual"
-        )
-        self._log_l2_distances(strategies, l2_distances)
-
-    def do_equilibrium_and_actual_rollout(self, learners, num_samples: int):
-        """Staring from state `states` we want to compute
-            1. the action space L2 loss
-            2. the rewards in actual play and in BNE
-        Note that we need to keep track of counterfactual BNE states as these
-        may be different from the states under actual play.
-        """
-        actual_states = self.sample_new_states(num_samples)
-        actual_observations = self.get_observations(actual_states)
-
-        equ_states = actual_states.clone()
-        equ_observations = self.get_observations(equ_states)
-
-        l2_distances = {i: [None] * self.num_stages for i in learners.keys()}
-        actual_rewards_total = {i: 0 for i in learners.keys()}
-        equ_rewards_total = {i: 0 for i in learners.keys()}
-
-        for stage in range(self.num_stages):
-
-            equ_actions_in_actual_play = th_ut.get_ma_actions(
-                self.equilibrium_strategies, actual_observations
-            )
-            equ_actions_in_equ = th_ut.get_ma_actions(
-                self.equilibrium_strategies, equ_observations
-            )
-
-            actual_actions = self.get_ma_actions_for_env(
-                learners, observations=actual_observations, states=actual_states
-            )
-
-            actual_observations, actual_rewards, _, actual_states = self.compute_step(
-                actual_states, actual_actions
-            )
-            equ_observations, equ_rewards, _, equ_states = self.compute_step(
-                equ_states, equ_actions_in_equ
-            )
-
-            for agent_id in learners.keys():
-                l2_distances[agent_id][stage] = tensor_norm(
-                    actual_actions[agent_id], equ_actions_in_actual_play[agent_id]
-                )
-
-                actual_rewards_total[agent_id] += actual_rewards[agent_id].mean().item()
-                equ_rewards_total[agent_id] += equ_rewards[agent_id].mean().item()
-
-        return actual_rewards_total, equ_rewards_total, l2_distances
-
-    def _log_l2_distances(self, learners, distances_l2):
-        for stage in range(self.num_stages):
-            for agent_id, learner in learners.items():
-                learner.logger.record(
-                    "eval/action_equ_L2_distance_stage_" + str(stage),
-                    distances_l2[agent_id][stage],
-                )
-
     def _get_mix_equ_learned_actions(
         self, agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
     ):
@@ -882,13 +806,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     agent_idx
                 ]
         return mixed_equ_learned_actions
-
-    @staticmethod
-    def _log_metric_dict_to_individual_learners(
-        learners, metric_dict: Dict[int, float], key_prefix: str = ""
-    ):
-        for agent_id, learner in learners.items():
-            learner.logger.record(key_prefix, metric_dict[agent_id])
 
     def plot_br_strategy(
         self, br_strategies: Dict[int, Callable]
