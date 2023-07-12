@@ -116,6 +116,10 @@ def get_ma_learner_stddevs(learners, observations: Dict[int, torch.Tensor]):
     agent_ids = list(set(learners.keys()) & set(observations.keys()))
     return {
         agent_id: learners[agent_id].policy.get_stddev(observations[agent_id])
+        if hasattr(learners[agent_id].policy, "get_stddev")
+        else torch.zeros(
+            observations[agent_id].shape[0], 1, device=observations[agent_id].device
+        )
         for agent_id in agent_ids
     }
 
@@ -124,7 +128,7 @@ def torch_inverse_func(
     func: Callable, domain: Tuple[float, float], device="cpu", precision: float = 0.0001
 ) -> Callable:
     """Compute the numerical inverse of a function and return it as a callable
-    that takes batched torch.Tensor arguments. 
+    that takes batched torch.Tensor arguments.
     The function is assumed to be strictly monotonic.
     We use a simple piecewise linear approximation.
     NOTE: Provided inputs of inv_func are projected to the function's image

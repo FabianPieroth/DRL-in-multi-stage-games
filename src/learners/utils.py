@@ -1,5 +1,7 @@
 """Utilities for our custom learners"""
 import os
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch as th
 
@@ -85,3 +87,95 @@ def batched_index_select(input: th.Tensor, dim: int, index: th.Tensor) -> th.Ten
     index = index.expand(expanse)
 
     return th.gather(input, dim, index)
+
+
+class ActionNoise(ABC):
+    """
+    The action noise base class
+    """
+
+    def __init__(self):
+        super(ActionNoise, self).__init__()
+
+    def reset(self) -> None:
+        """
+        call end of episode reset for the noise
+        """
+        pass
+
+    @abstractmethod
+    def __call__(self) -> th.Tensor:
+        raise NotImplementedError()
+
+
+class NormalActionNoise(ActionNoise):
+    """
+    A Gaussian action noise
+
+    :param mean: the mean value of the noise
+    :param sigma: the scale of the noise (std here)
+    """
+
+    def __init__(self, mean: th.Tensor, sigma: th.Tensor):
+        self._mu = mean
+        self._sigma = sigma
+        super(NormalActionNoise, self).__init__()
+
+    def __call__(self) -> th.Tensor:
+        return th.normal(self._mu, self._sigma)
+
+    def __repr__(self) -> str:
+        return f"NormalActionNoise(mu={self._mu[0]}, sigma={self._sigma[0]})"
+
+
+class OrnsteinUhlenbeckActionNoise(ActionNoise):
+    """
+    An Ornstein Uhlenbeck action noise, this is designed to approximate Brownian motion with friction.
+
+    Based on http://math.stackexchange.com/questions/1287634/implementing-ornstein-uhlenbeck-in-matlab
+
+    :param mean: the mean of the noise
+    :param sigma: the scale of the noise
+    :param theta: the rate of mean reversion
+    :param dt: the timestep for the noise
+    :param initial_noise: the initial value for the noise output, (if None: 0)
+    """
+
+    def __init__(
+        self,
+        mean: th.Tensor,
+        sigma: th.Tensor,
+        theta: float = 0.15,
+        dt: float = 1e-2,
+        initial_noise: Optional[th.Tensor] = None,
+    ):
+        self._theta = theta
+        self._mu = mean
+        self._sigma = sigma
+        self._dt = dt
+        self.initial_noise = initial_noise
+        self.noise_prev = th.zeros_like(self._mu)
+        self.reset()
+        super(OrnsteinUhlenbeckActionNoise, self).__init__()
+
+    def __call__(self) -> th.Tensor:
+        noise = (
+            self.noise_prev
+            + self._theta * (self._mu - self.noise_prev) * self._dt
+            + self._sigma * th.sqrt(self._dt) * th.normal(size=self._mu.shape)
+        )
+        self.noise_prev = noise
+        return noise
+
+    def reset(self) -> None:
+        """
+        reset the Ornstein Uhlenbeck noise, to the initial position
+        """
+        self.noise_prev = (
+            self.initial_noise
+            if self.initial_noise is not None
+            else th.zeros_like(self._mu)
+        )
+
+    def __repr__(self) -> str:
+        return f"OrnsteinUhlenbeckActionNoise(mu={self._mu}, sigma={self._sigma})"

@@ -204,7 +204,6 @@ class VecRolloutBuffer(VecBaseBuffer):
     """
 
     def reset(self) -> None:
-
         self.observations = th.zeros(
             (self.buffer_size, self.n_envs) + self.obs_shape,
             dtype=th.float32,

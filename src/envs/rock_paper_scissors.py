@@ -58,7 +58,7 @@ class RockPaperScissors(BaseEnvForVec):
     def sample_new_states(self, n: int) -> Any:
         """Create new initial states.
 
-        :param n: Batch size of how many games are played in parallel.        
+        :param n: Batch size of how many games are played in parallel.
         :return: the new states, in shape=(n, num_agents, 2), where 2 stands
             for `current_round` and `num_stages`.
         """
@@ -69,7 +69,7 @@ class RockPaperScissors(BaseEnvForVec):
 
     def compute_step(self, cur_states, actions: Dict[int, torch.Tensor]):
         """Compute a step in the game.
-        
+
         :param cur_states: The current states of the games.
         :param actions: Dict[agent_id, actions]
         :return observations:
@@ -191,9 +191,12 @@ class RockPaperScissors(BaseEnvForVec):
             )
             observations, rewards, dones, infos = env.step(actions)
             for agent_id in range(env.model.num_agents):
-                num_rock, num_paper, num_scissors, num_total = RockPaperScissors.get_action_nums(
-                    actions[agent_id]
-                )
+                (
+                    num_rock,
+                    num_paper,
+                    num_scissors,
+                    num_total,
+                ) = RockPaperScissors.get_action_nums(actions[agent_id])
                 freq_dict[agent_id]["rock_freq"] += num_rock
                 freq_dict[agent_id]["paper_freq"] += num_paper
                 freq_dict[agent_id]["scissors_freq"] += num_scissors

@@ -284,7 +284,7 @@ class TullockContest(Mechanism):
         If a effort tensor for multiple items is submitted, each item is auctioned
         independently of one another.
 
-        Note that if multiple contestants submit the highest effort, we choose the first one. 
+        Note that if multiple contestants submit the highest effort, we choose the first one.
 
         Parameters
         ----------

@@ -354,7 +354,7 @@ class MATorchVecEnv(VecEnv):
         )
 
     def set_env_for_current_agent(self, agent_id: int):
-        """Sets the environment to the view of provided agent. 
+        """Sets the environment to the view of provided agent.
         Needed to initialize leaners.
         """
         self.action_space = self.agent_translators["action_space"][agent_id].image_space
@@ -369,7 +369,10 @@ class MATorchVecEnv(VecEnv):
         translator_configs: Dict,
         space_type: str,
     ) -> Space:
-        space_translator_class, translator_config = self._get_translator_type_and_config(
+        (
+            space_translator_class,
+            translator_config,
+        ) = self._get_translator_type_and_config(
             agent_id, learner_config, translator_configs, space_type
         )
         agent_translator = space_translator_class(
@@ -385,7 +388,6 @@ class MATorchVecEnv(VecEnv):
         translator_configs: Dict,
         space_type: str,
     ) -> Tuple[BaseSpaceTranslator, Dict]:
-
         translator_type = learner_config[space_type + "_translator"]
         agents_to_translate = self._get_list_of_agents_to_translate(
             learner_config, space_type
@@ -538,7 +540,7 @@ class MATorchVecEnv(VecEnv):
         Generate a grid of alternative actions that are equally spaced on the
         action domain for continuous action spaces or fall back to return all
         actions for discrete action spaces.
-        
+
         NOTE: Currently, the framework can only handle a static (state/stage
         independent) action space.
         """

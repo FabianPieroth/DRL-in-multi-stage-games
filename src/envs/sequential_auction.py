@@ -684,7 +684,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 has_won_already = has_won_already.cpu().numpy()
 
                 # plotting
-                drawing, = ax.plot(
+                (drawing,) = ax.plot(
                     agent_obs[~has_won_already],
                     actions_array[~has_won_already],
                     linestyle="-",
@@ -798,9 +798,11 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     def log_metrics_to_equilibrium(self, strategies, num_samples: int = 4096):
         """Evaluate learned strategies vs BNE."""
 
-        learned_utilities, equ_utilities, l2_distances = self.do_equilibrium_and_actual_rollout(
-            strategies, num_samples
-        )
+        (
+            learned_utilities,
+            equ_utilities,
+            l2_distances,
+        ) = self.do_equilibrium_and_actual_rollout(strategies, num_samples)
 
         self._log_metric_dict_to_individual_learners(
             strategies, equ_utilities, "eval/utility_equilibrium"

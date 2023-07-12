@@ -19,8 +19,7 @@ from src.learners.utils import tensor_norm
 
 
 class SignalingContest(BaseEnvForVec, VerifiableEnv):
-    """Two Stage Contest with different information sets.
-    """
+    """Two Stage Contest with different information sets."""
 
     DUMMY_PRICE_KEY = -1
     OBSERVATION_DIM = 2
@@ -128,7 +127,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         return self
 
     def sample_new_states(self, n: int) -> Any:
-        """Samples number n initial states. 
+        """Samples number n initial states.
         [n, valuation + allocation + stage + winning bids + winning valuations]
         """
         states = torch.zeros(
@@ -782,7 +781,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         agent_color,
     ):
         ax.set_title("First round")
-        drawing, = ax.plot(
+        (drawing,) = ax.plot(
             agent_vals[~has_lost_already],
             actions_array[~has_lost_already],
             linestyle="-",
@@ -839,9 +838,11 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         seed = 69
         self.seed(seed)
 
-        learned_utilities, equ_utilities, l2_distances_vs_equ = self.eval_vs_equilibrium_strategies(
-            learners, num_samples
-        )
+        (
+            learned_utilities,
+            equ_utilities,
+            l2_distances_vs_equ,
+        ) = self.eval_vs_equilibrium_strategies(learners, num_samples)
 
         l2_distances_to_equ_over_grid = self.measure_l2_distance_to_equ_over_grid(
             learners, num_samples
@@ -881,7 +882,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         equ_rewards_total = {i: 0 for i in learners.keys()}
 
         for round_iter in range(num_rounds):
-
             equ_actions_in_actual_play = th_ut.get_ma_actions(
                 self.equilibrium_strategies, actual_observations
             )
@@ -947,7 +947,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         """Instead of checking how far away we are from the equilibrium strategy in actual play,
         we measure the distance over a specified grid. This is especially important for the second
         round, where the opponent's bids are published. On distribution, these may only be covering
-        a very narrow part of the strategy space.  
+        a very narrow part of the strategy space.
 
         Args:
             learners (_type_): learner type strategies
@@ -972,11 +972,19 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 first_round_agent_actions, first_round_equ_actions
             )
 
-            _, _, second_round_equ_actions_won_first_round = self._get_actions_and_grid_in_second_stage(
+            (
+                _,
+                _,
+                second_round_equ_actions_won_first_round,
+            ) = self._get_actions_and_grid_in_second_stage(
                 self.equilibrium_strategies[agent_id], second_round_precision
             )
 
-            _, _, second_round_agent_actions_won_first_round = self._get_actions_and_grid_in_second_stage(
+            (
+                _,
+                _,
+                second_round_agent_actions_won_first_round,
+            ) = self._get_actions_and_grid_in_second_stage(
                 learner, second_round_precision
             )
             second_round_agent_actions_won_first_round = self.relu_layer(
