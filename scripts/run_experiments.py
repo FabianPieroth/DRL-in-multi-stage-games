@@ -20,18 +20,16 @@ def run_sequential_sales_experiment():
     iteration_num = 10_000
     policy_sharing = True
 
-    num_rounds_to_play_options = [1, 2, 4]
+    num_stages_options = [1, 2, 4]
     mechanism_type_options = ["first", "second"]
     algorithm_options = ["ppo", "reinforce"]
     verifier_discretization = 64
-    options = product(
-        num_rounds_to_play_options, mechanism_type_options, algorithm_options
-    )
+    options = product(num_stages_options, mechanism_type_options, algorithm_options)
 
     for option in options:
-        num_rounds_to_play, mechanism_type, algorithm = option
+        num_stages, mechanism_type, algorithm = option
 
-        if num_rounds_to_play > 3:
+        if num_stages > 3:
             verifier_discretization = 16
 
         for i in range(runs):
@@ -45,15 +43,15 @@ def run_sequential_sales_experiment():
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"eval_freq={iteration_num}",
-                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_stages}",
                     f"policy_sharing={policy_sharing}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
                     f"verifier.action_discretization={verifier_discretization}",
                     f"verifier.obs_discretization={verifier_discretization}",
                     f"rl_envs.mechanism_type={mechanism_type}",
-                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
-                    f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                    f"rl_envs.num_stages={num_stages}",
+                    f"rl_envs.num_agents={num_stages + 1}",
                 ]
             )
 
@@ -71,7 +69,7 @@ def run_asymmetric_second_price_sequential_sales_experiment():
     runs = 10
     iteration_num = 10_000
 
-    num_rounds_to_play = 2
+    num_stages = 2
     mechanism_type = "second"
     algorithm_options = ["reinforce", "ppo"]
 
@@ -87,13 +85,13 @@ def run_asymmetric_second_price_sequential_sales_experiment():
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"eval_freq={iteration_num}",
-                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_stages}",
                     f"policy_sharing={False}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
                     f"rl_envs.mechanism_type={mechanism_type}",
-                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
-                    f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                    f"rl_envs.num_stages={num_stages}",
+                    f"rl_envs.num_agents={num_stages + 1}",
                 ]
             )
 
@@ -111,7 +109,7 @@ def run_symmetric_budget_constraint_with_affiliation_experiments():
     runs = 10
     iteration_num = 10_000
 
-    num_rounds_to_play = 2
+    num_stages = 2
     mechanism_type_options = ["first", "second"]
     algorithm_options = ["reinforce", "ppo"]
     budgets_options = [0.6, 0.8]
@@ -131,13 +129,13 @@ def run_symmetric_budget_constraint_with_affiliation_experiments():
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"eval_freq={iteration_num}",
-                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_stages}",
                     f"policy_sharing={True}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
                     f"rl_envs.mechanism_type={mechanism_type}",
-                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
-                    f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                    f"rl_envs.num_stages={num_stages}",
+                    f"rl_envs.num_agents={num_stages + 1}",
                     f"rl_envs.budgets={budgets}",
                     f"rl_envs/sampler={sampler}",
                 ]
@@ -158,7 +156,7 @@ def run_sequential_sales_interdependent_plus_risk_experiment():
     iteration_num = 10_000
     policy_sharing = True
 
-    num_rounds_to_play_options = [2]
+    num_stages_options = [2]
     algorithm_options = ["reinforce", "ppo"]
     risk_aversion_options = [0.25, 0.5, 0.75]
 
@@ -172,11 +170,11 @@ def run_sequential_sales_interdependent_plus_risk_experiment():
     ]
 
     options = product(
-        num_rounds_to_play_options, algorithm_options, settings, risk_aversion_options
+        num_stages_options, algorithm_options, settings, risk_aversion_options
     )
 
     for option in options:
-        num_rounds_to_play, algorithm, setting, risk_aversion = option
+        num_stages, algorithm, setting, risk_aversion = option
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -189,13 +187,13 @@ def run_sequential_sales_interdependent_plus_risk_experiment():
                     f"algorithms=[{algorithm}]",
                     f"iteration_num={iteration_num}",
                     f"eval_freq={iteration_num}",
-                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_rounds_to_play}",
+                    f"algorithm_configs.{algorithm}.n_rollout_steps={num_stages}",
                     f"policy_sharing={policy_sharing}",
                     f"log_path={log_path}",
                     f"verify_br={True}",
                     f"rl_envs.mechanism_type={setting['mechanism_type']}",
-                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
-                    f"rl_envs.num_agents={setting['num_agents'] + (num_rounds_to_play - 1)}",
+                    f"rl_envs.num_stages={num_stages}",
+                    f"rl_envs.num_agents={setting['num_agents'] + (num_stages - 1)}",
                     f"rl_envs/sampler={setting['sampler_name']}",
                     f"rl_envs.risk_aversion={risk_aversion}",
                 ]

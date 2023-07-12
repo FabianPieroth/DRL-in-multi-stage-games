@@ -24,7 +24,7 @@ from src.utils.coordinator_utils import get_env
 directory = f"{LOG_PATH}verifier/"
 
 # USER PARAMETERS
-num_rounds_to_play_options = [2]
+num_stages_options = [2]
 num_simulations_options = [2 ** i for i in range(5, 25, 2)]
 action_discretization_options = [128, 64, 32, 16]
 
@@ -41,7 +41,7 @@ def run_verifier_analysis():
     utility_losses = np.zeros(
         (
             runs,
-            len(num_rounds_to_play_options),
+            len(num_stages_options),
             len(num_simulations_options),
             len(action_discretization_options),
         )
@@ -49,12 +49,10 @@ def run_verifier_analysis():
     elapsed_times = np.zeros_like(utility_losses)
 
     options = enumerated_product(
-        num_rounds_to_play_options,
-        num_simulations_options,
-        action_discretization_options,
+        num_stages_options, num_simulations_options, action_discretization_options
     )
     for idx, option in options:
-        num_rounds_to_play, num_simulations, action_discretization = option
+        num_stages, num_simulations, action_discretization = option
 
         for i in range(runs):
             config = io_ut.get_config(
@@ -65,8 +63,8 @@ def run_verifier_analysis():
                     f"verify_br=true",
                     f"verifier.num_simulations={num_simulations}",
                     f"verifier.action_discretization={action_discretization}",
-                    f"rl_envs.num_rounds_to_play={num_rounds_to_play}",
-                    f"rl_envs.num_agents={num_rounds_to_play + 1}",
+                    f"rl_envs.num_stages={num_stages}",
+                    f"rl_envs.num_agents={num_stages + 1}",
                     f"delete_logs_after_training=true",
                 ]
             )
@@ -136,15 +134,14 @@ def evaluate_verifier_analysis():
     plt.rc("ytick", labelsize=12)
 
     # Plot
-    for j, num_rounds_to_play in enumerate(num_rounds_to_play_options):
+    for j, num_stages in enumerate(num_stages_options):
         axs = _plot(utility_losses[:, j, :, :], elapsed_times[:, j, :, :])
-        # plt.suptitle(f"Sequential sales: {num_rounds_to_play} stages")
+        # plt.suptitle(f"Sequential sales: {num_stages} stages")
         axs[0].set_ylabel("approximate utility loss $\ell^{ver}$", fontsize=12)
         axs[1].set_ylabel("run time (seconds)", fontsize=14)
         plt.tight_layout()
         plt.savefig(
-            f"{directory}/utility_loss_analysis_{num_rounds_to_play}_stages.pdf",
-            dpi=600,
+            f"{directory}/utility_loss_analysis_{num_stages}_stages.pdf", dpi=600
         )
 
 

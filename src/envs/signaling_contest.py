@@ -30,7 +30,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.action_size = config["action_size"]
         self.prior_low, self.prior_high = config["prior_bounds"]
         self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
-        self.num_rounds_to_play = 2
+        self.num_stages = 2
         # obs indices
         self.group_split_index = int(config["num_agents"] / 2)
         self.allocation_index = self.valuation_size
@@ -284,8 +284,16 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         data_group_B = torch.concat([allocations_B, w_info_A], axis=2)
         return torch.concat([data_group_A, data_group_B], axis=1)
 
-    def get_obs_discretization_shape(
-        self, agent_id: int, obs_discretization: int, stage: int
+    def provide_env_verifier_info(
+        self, stage: int, agent_id: int, obs_discretization: int
+    ) -> Tuple:
+        discr_shapes = self._get_ver_obs_discretization_shape(obs_discretization, stage)
+        obs_indices = self._get_ver_obs_dim_indices(stage)
+        boundaries = self._get_ver_boundaries(agent_id, stage, obs_indices)
+        return discr_shapes, obs_indices, boundaries
+
+    def _get_ver_obs_discretization_shape(
+        self, obs_discretization: int, stage: int
     ) -> Tuple[int]:
         """For the verifier, we return a discretized observation space."""
         if stage == 0:
@@ -295,62 +303,32 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         else:
             raise ValueError("The contest is only implemented for two stages!")
 
-    def get_obs_bin_indices(
-        self,
-        agent_obs: torch.Tensor,
-        agent_id: int,
-        stage: int,
-        obs_discretization: int,
-    ) -> torch.LongTensor:
-        """Determines the bin indices for the given observations with discrete values between 0 and obs_discretization.
-
-        Args:
-            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
-            agent_id (int):
-            stage (int):
-            obs_discretization (int): number of discretization points
-
-        Returns:
-            torch.LongTensor: shape=(batch_size, )
-        """
+    def _get_ver_obs_dim_indices(self, stage: int) -> Tuple[int]:
         if stage == 0:
-            relevant_obs_indices = (0,)
-            discretization_nums = (obs_discretization,)
+            obs_indices = (0,)
         else:
-            relevant_obs_indices = (1, 3)
-            discretization_nums = (2, obs_discretization)
-        obs_bins = torch.zeros(
-            (agent_obs.shape[0], len(relevant_obs_indices)),
-            dtype=torch.long,
-            device=self.device,
-        )
-        for k, obs_dim in enumerate(relevant_obs_indices):
-            obs_bins[:, k] = self._get_single_dim_obs_bins(
-                agent_obs, agent_id, discretization_nums[k], obs_dim, stage
-            )
-        return obs_bins
+            obs_indices = (1, 3)
+        return obs_indices
 
-    def _get_single_dim_obs_bins(
-        self, agent_obs, agent_id, num_discretization, obs_dim, stage: int
-    ) -> torch.LongTensor:
-        low, high = self._get_bounds_for_obs_bins(agent_id, obs_dim, stage)
-        obs_grid = torch.linspace(low, high, num_discretization, device=self.device)
-        single_dim_obs_bins = torch.bucketize(agent_obs[:, obs_dim], obs_grid)
-        return single_dim_obs_bins
-
-    def _get_bounds_for_obs_bins(
-        self, agent_id: int, obs_dim: int, stage: int
+    def _get_ver_boundaries(
+        self, agent_id: int, stage: int, obs_indices: Tuple[int]
     ) -> Tuple[float]:
-        low = self.observation_spaces[agent_id].low[obs_dim]
-        high = self.observation_spaces[agent_id].high[obs_dim]
-        if stage > 0 and obs_dim == 3:
+        low = [
+            self.observation_spaces[agent_id].low[obs_index]
+            for obs_index in obs_indices
+        ]
+        high = [
+            self.observation_spaces[agent_id].high[obs_index]
+            for obs_index in obs_indices
+        ]
+        if stage == 1:
             if self.config["information_case"] == "true_valuations":
-                low, high = self.prior_low, self.prior_high
+                low[-1], high[-1] = self.prior_low, self.prior_high
             elif self.config["information_case"] == "winning_bids":
-                low, high = 0.0, 0.5 * self.prior_high
+                low[-1], high[-1] = 0.0, 0.5 * self.prior_high
             else:
                 raise ValueError("Unknown information case!")
-        return low, high
+        return {"low": low, "high": high}
 
     def _get_info_from_all_pay_auction(
         self, cur_states, low_split_index, high_split_index, action_profile

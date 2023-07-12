@@ -4,6 +4,7 @@ Simple sequential auction game following Krishna.
 Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
 """
 import time
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -33,7 +34,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
-        self.num_rounds_to_play = config.num_rounds_to_play
+        self.num_stages = config.num_stages
         self.mechanism = self._init_mechanism(config)
 
         # NOTE: unit-demand only atm
@@ -78,7 +79,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     ) -> SequentialAuctionEquilibrium:
         equilibrium_config = {
             "num_agents": self.config.num_agents,
-            "num_units": self.num_rounds_to_play,
+            "num_units": self.num_stages,
             "reduced_obs_space": self.reduced_observation_space,
             "payments_start_index": self.payments_start_index,
             "dummy_price_key": SequentialAuction.DUMMY_PRICE_KEY,
@@ -94,7 +95,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             equilibrium_config["equ_type"] = "fpsb_symmetric_uniform"
         elif (
             self.config.mechanism_type == "first"
-            and self.num_rounds_to_play == 1
+            and self.num_stages == 1
             and self.config.sampler.name == "symmetric_uniform"
         ):
             equilibrium_config[
@@ -109,14 +110,14 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             equilibrium_config["equ_type"] = "second_price_symmetric_uniform"
         elif (
             self.config.mechanism_type in ["second", "vcg", "vickery"]
-            and self.num_rounds_to_play == 1
+            and self.num_stages == 1
             and self.config.num_agents == 3
             and self.config.sampler.name == "mineral_rights_common_value"
         ):
             equilibrium_config["equ_type"] = "second_price_3p_mineral_rights_prior"
         elif (
             self.config.mechanism_type == "first"
-            and self.num_rounds_to_play == 1
+            and self.num_stages == 1
             and self.config.num_agents == 2
             and self.config.sampler.name == "affiliated_uniform"
         ):
@@ -189,19 +190,17 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             if self.reduced_observation_space:
                 # observations: valuation, stage, allocation (up to now)
                 low = [val_low, 0.0, 0.0]
-                high = [val_high, self.num_rounds_to_play, 1.0]
+                high = [val_high, self.num_stages, 1.0]
             else:
                 # observations: valuation, allocation (including in which stage
                 # obtained), previous prices (including in which stage payed)
                 low = (
-                    [val_low]
-                    + [0.0] * self.num_rounds_to_play
-                    + [-1.0] * (self.num_rounds_to_play * 2)
+                    [val_low] + [0.0] * self.num_stages + [-1.0] * (self.num_stages * 2)
                 )
                 high = (
                     [val_high]
-                    + [1.0] * self.num_rounds_to_play
-                    + [val_high] * (self.num_rounds_to_play * 2)
+                    + [1.0] * self.num_stages
+                    + [val_high] * (self.num_stages * 2)
                 )
             self.OBSERVATION_DIM = len(low)
             observation_spaces_dict[agent_id] = spaces.Box(
@@ -233,7 +232,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         """Create new initial states consisting of
             * one valuation per agent
             * one signal per agent
-            * num_rounds_to_play * allocation per agent
+            * num_stages * allocation per agent
             * prices of all stages (-1 for future stages)
                 -> implicitly tells agents which the current round is
 
@@ -248,7 +247,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             (
                 n,
                 2 if self.collapse_symmetric_opponents else self.num_agents,
-                self.payments_start_index + self.num_rounds_to_play,
+                self.payments_start_index + self.num_stages,
             ),
             device=self.device,
         )
@@ -289,7 +288,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         return (
             self.valuation_size
             + self.signal_size
-            + self.valuation_size * self.num_rounds_to_play
+            + self.valuation_size * self.num_stages
         )
 
     def set_winners_bids_to_zero(
@@ -397,7 +396,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             ] = 0
 
         # reached last stage?
-        if stage >= self.num_rounds_to_play - 1:
+        if stage >= self.num_stages - 1:
             dones = torch.ones((cur_states.shape[0]), device=device).bool()
         else:
             dones = torch.zeros((cur_states.shape[0]), device=device).bool()
@@ -533,11 +532,19 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 .index(SequentialAuction.DUMMY_PRICE_KEY)
             )
         except ValueError as _:  # last round
-            stage = self.num_rounds_to_play - 1
+            stage = self.num_stages - 1
         return stage
 
-    def get_obs_discretization_shape(
-        self, agent_id: int, obs_discretization: int, stage: int
+    def provide_env_verifier_info(
+        self, stage: int, agent_id: int, obs_discretization: int
+    ) -> Tuple:
+        discr_shapes = self._get_ver_obs_discretization_shape(obs_discretization, stage)
+        obs_indices = self._get_ver_obs_dim_indices(stage)
+        boundaries = self._get_ver_boundaries(agent_id, obs_indices)
+        return discr_shapes, obs_indices, boundaries
+
+    def _get_ver_obs_discretization_shape(
+        self, obs_discretization: int, stage: int
     ) -> Tuple[int]:
         """We only consider the agent's valuation space and loss/win."""
         if stage == 0:
@@ -545,44 +552,31 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         else:
             return (2,)
 
-    def get_obs_bin_indices(
-        self,
-        agent_obs: torch.Tensor,
-        agent_id: int,
-        stage: int,
-        obs_discretization: int,
-    ) -> torch.LongTensor:
-        """Determines the bin indices for the given observations with discrete
-        values between 0 and obs_discretization.
-
-        Args:
-            agent_obs (torch.Tensor): shape=(batch_size, obs_size)
-            agent_id (int):
-            stage (int):
-            obs_discretization (int): number of discretization points
-
-        Returns:
-            torch.LongTensor: shape=(batch_size, relevant_obs_size)
-        """
-        device = agent_obs.device
+    def _get_ver_obs_dim_indices(self, stage: int) -> Tuple[int]:
         if stage == 0:
-            relevant_obs_indices = (0,)
-            num_discretization = obs_discretization
+            obs_indices = (0,)
         else:
             if self.reduced_observation_space:
-                relevant_obs_indices = (2,)
+                obs_indices = (2,)
             else:
-                raise NotImplementedError(
-                    "Needs to be handled differently. Win/lose is given per round here."
+                warnings.warn(
+                    "Verifier only implemented for reduced_observation_space=True. Win/lose is given per round here."
                 )
-                relevant_obs_indices = (stage,)
-            num_discretization = 2
-        relevant_new_stage_obs = agent_obs[:, relevant_obs_indices]
-        low = self.observation_spaces[agent_id].low[relevant_obs_indices]
-        high = self.observation_spaces[agent_id].high[relevant_obs_indices]
-        obs_grid = torch.linspace(low, high, num_discretization, device=device)
-        # TODO: Only works for one dimensional additional obs in every stage
-        return torch.bucketize(relevant_new_stage_obs, obs_grid)
+                obs_indices = (stage,)
+        return obs_indices
+
+    def _get_ver_boundaries(
+        self, agent_id: int, obs_indices: Tuple[int]
+    ) -> Dict[str, Tuple[int]]:
+        low = [
+            self.observation_spaces[agent_id].low[obs_index]
+            for obs_index in obs_indices
+        ]
+        high = [
+            self.observation_spaces[agent_id].high[obs_index]
+            for obs_index in obs_indices
+        ]
+        return {"low": low, "high": high}
 
     def _has_won_already_from_state(
         self, state: torch.Tensor, stage: int
@@ -625,18 +619,18 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         plt.rc("ytick", labelsize=12)
         fig, axs = plt.subplots(
             nrows=1,
-            ncols=self.num_rounds_to_play,
+            ncols=self.num_stages,
             sharey=True,
-            figsize=(5 * self.num_rounds_to_play, 5),
+            figsize=(5 * self.num_stages, 5),
         )
         if not self.config["prettify_plots"]:
             fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
-        if self.num_rounds_to_play == 1:
+        if self.num_stages == 1:
             axs = [axs]
 
         states = self.sample_new_states(num_samples)
 
-        for stage, ax in zip(range(self.num_rounds_to_play), axs):
+        for stage, ax in zip(range(self.num_stages), axs):
             ax.set_title(f"Stage {stage + 1}")
             observations = self.get_observations(states)
             ma_deterministic_actions = th_ut.get_ma_actions(
@@ -831,11 +825,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         equ_states = actual_states.clone()
         equ_observations = self.get_observations(equ_states)
 
-        l2_distances = {i: [None] * self.num_rounds_to_play for i in learners.keys()}
+        l2_distances = {i: [None] * self.num_stages for i in learners.keys()}
         actual_rewards_total = {i: 0 for i in learners.keys()}
         equ_rewards_total = {i: 0 for i in learners.keys()}
 
-        for stage in range(self.num_rounds_to_play):
+        for stage in range(self.num_stages):
+
             equ_actions_in_actual_play = th_ut.get_ma_actions(
                 self.equilibrium_strategies, actual_observations
             )
@@ -866,7 +861,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         return actual_rewards_total, equ_rewards_total, l2_distances
 
     def _log_l2_distances(self, learners, distances_l2):
-        for stage in range(self.num_rounds_to_play):
+        for stage in range(self.num_stages):
             for agent_id, learner in learners.items():
                 learner.logger.record(
                     "eval/action_equ_L2_distance_stage_" + str(stage),

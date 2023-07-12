@@ -23,28 +23,25 @@ class RockPaperScissors(BaseEnvForVec):
         self.action_space_sizes = self._init_action_space_sizes()
         self.variable_num_rounds = self.config["variable_num_rounds"]
 
-        self.num_rounds_to_play = self.config["num_rounds_to_play"]
+        self.num_stages = self.config["num_stages"]
 
-    def _get_num_rounds_to_play(self, num: int) -> torch.Tensor:
+    def _get_num_stages(self, num: int) -> torch.Tensor:
         if self.config["variable_num_rounds"]:
             return torch.randint(
-                low=self.config["num_rounds_to_play"] - 1,
-                high=self.config["num_rounds_to_play"] + 2,
+                low=self.config["num_stages"] - 1,
+                high=self.config["num_stages"] + 2,
                 size=(num,),
                 device=self.device,
             )
         else:
-            return (
-                torch.ones((num,), device=self.device)
-                * self.config["num_rounds_to_play"]
-            )
+            return torch.ones((num,), device=self.device) * self.config["num_stages"]
 
     def _get_num_agents(self) -> int:
         return self.config["num_agents"]
 
     def _init_observation_spaces(self) -> Dict[int, Space]:
         return {
-            agent_id: spaces.Box(0, self.config["num_rounds_to_play"], shape=(2,))
+            agent_id: spaces.Box(0, self.config["num_stages"], shape=(2,))
             for agent_id in range(self.num_agents)
         }
 
@@ -63,11 +60,11 @@ class RockPaperScissors(BaseEnvForVec):
 
         :param n: Batch size of how many games are played in parallel.
         :return: the new states, in shape=(n, num_agents, 2), where 2 stands
-            for `current_round` and `num_rounds_to_play`.
+            for `current_round` and `num_stages`.
         """
         shape_to_sample = (n,) + self.state_shape
         states = torch.zeros(shape_to_sample, device=self.device)
-        states[:, :, -1] = self._get_num_rounds_to_play(n)[:, None]
+        states[:, :, -1] = self._get_num_stages(n)[:, None]
         return states
 
     def compute_step(self, cur_states, actions: Dict[int, torch.Tensor]):

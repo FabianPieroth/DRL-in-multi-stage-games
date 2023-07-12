@@ -45,7 +45,10 @@ class BFVerifier:
         self.batch_size = batch_size
         self.device = device
         if self.env_is_compatible_with_verifier:
-            self.num_rounds_to_play = self.env.model.num_rounds_to_play
+            self.num_stages = self.env.model.num_stages
+            self.env.model.verfier_env_info = self.env.model.get_verifier_env_infos(
+                obs_discretization=self.obs_discretization
+            )
 
     def verify_br(
         self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
@@ -114,7 +117,7 @@ class BFVerifier:
         information_tree = InformationSetTree(
             agent_id,
             self.env,
-            self.obs_discretization,
+            self.env.model.verfier_env_info.discretizations,
             self.action_discretization,
             self.device,
         )
@@ -161,7 +164,7 @@ class BFVerifier:
 
         actual_utility = torch.zeros((batch_size,), device=device)
 
-        for stage in range(self.num_rounds_to_play):
+        for stage in range(self.num_stages):
             obs = self.env.model.get_observations(states)
             actions = th_ut.get_ma_actions(learners, obs)
             obs, rewards, _, states = self.env.model.compute_step(states, actions)
@@ -241,7 +244,7 @@ class BFVerifier:
         episode_starts = torch.ones((batch_size,), dtype=bool, device=self.device)
         sim_batch_indices = torch.tensor([], device=self.device).long()
 
-        for stage in range(self.num_rounds_to_play):
+        for stage in range(self.num_stages):
             # Repeat states such that we can try out all discrete actions in
             # all states
             # shape = (sim_size, action_discretization, *state_size)
@@ -265,7 +268,7 @@ class BFVerifier:
 
             # Create bins / indices for keeping track of observations & actions
             # shape = (sim_size * sims_to_be_made, 1)
-            # where sims_to_be_made = action_discretization ** (num_rounds_to_play
+            # where sims_to_be_made = action_discretization ** (num_stages
             #   - stage)
             sim_size_obs_bins = self._get_sim_size_obs_bins(agent_id, agent_obs, stage)
             sim_size_action_bins = self._get_sim_size_action_bins(sim_size, stage)
@@ -283,7 +286,7 @@ class BFVerifier:
             )
             # shape = (sim_size * self.action_discretization * sims_to_be_made)
             # where sims_to_be_made = action_discretization **
-            #   (num_rounds_to_play - (stage + 1))
+            #   (num_stages - (stage + 1))
             repeated_agent_rewards = self._repeat_rewards_and_flatten_to_full_stage_sim_size(
                 rewards[agent_id], stage + 1
             )
@@ -299,7 +302,7 @@ class BFVerifier:
             sim_size *= self.action_discretization
         assert (
             torch.all(dones).cpu().item()
-        ), "All games should have ended after playing all rounds! Check num_rounds_to_play of env!"
+        ), "All games should have ended after playing all rounds! Check num_stages of env!"
         return best_response_utilities, sim_batch_indices
 
     def _get_combined_actions(self, agent_id, sim_size_grid_actions, opp_actions):
@@ -368,7 +371,7 @@ class BFVerifier:
                 pos=[0, 2],
                 repeats=[
                     sim_size,
-                    self.action_discretization ** (self.num_rounds_to_play - stage - 1),
+                    self.action_discretization ** (self.num_stages - stage - 1),
                 ],
             )
             .flatten()
@@ -392,9 +395,7 @@ class BFVerifier:
         Returns:
             torch.Tensor: (sim_size * sims_to_be_made, 1)
         """
-        obs_bin_indices = self.env.model.get_obs_bin_indices(
-            agent_obs, agent_id, stage, self.obs_discretization
-        )
+        obs_bin_indices = self.env.model.get_obs_bin_indices(agent_id, agent_obs, stage)
         repeated_obs_bin_indices = self._repeat_obs_bins_and_flatten_to_full_stage_sim_size(
             obs_bin_indices, stage
         )
@@ -416,7 +417,7 @@ class BFVerifier:
         return th_ut.repeat_tensor_along_new_axis(
             data=rewards,
             pos=[pos_to_repeat],
-            repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
+            repeats=[self.action_discretization ** (self.num_stages - stage)],
         ).flatten()
 
     def _repeat_obs_bins_and_flatten_to_full_stage_sim_size(
@@ -433,7 +434,7 @@ class BFVerifier:
         return th_ut.repeat_tensor_along_new_axis(
             data=obs_bins,
             pos=[1],
-            repeats=[self.action_discretization ** (self.num_rounds_to_play - stage)],
+            repeats=[self.action_discretization ** (self.num_stages - stage)],
         ).flatten(start_dim=0, end_dim=-2)
 
     def _get_agent_grid_actions(self, agent_id, cur_sim_size):
@@ -478,6 +479,4 @@ class BFVerifier:
         Returns:
             Tuple[int]: Shape of utility tensor
         """
-        return (batch_size,) + tuple(
-            [self.action_discretization] * self.num_rounds_to_play
-        )
+        return (batch_size,) + tuple([self.action_discretization] * self.num_stages)
