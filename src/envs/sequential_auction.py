@@ -291,6 +291,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             + self.valuation_size * self.num_stages
         )
 
+    def adapt_ma_actions_for_env(
+        self,
+        ma_actions: Dict[int, torch.Tensor],
+        observations: Optional[Dict[int, torch.Tensor]] = None,
+        states: Optional[Dict[int, torch.Tensor]] = None,
+    ) -> Dict[int, torch.Tensor]:
+        ma_actions = self.set_winners_bids_to_zero(states, ma_actions)
+        ma_actions = self.apply_budget_constraints(ma_actions)
+        return ma_actions
+
     def set_winners_bids_to_zero(
         self, states, actions: Dict[int, torch.Tensor]
     ) -> Dict[int, torch.Tensor]:
@@ -339,9 +349,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 )
             actions[1] = opponent_actions
 
-        actions = self.set_winners_bids_to_zero(cur_states, actions)
-
-        actions = self.apply_budget_constraints(actions)
+        actions = self.adapt_ma_actions_for_env(ma_actions=actions, states=cur_states)
 
         action_profile = torch.stack(tuple(actions.values()), dim=1)
 
@@ -633,18 +641,13 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         for stage, ax in zip(range(self.num_stages), axs):
             ax.set_title(f"Stage {stage + 1}")
             observations = self.get_observations(states)
-            ma_deterministic_actions = th_ut.get_ma_actions(
-                strategies, observations, True
+
+            ma_deterministic_actions = self.get_ma_actions_for_env(
+                strategies, observations=observations, deterministic=True, states=states
             )
-            ma_deterministic_actions = self.set_winners_bids_to_zero(
-                states, ma_deterministic_actions
-            )
-            ma_deterministic_actions = self.apply_budget_constraints(
-                ma_deterministic_actions
-            )
+
             ma_stddevs = th_ut.get_ma_learner_stddevs(strategies, observations)
-            ma_stddevs = self.set_winners_bids_to_zero(states, ma_stddevs)
-            ma_stddevs = self.apply_budget_constraints(ma_stddevs)
+            ma_stddevs = self.adapt_ma_actions_for_env(ma_stddevs, states=states)
 
             unique_strategies = set(strategies.values())
             # NOTE: This breaks under asymmetries and partial policy sharing
@@ -837,11 +840,10 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             equ_actions_in_equ = th_ut.get_ma_actions(
                 self.equilibrium_strategies, equ_observations
             )
-            actual_actions = th_ut.get_ma_actions(learners, actual_observations)
-            actual_actions = self.set_winners_bids_to_zero(
-                actual_states, actual_actions
+
+            actual_actions = self.get_ma_actions_for_env(
+                learners, observations=actual_observations, states=actual_states
             )
-            actual_actions = self.apply_budget_constraints(actual_actions)
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions

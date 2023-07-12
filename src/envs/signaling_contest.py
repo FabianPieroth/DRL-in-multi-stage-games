@@ -148,6 +148,24 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         return states
 
+    def adapt_ma_actions_for_env(
+        self,
+        ma_actions: Dict[int, torch.Tensor],
+        observations: Optional[Dict[int, torch.Tensor]] = None,
+        states: Optional[Dict[int, torch.Tensor]] = None,
+    ) -> Dict[int, torch.Tensor]:
+        ma_actions = self.set_losers_bids_to_zero(states, ma_actions)
+        ma_actions = self.clip_bids_to_positive(ma_actions)
+        return ma_actions
+
+    def clip_bids_to_positive(
+        self, ma_actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        return {
+            agent_id: self.relu_layer(sa_actions)
+            for agent_id, sa_actions in ma_actions.items()
+        }
+
     def set_losers_bids_to_zero(
         self, states, actions: Dict[int, torch.Tensor]
     ) -> Dict[int, torch.Tensor]:
@@ -532,15 +550,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
         self.log_metrics_to_equilibrium(learners)
 
-    def get_ma_clipped_bids(self, learners, observations, deterministic: bool = True):
-        action_dict = th_ut.get_ma_actions(
-            learners, observations, deterministic=deterministic
-        )
-        for agent_id, sa_actions in action_dict.items():
-            sa_actions = self.relu_layer(sa_actions)
-            action_dict[agent_id] = sa_actions
-        return action_dict
-
     def plot_strategies_vs_equilibrium(
         self, learners, writer, iteration: int, config, num_samples: int = 500
     ):
@@ -575,15 +584,12 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         for round in range(1, 3):
             observations = self.get_observations(states)
-            ma_deterministic_actions = th_ut.get_ma_actions(
-                learners, observations, deterministic=True
-            )
-            ma_deterministic_actions = self.set_losers_bids_to_zero(
-                states, ma_deterministic_actions
+            ma_deterministic_actions = self.get_ma_actions_for_env(
+                learners, observations=observations, deterministic=True, states=states
             )
 
             ma_stddevs = th_ut.get_ma_learner_stddevs(learners, observations)
-            ma_stddevs = self.set_losers_bids_to_zero(states, ma_stddevs)
+            ma_stddevs = self.adapt_ma_actions_for_env(ma_stddevs, states=states)
 
             num_agents_to_plot = len(set(self.learners.values()))
             for agent_id in range(num_agents_to_plot):
@@ -890,10 +896,12 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 self.equilibrium_strategies, equ_observations
             )
 
-            actual_actions = self.get_ma_clipped_bids(
-                learners, actual_observations, True
+            actual_actions = self.get_ma_actions_for_env(
+                learners,
+                observations=actual_observations,
+                deterministic=True,
+                states=actual_states,
             )
-            actual_actions = self.set_losers_bids_to_zero(actual_states, actual_actions)
 
             actual_observations, actual_rewards, _, actual_states = self.compute_step(
                 actual_states, actual_actions
