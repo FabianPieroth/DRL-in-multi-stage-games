@@ -3,6 +3,7 @@ import hydra
 import pytest
 import torch
 
+import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
 import src.utils.test_utils as tst_ut
 import src.utils.torch_utils as th_ut
@@ -14,27 +15,27 @@ ids, testdata = zip(
     *[
         [
             "first-price-ppo",
-            ("first", "ppo", "symmetric_uniform", 3, 2, False, False, 300, 0.10),
+            ("first", "ppo", "symmetric_uniform", 3, 2, False, False, 200, 0.10),
         ],
         [
             "first-price-reinforce",
-            ("first", "reinforce", "symmetric_uniform", 3, 2, False, False, 300, 0.15),
+            ("first", "reinforce", "symmetric_uniform", 3, 2, False, False, 200, 0.15),
         ],
         [
             "second-price",
-            ("second", "ppo", "symmetric_uniform", 3, 2, False, False, 300, 0.25),
+            ("second", "ppo", "symmetric_uniform", 3, 2, False, False, 200, 0.25),
         ],
         [
             "first-price_policy_sharing",
-            ("first", "ppo", "symmetric_uniform", 3, 2, True, False, 300, 0.10),
+            ("first", "ppo", "symmetric_uniform", 3, 2, True, False, 200, 0.10),
         ],
         [
             "first-price_collapse_opponents",
-            ("first", "ppo", "symmetric_uniform", 3, 2, True, True, 300, 0.10),
+            ("first", "ppo", "symmetric_uniform", 3, 2, True, True, 200, 0.10),
         ],
         [
             "first-price-affiliated-values-ppo",
-            ("first", "ppo", "affiliated_uniform", 2, 1, False, False, 400, 0.10),
+            ("first", "ppo", "affiliated_uniform", 2, 1, False, False, 300, 0.10),
         ],
         [
             "second-price-mineral-rights-ppo",
@@ -95,8 +96,12 @@ def test_learning_in_sequential_auction(
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
-    _, _, l2_distances = ma_learner.env.model.do_equilibrium_and_actual_rollout(
-        ma_learner.learners, 2048
+    l2_distances = ev_ut.log_l2_distance_to_equilibrium(
+        env=ma_learner.env.model,
+        learners=ma_learner.learners,
+        equ_strategies=ma_learner.env.model.equilibrium_strategies,
+        num_envs=2 ** 14,
+        num_stages=ma_learner.env.model.num_stages,
     )
     average_l2_distance = (
         torch.mean(torch.tensor(list(l2_distances.values()))).detach().item()
@@ -144,13 +149,16 @@ def test_learning_in_signaling_contest(
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
-    _, _, l2_distances = ma_learner.env.model.eval_vs_equilibrium_strategies(
-        ma_learner.learners, 2048
+    l2_distances = ev_ut.log_l2_distance_to_equilibrium(
+        env=ma_learner.env.model,
+        learners=ma_learner.learners,
+        equ_strategies=ma_learner.env.model.equilibrium_strategies,
+        num_envs=2 ** 14,
+        num_stages=ma_learner.env.model.num_stages,
     )
     average_l2_distance = (
         torch.mean(torch.tensor(list(l2_distances.values()))).detach().item()
     )
-
     assert (
         average_l2_distance < error_bound
     ), "The strategies are unexpectedly far away from equilibrium!"

@@ -14,7 +14,7 @@ def log_l2_distance_to_equilibrium(
     equ_strategies: Dict[int, EquilibriumStrategy],
     num_envs: int,
     num_stages: int,
-):
+) -> Dict[int, List[float]]:
     """Run algorithms for num_steps steps on num_envs environments without training.
     Args:
         env: The environment to run the algorithms on.
@@ -24,7 +24,7 @@ def log_l2_distance_to_equilibrium(
     Returns:
         A tuple of lists of states, observations, actions and rewards. There is one more state and observation than action and reward. This is because the sequence begins and ends with a state. The ith action and reward correspond to the transition from the ith state to the (i+1)th state.
     """
-    excluded_agents = None
+    excluded_agents = []
     if len(set(learners.values())) == 1:
         excluded_agents = [agent_id for agent_id in learners.keys() if agent_id != 0]
 
@@ -60,6 +60,7 @@ def log_l2_distance_to_equilibrium(
                     learner_actions[agent_id], equ_actions[agent_id]
                 )
     log_l2_distances(learners, l2_distances)
+    return l2_distances
 
 
 def log_l2_distances(learners, distances_l2):
