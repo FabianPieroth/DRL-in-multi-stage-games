@@ -1,5 +1,5 @@
-num_simulations: 2_000_000
-action_discretization: 64
-obs_discretization: 64
+num_simulations: 8_000_000
+action_discretization: 128
+obs_discretization: 128
 batch_size: 32_768
 device: null
