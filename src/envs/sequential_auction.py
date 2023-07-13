@@ -599,6 +599,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             iteration: current training iteration
         """
         self.plot_strategies_vs_bne(learners, writer, iteration, config)
+        self.calculate_efficiency(learners, writer, iteration)
 
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
@@ -753,6 +754,45 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         )
         writer.add_figure("images", fig, iteration)
         plt.close()
+
+    def calculate_efficiency(
+        self, learners, writer, iteration: int, num_samples: int = 2 ** 14
+    ):
+        """Calculate the market efficiency for every stage (i.e. check that
+        bidder with highest valuation wins.)
+
+        NOTE: Alternatively, one may argue to calculate the efficiency
+        game-wise, i.e., check that lowest valued bidders lose at the very end.
+        """
+        device = self.device
+
+        states = self.sample_new_states(num_samples)
+        for stage in range(self.num_stages):
+            obs = self.get_observations(states)
+            actions = th_ut.get_ma_actions(learners, obs)
+            obs, rewards, _, states = self.compute_step(states, actions)
+
+        # Sort valuations
+        valuations = states[..., :, : self.valuation_size]
+        sorted_valuations = valuations.sort(axis=1).indices.sort(axis=1).indices
+        # 1st sort: Create index for sorting, 2nd sort: Create actual ranking
+
+        # Sort allocations across stages
+        allocations = states[
+            ...,
+            :,
+            self.allocations_start_index : self.allocations_start_index
+            + self.num_stages * self.valuation_size,
+        ]
+        sorted_allocations = (
+            allocations
+            * torch.flip(torch.range(1, self.num_stages, device=device), [0])
+        ).sum(axis=-1, keepdim=True)
+
+        # Compare order of valuations to that of allocations
+        efficiency = (sorted_valuations == sorted_allocations).float().mean()
+
+        writer.add_scalar("eval/efficiency", efficiency, iteration)
 
     def _get_plotting_settings(
         self, stage: int, agent_id: int, strategy, unique_strategies
