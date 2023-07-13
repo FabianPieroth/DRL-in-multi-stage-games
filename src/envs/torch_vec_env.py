@@ -257,19 +257,16 @@ class VerifiableEnv(ABC):
     ) -> Tuple:
         """The verifier needs some information from the environment to
         discretize the observation and action spaces accordingly.
-        By leaving some choices in the env allows for some expert knowledge control.
-        We assume each observation to be structured as follows:
-            observations: [batch_size, num_agents, num_local_obs]
+        We assume each agent_observation to be structured as follows:
+            sa_observation.shape = [batch_size, num_local_obs]
 
-        For each local_obs we need information when and how to discretize what.
+        For each local_obs we need information how to discretize what.
         For every stage and every agent one needs to provide
         the following:
         discretization-for-obs(Tuple[int]): how many discretization
                         points along each local_obs dim
         indices-for-obs-infos(Tuple[int]): which indizes in the
                         local_obs contain the infos to discretize
-        boundary-values-for-obs(Dict[str, Tuple[float]]): lower and upper bound
-                        for each local_obs dimension
         """
 
     def get_verifier_env_infos(self, obs_discretization: int) -> VerfierEnvInfo:
@@ -278,16 +275,45 @@ class VerifiableEnv(ABC):
         )
         for stage in range(self.num_stages):
             for agent_id in range(self.num_agents):
-                discre, indices, boundaries = self.provide_env_verifier_info(
+                discre, indices = self.provide_env_verifier_info(
                     stage=stage,
                     agent_id=agent_id,
                     obs_discretization=obs_discretization,
                 )
                 v_env_info.discretizations[stage][agent_id] = discre
                 v_env_info.obs_info_indices[stage][agent_id] = indices
-                v_env_info.boundary_values[stage][agent_id] = boundaries
-        # TODO: Pull default boundaries away from specific env to here
+                v_env_info.boundary_values[stage][agent_id] = self.get_ver_boundaries(
+                    stage, agent_id, indices
+                )
         return v_env_info
+
+    def get_ver_boundaries(
+        self, stage: int, agent_id: int, obs_indices: Tuple[int]
+    ) -> Dict[str, Tuple[float]]:
+        """Default boundaries are fetched from observation spaces. Overwrite
+        this method if one can exploit env-specific knowledge here.
+        boundary-values-for-obs(Dict[str, Tuple[float]]): lower and upper bound
+                                                   for each local_obs dimension
+        Args:
+            agent_id (int):
+            obs_indices (Tuple[int]):
+
+        Returns:
+            Dict[str, Tuple[float]]: lower and upper bounds along obs_indices dims
+        """
+        low = tuple(
+            [
+                self.observation_spaces[agent_id].low[obs_index]
+                for obs_index in obs_indices
+            ]
+        )
+        high = tuple(
+            [
+                self.observation_spaces[agent_id].high[obs_index]
+                for obs_index in obs_indices
+            ]
+        )
+        return {"low": low, "high": high}
 
     def get_obs_bin_indices(
         self, agent_id: int, agent_obs: torch.Tensor, stage: int

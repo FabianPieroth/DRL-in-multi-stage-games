@@ -546,8 +546,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
     ) -> Tuple:
         discr_shapes = self._get_ver_obs_discretization_shape(obs_discretization, stage)
         obs_indices = self._get_ver_obs_dim_indices(stage)
-        boundaries = self._get_ver_boundaries(agent_id, obs_indices)
-        return discr_shapes, obs_indices, boundaries
+        return discr_shapes, obs_indices
 
     def _get_ver_obs_discretization_shape(
         self, obs_discretization: int, stage: int
@@ -570,19 +569,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 )
                 obs_indices = (stage,)
         return obs_indices
-
-    def _get_ver_boundaries(
-        self, agent_id: int, obs_indices: Tuple[int]
-    ) -> Dict[str, Tuple[int]]:
-        low = [
-            self.observation_spaces[agent_id].low[obs_index]
-            for obs_index in obs_indices
-        ]
-        high = [
-            self.observation_spaces[agent_id].high[obs_index]
-            for obs_index in obs_indices
-        ]
-        return {"low": low, "high": high}
 
     def _has_won_already_from_state(
         self, state: torch.Tensor, stage: int

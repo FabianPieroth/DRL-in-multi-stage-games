@@ -307,8 +307,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     ) -> Tuple:
         discr_shapes = self._get_ver_obs_discretization_shape(obs_discretization, stage)
         obs_indices = self._get_ver_obs_dim_indices(stage)
-        boundaries = self._get_ver_boundaries(agent_id, stage, obs_indices)
-        return discr_shapes, obs_indices, boundaries
+        return discr_shapes, obs_indices
 
     def _get_ver_obs_discretization_shape(
         self, obs_discretization: int, stage: int
@@ -328,8 +327,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             obs_indices = (1, 3)
         return obs_indices
 
-    def _get_ver_boundaries(
-        self, agent_id: int, stage: int, obs_indices: Tuple[int]
+    def get_ver_boundaries(
+        self, stage: int, agent_id: int, obs_indices: Tuple[int]
     ) -> Tuple[float]:
         low = [
             self.observation_spaces[agent_id].low[obs_index]
@@ -346,7 +345,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 low[-1], high[-1] = 0.0, 0.5 * self.prior_high
             else:
                 raise ValueError("Unknown information case!")
-        return {"low": low, "high": high}
+        return {"low": tuple(low), "high": tuple(high)}
 
     def _get_info_from_all_pay_auction(
         self, cur_states, low_split_index, high_split_index, action_profile
