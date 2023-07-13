@@ -22,6 +22,7 @@ from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete, Space
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.vec_env import VecEnv
 
+import src.utils.torch_utils as th_ut
 from src.envs.equilibria import EquilibriumStrategy
 from src.envs.space_translators import (
     BaseSpaceTranslator,
@@ -135,6 +136,38 @@ class BaseEnvForVec(ABC):
             image:
         """
 
+    def get_ma_actions_for_env(
+        self,
+        learners,
+        observations: Dict[int, torch.Tensor],
+        deterministic: bool = True,
+        excluded_agents: List = None,
+        no_grad: bool = True,
+        states: Dict[int, torch.Tensor] = None,
+    ):
+        ma_actions = th_ut.get_ma_actions(
+            learners, observations, deterministic, excluded_agents, no_grad
+        )
+        ma_actions = self.adapt_ma_actions_for_env(ma_actions, observations, states)
+        return ma_actions
+
+    def adapt_ma_actions_for_env(
+        self,
+        ma_actions: Dict[int, torch.Tensor],
+        observations: Optional[Dict[int, torch.Tensor]] = None,
+        states: Optional[Dict[int, torch.Tensor]] = None,
+    ) -> Dict[int, torch.Tensor]:
+        """Overwrite this method to apply env-specific adaptations to the ma_actions.
+
+        Args:
+            ma_actions (Dict[int, torch.Tensor]):
+            observations (Dict[int, torch.Tensor]):
+
+        Returns:
+            Dict[int, torch.Tensor]: Adapated actions
+        """
+        return ma_actions
+
     def custom_evaluation(
         self,
         learners: Dict[int, BaseAlgorithm],
@@ -235,7 +268,7 @@ class VerifiableEnv(ABC):
                         points along each local_obs dim
         indices-for-obs-infos(Tuple[int]): which indizes in the
                         local_obs contain the infos to discretize
-        boundary-values-for-obs(Dict[str, Tuple[int]]): lower and upper bound
+        boundary-values-for-obs(Dict[str, Tuple[float]]): lower and upper bound
                         for each local_obs dimension
         """
 

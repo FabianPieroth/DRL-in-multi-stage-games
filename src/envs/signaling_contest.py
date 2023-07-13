@@ -148,6 +148,24 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         return states
 
+    def adapt_ma_actions_for_env(
+        self,
+        ma_actions: Dict[int, torch.Tensor],
+        observations: Optional[Dict[int, torch.Tensor]] = None,
+        states: Optional[Dict[int, torch.Tensor]] = None,
+    ) -> Dict[int, torch.Tensor]:
+        ma_actions = self.set_losers_bids_to_zero(states, ma_actions)
+        ma_actions = self.clip_bids_to_positive(ma_actions)
+        return ma_actions
+
+    def clip_bids_to_positive(
+        self, ma_actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        return {
+            agent_id: self.relu_layer(sa_actions)
+            for agent_id, sa_actions in ma_actions.items()
+        }
+
     def set_losers_bids_to_zero(
         self, states, actions: Dict[int, torch.Tensor]
     ) -> Dict[int, torch.Tensor]:
@@ -530,16 +548,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             iteration: current training iteration
         """
         self.plot_strategies_vs_equilibrium(learners, writer, iteration, config)
-        self.log_metrics_to_equilibrium(learners)
-
-    def get_ma_clipped_bids(self, learners, observations, deterministic: bool = True):
-        action_dict = th_ut.get_ma_actions(
-            learners, observations, deterministic=deterministic
-        )
-        for agent_id, sa_actions in action_dict.items():
-            sa_actions = self.relu_layer(sa_actions)
-            action_dict[agent_id] = sa_actions
-        return action_dict
 
     def plot_strategies_vs_equilibrium(
         self, learners, writer, iteration: int, config, num_samples: int = 500
@@ -575,15 +583,12 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
         for round in range(1, 3):
             observations = self.get_observations(states)
-            ma_deterministic_actions = th_ut.get_ma_actions(
-                learners, observations, deterministic=True
-            )
-            ma_deterministic_actions = self.set_losers_bids_to_zero(
-                states, ma_deterministic_actions
+            ma_deterministic_actions = self.get_ma_actions_for_env(
+                learners, observations=observations, deterministic=True, states=states
             )
 
             ma_stddevs = th_ut.get_ma_learner_stddevs(learners, observations)
-            ma_stddevs = self.set_losers_bids_to_zero(states, ma_stddevs)
+            ma_stddevs = self.adapt_ma_actions_for_env(ma_stddevs, states=states)
 
             num_agents_to_plot = len(set(self.learners.values()))
             for agent_id in range(num_agents_to_plot):
@@ -832,171 +837,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         )
         bid_ys, _ = sa_learner.predict(sa_obs, deterministic=True)
         return val_xs, bid_ys
-
-    def log_metrics_to_equilibrium(self, learners, num_samples: int = 2 ** 16):
-        """Evaluate learned strategies vs BNE."""
-        seed = 69
-        self.seed(seed)
-
-        (
-            learned_utilities,
-            equ_utilities,
-            l2_distances_vs_equ,
-        ) = self.eval_vs_equilibrium_strategies(learners, num_samples)
-
-        l2_distances_to_equ_over_grid = self.measure_l2_distance_to_equ_over_grid(
-            learners, num_samples
-        )
-
-        self._log_metric_dict_to_individual_learners(
-            learners, equ_utilities, "eval/utility_vs_equilibrium"
-        )
-        self._log_metric_dict_to_individual_learners(
-            learners, learned_utilities, "eval/utility_vs_actual"
-        )
-        self._log_l2_distances(
-            learners, l2_distances_vs_equ, "over_learner_distribution"
-        )
-        self._log_l2_distances(learners, l2_distances_to_equ_over_grid, "over_grid")
-
-        # reset seed
-        self.seed(
-            int(time.time())
-        )  # TODO: @Nils: Is this not killing all chances for reproducibility?
-
-    def eval_vs_equilibrium_strategies(self, learners, num_samples: int):
-        """Staring from state `states` we want to compute
-            1. the action space L2 loss
-            2. the rewards in actual play and in BNE
-        Note that we need to keep track of counterfactual BNE states as these
-        may be different from the states under actual play.
-        """
-        num_rounds = 2
-        actual_states = self.sample_new_states(num_samples)
-        actual_observations = self.get_observations(actual_states)
-        equ_states = actual_states.clone()
-        equ_observations = self.get_observations(equ_states)
-
-        l2_distances = {i: [None] * num_rounds for i in learners.keys()}
-        actual_rewards_total = {i: 0 for i in learners.keys()}
-        equ_rewards_total = {i: 0 for i in learners.keys()}
-
-        for round_iter in range(num_rounds):
-            equ_actions_in_actual_play = th_ut.get_ma_actions(
-                self.equilibrium_strategies, actual_observations
-            )
-
-            equ_actions_in_equ = th_ut.get_ma_actions(
-                self.equilibrium_strategies, equ_observations
-            )
-
-            actual_actions = self.get_ma_clipped_bids(
-                learners, actual_observations, True
-            )
-            actual_actions = self.set_losers_bids_to_zero(actual_states, actual_actions)
-
-            actual_observations, actual_rewards, _, actual_states = self.compute_step(
-                actual_states, actual_actions
-            )
-            equ_observations, equ_rewards, _, equ_states = self.compute_step(
-                equ_states, equ_actions_in_equ
-            )
-
-            for agent_id in learners.keys():
-                l2_distances[agent_id][round_iter] = tensor_norm(
-                    actual_actions[agent_id], equ_actions_in_actual_play[agent_id]
-                )
-
-                actual_rewards_total[agent_id] += actual_rewards[agent_id].mean().item()
-                equ_rewards_total[agent_id] += equ_rewards[agent_id].mean().item()
-
-        return actual_rewards_total, equ_rewards_total, l2_distances
-
-    def _log_l2_distances(self, learners, distances_l2, add_specifier: str = ""):
-        for round_iter in range(2):
-            for agent_id, learner in learners.items():
-                learner.logger.record(
-                    "eval/action_equ_L2_distance_"
-                    + add_specifier
-                    + "_stage_"
-                    + str(round_iter + 1),
-                    distances_l2[agent_id][round_iter],
-                )
-
-    def _get_mix_equ_learned_actions(
-        self, agent_id, ma_deterministic_learned_actions, ma_equilibrium_actions
-    ):
-        mixed_equ_learned_actions = {}
-        for agent_idx in ma_deterministic_learned_actions.keys():
-            if agent_idx == agent_id:
-                mixed_equ_learned_actions[agent_idx] = ma_equilibrium_actions[agent_idx]
-            else:
-                mixed_equ_learned_actions[agent_idx] = ma_deterministic_learned_actions[
-                    agent_idx
-                ]
-        return mixed_equ_learned_actions
-
-    @staticmethod
-    def _log_metric_dict_to_individual_learners(
-        learners, metric_dict: Dict[int, float], key_prefix: str = ""
-    ):
-        for agent_id, learner in learners.items():
-            learner.logger.record(key_prefix, metric_dict[agent_id])
-
-    def measure_l2_distance_to_equ_over_grid(self, learners, precision: int) -> Dict:
-        """Instead of checking how far away we are from the equilibrium strategy in actual play,
-        we measure the distance over a specified grid. This is especially important for the second
-        round, where the opponent's bids are published. On distribution, these may only be covering
-        a very narrow part of the strategy space.
-
-        Args:
-            learners (_type_): learner type strategies
-            precision (int): Number of Grid points
-
-        Returns:
-            Dict: agent_id: [first_round, second_round_won, second_round_lost]
-        """
-        num_rounds = 2
-        l2_distances = {i: [None] * (num_rounds + 1) for i in learners.keys()}
-        second_round_precision = int(np.sqrt(precision))
-        for agent_id, learner in learners.items():
-            _, first_round_equ_actions = self._get_actions_and_grid_in_first_stage(
-                self.equilibrium_strategies[agent_id], precision
-            )
-            _, first_round_agent_actions = self._get_actions_and_grid_in_first_stage(
-                learner, precision
-            )
-            first_round_agent_actions = self.relu_layer(first_round_agent_actions)
-
-            l2_distances[agent_id][0] = tensor_norm(
-                first_round_agent_actions, first_round_equ_actions
-            )
-
-            (
-                _,
-                _,
-                second_round_equ_actions_won_first_round,
-            ) = self._get_actions_and_grid_in_second_stage(
-                self.equilibrium_strategies[agent_id], second_round_precision
-            )
-
-            (
-                _,
-                _,
-                second_round_agent_actions_won_first_round,
-            ) = self._get_actions_and_grid_in_second_stage(
-                learner, second_round_precision
-            )
-            second_round_agent_actions_won_first_round = self.relu_layer(
-                second_round_agent_actions_won_first_round
-            )
-
-            l2_distances[agent_id][1] = tensor_norm(
-                second_round_agent_actions_won_first_round.flatten(),
-                second_round_equ_actions_won_first_round.flatten(),
-            )
-
-        return l2_distances
 
     def plot_br_strategy(
         self, br_strategies: Dict[int, Callable]

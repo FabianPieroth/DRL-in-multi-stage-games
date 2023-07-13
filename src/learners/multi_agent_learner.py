@@ -6,6 +6,7 @@ import torch
 from stable_baselines3.common.policies import register_policy
 from torch.utils.tensorboard import SummaryWriter
 
+import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
 import src.utils.logging_write_utils as log_ut
 import src.utils.policy_utils as pl_ut
@@ -144,14 +145,9 @@ class MultiAgentCoordinator:
             )
             plt.close()
 
-    def verify_policies_in_BNE(self) -> None:
-        """If a BNE is available, we can evaluate learned strategies against
-        the BNE opponents. Estimate the utility in for all agents playing BNE
-        and for one agent playing its real strategy. Use this to estimate the
-        utility loss.
-        Estimate:
-            \hat(u)_i(\beta_i, \beta_{-i}^*)
-            where \beta^*=(\beta_i^*, \beta_{-i}^*) is a BNE strategy
+    def verify_policies_against_known_equilibrium(self) -> None:
+        """If an equilibrium is available, we can evaluate learned strategies 
+        using the known equilibrium strategies.
         """
         if not (
             self.verifier.env_is_compatible_with_verifier
@@ -159,15 +155,35 @@ class MultiAgentCoordinator:
         ):
             return
         print(f"\nVerifying against known equilibrium strategies:")
+        self.estimate_utility_loss_against_equilibrium()
+
+        ev_ut.log_l2_distance_to_equilibrium(
+            env=self.env.model,
+            learners=self.learners,
+            equ_strategies=self.env.model.equilibrium_strategies,
+            num_envs=self.config.verifier.num_simulations,
+            num_stages=self.env.model.num_stages,
+        )
+
+    def estimate_utility_loss_against_equilibrium(self):
+        """Approximate the utility loss if one agent deviates to equilibrium.
+        Estimate:
+            \hat(u)_i(beta_i^*, beta_{-i}) - \hat(u)_i(beta_i, beta_{-i})
+            where \beta^*=(\beta_i^*, \beta_{-i}^*) is an equilibrium strategy
+            and \beta=(\beta_i, \beta_{-i}) is the learned strategy.
+        """
         agent_ids = self.learners.keys()
         if self.config.policy_sharing:
             agent_ids = [0]
 
-        utility_losses, relative_utility_losses = self.verifier.verify_against_BNE(
+        equilibrium_utilities, utility_losses, relative_utility_losses = self.verifier.verify_against_equilibrium(
             self.learners, agent_ids=agent_ids
         )
 
         # Logging
+        log_ut.log_data_dict_to_learner_loggers(
+            self.learners, equilibrium_utilities, "eval/estimated_utility_in_equ"
+        )
         log_ut.log_data_dict_to_learner_loggers(
             self.learners, utility_losses, "eval/utility_loss"
         )
@@ -176,13 +192,13 @@ class MultiAgentCoordinator:
         )
 
     def verify_br_against_BNE(self) -> float:
-        """Approximate the best responses in BNE using our verifier. If
+        """Approximate the best responses in equilibrium using our verifier. If
         everything works out, the loss should be zero in expectation for all
         players.
         Estimate:
             sup_{beta_i \in \Sigma_i} \hat(u)_i(beta_i, beta_{-i}^*)
             by approximating the best response beta_i^* in the space of step functions
-            and \beta^*=(\beta_i^*, \beta_{-i}^*) is a BNE strategy.
+            and \beta^*=(\beta_i^*, \beta_{-i}^*) is a equilibrium strategy.
         """
         assert (
             self.verifier.env_is_compatible_with_verifier
@@ -281,10 +297,10 @@ class MultiAgentCoordinator:
         # 2. Eval log
         if (iteration + 1) % self.config.eval_freq == 0:
             print(f"\nStart evaluation:")
-            with torch.no_grad():  # TODO: Is this necessary? Should we call this here?
+            with torch.no_grad():
                 self._evaluate_policies(iteration, self.config.n_eval_episodes)
                 self.verify_policies_br(iteration)
-                self.verify_policies_in_BNE()
+                self.verify_policies_against_known_equilibrium()
             print(f"\nEnd evaluation.\n")
 
         # 3. Update `num_timesteps` in logs

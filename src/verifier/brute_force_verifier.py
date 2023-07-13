@@ -70,21 +70,24 @@ class BFVerifier:
 
         return actual_utilities, utility_losses, relative_utility_losses, best_responses
 
-    def verify_against_BNE(
+    def verify_against_equilibrium(
         self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
     ):
-        """Use analytical BNE to estimate utility loss (exact ex post,
+        """Use analytical equilibrium to estimate utility loss (exact ex post,
         still approximates interim and ex ante).
         """
         agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
         equ_strategies = self.env.model.equilibrium_strategies
+        equilibrium_utilities = {agent_id: None for agent_id in agent_ids}
         utility_losses = {agent_id: None for agent_id in agent_ids}
         relative_utility_losses = {agent_id: None for agent_id in agent_ids}
 
         for agent_id in agent_ids:
 
-            # 1. Calculate BNE utility of this agent
-            bne_utility = self.estimate_agent_average_utility(equ_strategies, agent_id)
+            # 1. Calculate NE utility of this agent
+            equilibrium_utility = self.estimate_agent_average_utility(
+                equ_strategies, agent_id
+            )
 
             # 2. Calculate utility under current strategy
             actual_vs_bne_strategies = deepcopy(equ_strategies)
@@ -93,13 +96,16 @@ class BFVerifier:
                 actual_vs_bne_strategies, agent_id
             )
 
-            utility_losses[agent_id] = bne_utility - actual_utility
-            if bne_utility != 0:
-                relative_utility_losses[agent_id] = 1 - actual_utility / bne_utility
+            equilibrium_utilities[agent_id] = equilibrium_utility
+            utility_losses[agent_id] = equilibrium_utility - actual_utility
+            if equilibrium_utility != 0:
+                relative_utility_losses[agent_id] = (
+                    1 - actual_utility / equilibrium_utility
+                )
             else:
                 relative_utility_losses[agent_id] = -actual_utility
 
-        return utility_losses, relative_utility_losses
+        return equilibrium_utilities, utility_losses, relative_utility_losses
 
     def _get_agent_br_utility_loss_and_br(self, learners, agent_id: int) -> Tuple:
         """
