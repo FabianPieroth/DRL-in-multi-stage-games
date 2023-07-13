@@ -13,10 +13,12 @@ from gym import spaces
 from omegaconf import listconfig
 
 import src.utils.distributions_and_priors as dap_ut
+import src.utils.logging_write_utils as log_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SequentialAuctionEquilibrium
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
+from src.utils.evaluation_utils import run_algorithms
 
 
 class SequentialAuction(VerifiableEnv, BaseEnvForVec):
@@ -589,7 +591,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             for agent_id in range(num_agents)
         }
 
-    def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
+    def custom_evaluation(
+        self, learners, env, writer, iteration: int, config: Dict, num_samples=2 ** 14
+    ):
         """Method is called during training process and allows environment specific logging.
 
         Args:
@@ -598,8 +602,15 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             writer: tensorboard summary writer
             iteration: current training iteration
         """
-        self.plot_strategies_vs_bne(learners, writer, iteration, config)
-        self.calculate_efficiency(learners, writer, iteration)
+        # TODO: `plot_strategies_vs_bne` shall also use rollout data from `run_algorithms`
+        self.plot_strategies_vs_bne(learners, writer, iteration, config, num_samples)
+
+        states_list, observations_list, actions_list, rewards_list = run_algorithms(
+            self, learners, num_samples, self.num_stages
+        )
+
+        self.calculate_efficiency(states_list[-1], writer, iteration)
+        self.calculate_bid_distribution(learners, actions_list, writer, iteration)
 
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
@@ -755,9 +766,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         writer.add_figure("images", fig, iteration)
         plt.close()
 
-    def calculate_efficiency(
-        self, learners, writer, iteration: int, num_samples: int = 2 ** 14
-    ):
+    def calculate_efficiency(self, last_states: torch.Tensor, writer, iteration):
         """Calculate the market efficiency for every stage (i.e. check that
         bidder with highest valuation wins.)
 
@@ -766,19 +775,13 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         """
         device = self.device
 
-        states = self.sample_new_states(num_samples)
-        for stage in range(self.num_stages):
-            obs = self.get_observations(states)
-            actions = th_ut.get_ma_actions(learners, obs)
-            obs, rewards, _, states = self.compute_step(states, actions)
-
         # Sort valuations
-        valuations = states[..., :, : self.valuation_size]
+        valuations = last_states[..., :, : self.valuation_size]
         sorted_valuations = valuations.sort(axis=1).indices.sort(axis=1).indices
         # 1st sort: Create index for sorting, 2nd sort: Create actual ranking
 
         # Sort allocations across stages
-        allocations = states[
+        allocations = last_states[
             ...,
             :,
             self.allocations_start_index : self.allocations_start_index
@@ -793,6 +796,27 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         efficiency = (sorted_valuations == sorted_allocations).float().mean()
 
         writer.add_scalar("eval/efficiency", efficiency, iteration)
+
+    def calculate_bid_distribution(self, learners, actions_list, writer, iteration):
+        """..."""
+        for stage in range(self.num_stages):
+
+            # Log mean
+            actions_in_this_stage = actions_list[stage]
+            log_ut.log_data_dict_to_learner_loggers(
+                learners,
+                {k: v.mean().cpu().item() for k, v in actions_in_this_stage.items()},
+                f"eval/bid_mean_stage_{stage}",
+            )
+
+            # Log full histogram
+            for i, l in learners.items():
+                writer.add_histogram(
+                    tag=f"eval/bid_distribution_stage_{stage}/Agent_{i}",
+                    values=actions_in_this_stage[i].cpu(),
+                    global_step=iteration,
+                    # bins=20
+                )
 
     def _get_plotting_settings(
         self, stage: int, agent_id: int, strategy, unique_strategies
