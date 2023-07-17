@@ -766,7 +766,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         writer.add_figure("images", fig, iteration)
         plt.close()
 
-    def calculate_efficiency(self, last_states: torch.Tensor, writer, iteration):
+    def calculate_efficiency(self, last_stage_states: torch.Tensor, writer, iteration):
         """Calculate the market efficiency for every stage (i.e. check that
         bidder with highest valuation wins.)
 
@@ -776,12 +776,12 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         device = self.device
 
         # Sort valuations
-        valuations = last_states[..., :, : self.valuation_size]
+        valuations = last_stage_states[..., :, : self.valuation_size]
         sorted_valuations = valuations.sort(axis=1).indices.sort(axis=1).indices
         # 1st sort: Create index for sorting, 2nd sort: Create actual ranking
 
         # Sort allocations across stages
-        allocations = last_states[
+        allocations = last_stage_states[
             ...,
             :,
             self.allocations_start_index : self.allocations_start_index
@@ -798,22 +798,44 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         writer.add_scalar("eval/efficiency", efficiency, iteration)
 
     def calculate_bid_distribution(self, learners, actions_list, writer, iteration):
-        """..."""
-        for stage in range(self.num_stages):
+        """Calculate the bid distribution for each stage. Log mean, stddev, and histogram.
 
+        Args:
+            learners (_type_): _description_
+            actions_list (_type_): _description_
+            writer (_type_): _description_
+            iteration (_type_): _description_
+        """
+        for stage in range(self.num_stages):
             # Log mean
             actions_in_this_stage = actions_list[stage]
+            agent_ids = list(set(learners.keys()) & set(actions_in_this_stage.keys()))
+            if len(set(learners.values())) == 1:
+                agent_ids = [list(learners.keys())[0]]
+
             log_ut.log_data_dict_to_learner_loggers(
                 learners,
-                {k: v.mean().cpu().item() for k, v in actions_in_this_stage.items()},
+                {
+                    agent_id: actions_in_this_stage[agent_id].mean().cpu().item()
+                    for agent_id in agent_ids
+                },
                 f"eval/bid_mean_stage_{stage}",
             )
 
+            log_ut.log_data_dict_to_learner_loggers(
+                learners,
+                {
+                    agent_id: actions_in_this_stage[agent_id].std().cpu().item()
+                    for agent_id in agent_ids
+                },
+                f"eval/bid_stddev_stage_{stage}",
+            )
+
             # Log full histogram
-            for i, l in learners.items():
+            for agent_id in agent_ids:
                 writer.add_histogram(
-                    tag=f"eval/bid_distribution_stage_{stage}/Agent_{i}",
-                    values=actions_in_this_stage[i].cpu(),
+                    tag=f"eval/bid_distribution_stage_{stage}/Agent_{agent_id}",
+                    values=actions_in_this_stage[agent_id].cpu(),
                     global_step=iteration,
                     # bins=20
                 )
