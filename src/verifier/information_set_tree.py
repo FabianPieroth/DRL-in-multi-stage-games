@@ -202,7 +202,11 @@ class InformationSetTree(object):
         visitation_probabilities = nodes_counts.float()
         visitation_probabilities[mask] /= expanded_nodes_counts_obs_sum[mask]
 
-        return visitation_probabilities, nodes_counts_obs_sum.squeeze()
+        squeezed_nodes_counts_obs_sum = nodes_counts_obs_sum.view(
+            nodes_counts_obs_sum.shape[: -len(summing_dim)]
+        )
+
+        return visitation_probabilities, squeezed_nodes_counts_obs_sum
 
     def _get_stage_obs_summing_dim(self, stage):
         return tuple(
@@ -258,5 +262,11 @@ class InformationSetTree(object):
 
         return best_response, prev_stage_br_slice
 
-    def get_best_response_estimate(self):
+    def get_best_response_estimate(self) -> Dict[int, Dict[int, Callable]]:
+        """Returns the current br estimates.
+
+        Returns:
+            Dict[int, Dict[int, Callable]]: Best response strategies per agent, per stage.
+            Call it via: best_responses[agent_id][stage](agent_obs)
+        """
         return self.best_responses

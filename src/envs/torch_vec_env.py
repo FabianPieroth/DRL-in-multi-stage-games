@@ -347,6 +347,20 @@ class VerifiableEnv(ABC):
         single_dim_obs_bins = torch.bucketize(sliced_agent_obs, obs_grid)
         return single_dim_obs_bins
 
+    def plot_br_strategy(
+        self, br_strategies: Dict[int, Dict[int, Callable]]
+    ) -> Optional[plt.Figure]:
+        """_summary_
+
+        Args:
+            br_strategies (Dict[int, Callable]): br-strategy per stage
+            NOTE: Only implemented for first stage!
+
+        Returns:
+            Optional[plt.Figure]: Plot to log
+        """
+        return None
+
 
 class MATorchVecEnv(VecEnv):
     """Vectorized Gym environment base class"""

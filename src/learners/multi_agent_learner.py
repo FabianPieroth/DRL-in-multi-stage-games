@@ -140,9 +140,10 @@ class MultiAgentCoordinator:
 
             # Plotting
             br_plot = self.env.model.plot_br_strategy(best_responses)
-            log_ut.log_figure_to_writer(
-                self.writer, br_plot, iteration + 1, "estimated_br_strategies"
-            )
+            if br_plot is not None:
+                log_ut.log_figure_to_writer(
+                    self.writer, br_plot, iteration + 1, "estimated_br_strategies"
+                )
             plt.close()
 
     def verify_policies_against_known_equilibrium(self) -> None:
