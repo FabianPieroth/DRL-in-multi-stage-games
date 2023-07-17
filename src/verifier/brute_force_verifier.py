@@ -1,7 +1,7 @@
 """Verifier"""
 import traceback
 from copy import deepcopy
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import torch
 
@@ -52,8 +52,22 @@ class BFVerifier:
 
     def verify_br(
         self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
-    ):
-        """Use verifier to calculate estimated utility loss on grid."""
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, Dict[int, Dict[int, Callable]]
+    ]:
+        """Build information set tree for single agent and calcuate best-reponse over grid.
+        Return the estimated metrics plus the br-strategies.
+
+        Args:
+            strategies (Dict[int, SABaseAlgorithm]):
+            agent_ids (List[int], optional): Defaults to None.
+
+        Returns:
+            actual_utilities (torch.Tensor):
+            utility_losses (torch.Tensor):
+            relative_utility_losses (torch.Tensor):
+            best_responses (Dict[int, Dict[int, Callable]]):
+        """
         agent_ids = list(range(self.num_agents)) if agent_ids is None else agent_ids
         actual_utilities = {agent_id: 0 for agent_id in agent_ids}
         utility_losses = {agent_id: 0 for agent_id in agent_ids}
