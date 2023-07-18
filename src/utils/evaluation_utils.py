@@ -1,9 +1,12 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
+from tensordict import TensorDict
+from torch import Tensor
 
 from src.envs.equilibria import EquilibriumStrategy
-from src.envs.torch_vec_env import BaseEnvForVec
+from src.envs.torch_vec_env import BaseEnvForVec, MATorchVecEnv
 from src.learners.base_learner import MABaseAlgorithm, SABaseAlgorithm
 from src.learners.utils import tensor_norm
 
@@ -69,3 +72,84 @@ def log_l2_distances(learners, distances_l2):
             learners[agent_id].logger.record(
                 "eval/L2_distance_stage_" + str(stage), distance
             )
+
+
+def run_algorithms(
+    env: BaseEnvForVec,
+    algorithms: Dict[int, Union[MABaseAlgorithm, SABaseAlgorithm]],
+    num_envs: int,
+    num_steps: int,
+    deterministic: bool = False,
+) -> Tuple[
+    List[Union[Tensor, TensorDict]],
+    List[Dict[int, Tensor]],
+    List[Dict[int, Tensor]],
+    List[Dict[int, Tensor]],
+]:
+    """Run algorithms for num_steps steps on num_envs environments without
+    training.
+
+    Args:
+        env: The environment to run the algorithms on.
+        algorithms: A dictionary mapping agent ids to algorithms.
+        num_envs: The number of environments to run in parallel.
+        num_steps: The number of steps to run the algorithms for.
+    Returns:
+        A tuple of lists of states, observations, actions and rewards. There is
+        one more state and observation than action and reward. This is because
+        the sequence begins and ends with a state. The ith action and reward
+        correspond to the transition from the ith state to the (i+1)th state.
+    """
+    device = env.device
+    states_list = []
+    observations_list = []
+    actions_list = []
+    rewards_list = []
+    with torch.no_grad():
+        states = env.sample_new_states(num_envs)
+        states_list.append(states)
+        observations = env.get_observations(states)
+        observations_list.append(observations)
+        for i in range(num_steps):
+            actions = {}
+            for agent_id, algorithm in algorithms.items():
+                action, _ = algorithm.predict(
+                    observations[agent_id], deterministic=deterministic
+                )
+                actions[agent_id] = action
+            if isinstance(actions, np.ndarray) or isinstance(actions, list):
+                actions = torch.tensor(actions, device=device)
+
+            observations, rewards, dones, states = env.compute_step(states, actions)
+            assert isinstance(observations, dict) and all(
+                isinstance(obs, torch.Tensor) and obs.shape[0] == num_envs
+                for obs in observations.values()
+            ), "Observations must be a dict of torch tensors"
+            assert isinstance(rewards, dict) and all(
+                isinstance(reward, torch.Tensor) and reward.shape == (num_envs,)
+                for reward in rewards.values()
+            ), "Rewards must be a dict of torch tensors"
+            assert isinstance(dones, torch.Tensor) and dones.shape == (
+                num_envs,
+            ), "Dones must be a torch tensor"
+            assert (
+                isinstance(states, torch.Tensor) and states.shape[0] == num_envs
+            ) or (
+                isinstance(states, TensorDict)
+                and all(
+                    isinstance(s, torch.Tensor) and s.shape[0] == num_envs
+                    for s in states.values()
+                )
+            ), "Next states must be a torch tensor or dict of torch tensors of batch size num_envs"
+
+            states_list.append(states)
+            observations_list.append(observations)
+            actions_list.append(actions)
+            rewards_list.append(rewards)
+
+            n_dones = dones.sum().cpu().item()
+            if n_dones > 0:
+                states = states.clone()
+                states[dones] = env.sample_new_states(n_dones)
+                observations = env.get_observations(states)
+    return states_list, observations_list, actions_list, rewards_list
