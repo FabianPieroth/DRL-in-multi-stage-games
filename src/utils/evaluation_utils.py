@@ -79,6 +79,7 @@ def run_algorithms(
     algorithms: Dict[int, Union[MABaseAlgorithm, SABaseAlgorithm]],
     num_envs: int,
     num_steps: int,
+    deterministic: bool = False,
 ) -> Tuple[
     List[Union[Tensor, TensorDict]],
     List[Dict[int, Tensor]],
@@ -112,7 +113,9 @@ def run_algorithms(
         for i in range(num_steps):
             actions = {}
             for agent_id, algorithm in algorithms.items():
-                action, _ = algorithm.predict(observations[agent_id])
+                action, _ = algorithm.predict(
+                    observations[agent_id], deterministic=deterministic
+                )
                 actions[agent_id] = action
             if isinstance(actions, np.ndarray) or isinstance(actions, list):
                 actions = torch.tensor(actions, device=device)

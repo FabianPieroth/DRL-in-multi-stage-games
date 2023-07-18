@@ -606,10 +606,11 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self.plot_strategies_vs_bne(learners, writer, iteration, config, num_samples)
 
         states_list, observations_list, actions_list, rewards_list = run_algorithms(
-            self, learners, num_samples, self.num_stages
+            self, learners, num_samples, self.num_stages, deterministic=True
         )
 
         self.calculate_efficiency(states_list[-1], writer, iteration)
+        self.calculate_revenue(states_list[-1], writer, iteration)
         self.calculate_bid_distribution(learners, actions_list, writer, iteration)
 
     def plot_strategies_vs_bne(
@@ -766,15 +767,21 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         writer.add_figure("images", fig, iteration)
         plt.close()
 
+    def calculate_revenue(
+        self, last_stage_stages: torch.Tensor, writer, iteration: int
+    ):
+        """Calculate the seller's revenue, i.e., the expected prices paid.
+        Log revenue per stage and overall. """
+        pass
+
     def calculate_efficiency(self, last_stage_states: torch.Tensor, writer, iteration):
-        """Calculate the market efficiency for every stage (i.e. check that
-        bidder with highest valuation wins.)
-
-        NOTE: Alternatively, one may argue to calculate the efficiency
-        game-wise, i.e., check that lowest valued bidders lose at the very end.
+        """Calculate the market efficiency, i.e., check that bidder with highest valuation wins.
+        Efficiency per stage:
+                    Percentage of bidder with highest value wins the item
+        Efficiency per game:
+                    Percentage of K bidders with highest values win the K items
+        Calculate the market efficiency over all stages (i.e., percentage of K bidders 
         """
-        device = self.device
-
         # Sort valuations
         valuations = last_stage_states[..., :, : self.valuation_size]
         sorted_valuations = valuations.sort(axis=1).indices.sort(axis=1).indices
@@ -787,15 +794,44 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             self.allocations_start_index : self.allocations_start_index
             + self.num_stages * self.valuation_size,
         ]
+
+        efficiency_break_index = self.num_actual_agents - self.num_stages
+
         sorted_allocations = (
-            allocations
-            * torch.flip(torch.range(1, self.num_stages, device=device), [0])
+            allocations.long()
+            * torch.flip(
+                torch.range(
+                    efficiency_break_index,
+                    self.num_actual_agents - 1,
+                    device=self.device,
+                ),
+                [0],
+            ).long()
         ).sum(axis=-1, keepdim=True)
+        # TODO: Calculation may be erroneous for self.collapse_symmetric_opponent = True
 
+        for stage, order_index in enumerate(
+            reversed(range(efficiency_break_index, self.num_actual_agents))
+        ):
+            stage_efficiency = torch.logical_and(
+                sorted_allocations == order_index, sorted_valuations == order_index
+            ).sum(axis=1)
+            writer.add_scalar(
+                "eval/efficiency_stage_" + str(stage),
+                stage_efficiency.float().mean().item(),
+                iteration,
+            )
         # Compare order of valuations to that of allocations
-        efficiency = (sorted_valuations == sorted_allocations).float().mean()
+        efficiency_per_game = torch.logical_and(
+            sorted_allocations >= efficiency_break_index,
+            sorted_valuations >= efficiency_break_index,
+        ).float()
+        efficiency_per_game /= self.num_stages
+        efficiency_per_game = efficiency_per_game.sum(axis=1)
 
-        writer.add_scalar("eval/efficiency", efficiency, iteration)
+        writer.add_scalar(
+            "eval/efficiency", efficiency_per_game.mean().item(), iteration
+        )
 
     def calculate_bid_distribution(self, learners, actions_list, writer, iteration):
         """Calculate the bid distribution for each stage. Log mean, stddev, and histogram.
