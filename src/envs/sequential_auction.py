@@ -592,7 +592,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         }
 
     def custom_evaluation(
-        self, learners, env, writer, iteration: int, config: Dict, num_samples=2 ** 14
+        self, learners, env, writer, iteration: int, config: Dict, num_samples=2 ** 20
     ):
         """Method is called during training process and allows environment specific logging.
 
@@ -768,11 +768,24 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         plt.close()
 
     def calculate_revenue(
-        self, last_stage_stages: torch.Tensor, writer, iteration: int
+        self, last_stage_states: torch.Tensor, writer, iteration: int
     ):
         """Calculate the seller's revenue, i.e., the expected prices paid.
         Log revenue per stage and overall. """
-        pass
+        prices = last_stage_states[
+            ...,
+            :,
+            self.allocations_start_index + self.num_stages * self.valuation_size :,
+        ]
+        revenue_per_stage = prices.sum(axis=1).mean(axis=0)
+        for stage in range(self.num_stages):
+            writer.add_scalar(
+                "eval/revenue_stage_" + str(stage),
+                revenue_per_stage[stage].item(),
+                iteration,
+            )
+
+        writer.add_scalar("eval/revenue", revenue_per_stage.mean().item(), iteration)
 
     def calculate_efficiency(self, last_stage_states: torch.Tensor, writer, iteration):
         """Calculate the market efficiency, i.e., check that bidder with highest valuation wins.
