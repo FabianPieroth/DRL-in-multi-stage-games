@@ -838,7 +838,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         return val_xs, bid_ys
 
     def plot_br_strategy(
-        self, br_strategies: Dict[int, Callable]
+        self, br_strategies: Dict[int, Dict[int, Callable]]
     ) -> Optional[plt.Figure]:
         num_vals = 128
         valuations = torch.linspace(

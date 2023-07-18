@@ -13,10 +13,12 @@ from gym import spaces
 from omegaconf import listconfig
 
 import src.utils.distributions_and_priors as dap_ut
+import src.utils.logging_write_utils as log_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SequentialAuctionEquilibrium
 from src.envs.mechanisms import FirstPriceAuction, Mechanism, VickreyAuction
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
+from src.utils.evaluation_utils import run_algorithms
 
 
 class SequentialAuction(VerifiableEnv, BaseEnvForVec):
@@ -589,7 +591,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             for agent_id in range(num_agents)
         }
 
-    def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
+    def custom_evaluation(
+        self, learners, env, writer, iteration: int, config: Dict, num_samples=2 ** 20
+    ):
         """Method is called during training process and allows environment specific logging.
 
         Args:
@@ -598,7 +602,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             writer: tensorboard summary writer
             iteration: current training iteration
         """
-        self.plot_strategies_vs_bne(learners, writer, iteration, config)
+        # TODO: `plot_strategies_vs_bne` shall also use rollout data from `run_algorithms`
+        self.plot_strategies_vs_bne(learners, writer, iteration, config, num_samples)
+
+        states_list, observations_list, actions_list, rewards_list = run_algorithms(
+            self, learners, num_samples, self.num_stages, deterministic=True
+        )
+
+        self.calculate_efficiency(states_list[-1], writer, iteration)
+        self.calculate_revenue(states_list[-1], writer, iteration)
+        self.calculate_bid_distribution(learners, actions_list, writer, iteration)
 
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
@@ -754,6 +767,128 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         writer.add_figure("images", fig, iteration)
         plt.close()
 
+    def calculate_revenue(
+        self, last_stage_states: torch.Tensor, writer, iteration: int
+    ):
+        """Calculate the seller's revenue, i.e., the expected prices paid.
+        Log revenue per stage and overall. """
+        prices = last_stage_states[
+            ...,
+            :,
+            self.allocations_start_index + self.num_stages * self.valuation_size :,
+        ]
+        revenue_per_stage = prices.sum(axis=1).mean(axis=0)
+        for stage in range(self.num_stages):
+            writer.add_scalar(
+                "eval/revenue_stage_" + str(stage),
+                revenue_per_stage[stage].item(),
+                iteration,
+            )
+
+        writer.add_scalar("eval/revenue", revenue_per_stage.mean().item(), iteration)
+
+    def calculate_efficiency(self, last_stage_states: torch.Tensor, writer, iteration):
+        """Calculate the market efficiency, i.e., check that bidder with highest valuation wins.
+        Efficiency per stage:
+                    Percentage of bidder with highest value wins the item
+        Efficiency per game:
+                    Percentage of K bidders with highest values win the K items
+        Calculate the market efficiency over all stages (i.e., percentage of K bidders 
+        """
+        # Sort valuations
+        valuations = last_stage_states[..., :, : self.valuation_size]
+        sorted_valuations = valuations.sort(axis=1).indices.sort(axis=1).indices
+        # 1st sort: Create index for sorting, 2nd sort: Create actual ranking
+
+        # Sort allocations across stages
+        allocations = last_stage_states[
+            ...,
+            :,
+            self.allocations_start_index : self.allocations_start_index
+            + self.num_stages * self.valuation_size,
+        ]
+
+        efficiency_break_index = self.num_actual_agents - self.num_stages
+
+        sorted_allocations = (
+            allocations.long()
+            * torch.flip(
+                torch.range(
+                    efficiency_break_index,
+                    self.num_actual_agents - 1,
+                    device=self.device,
+                ),
+                [0],
+            ).long()
+        ).sum(axis=-1, keepdim=True)
+        # TODO: Calculation may be erroneous for self.collapse_symmetric_opponent = True
+
+        for stage, order_index in enumerate(
+            reversed(range(efficiency_break_index, self.num_actual_agents))
+        ):
+            stage_efficiency = torch.logical_and(
+                sorted_allocations == order_index, sorted_valuations == order_index
+            ).sum(axis=1)
+            writer.add_scalar(
+                "eval/efficiency_stage_" + str(stage),
+                stage_efficiency.float().mean().item(),
+                iteration,
+            )
+        # Compare order of valuations to that of allocations
+        efficiency_per_game = torch.logical_and(
+            sorted_allocations >= efficiency_break_index,
+            sorted_valuations >= efficiency_break_index,
+        ).float()
+        efficiency_per_game /= self.num_stages
+        efficiency_per_game = efficiency_per_game.sum(axis=1)
+
+        writer.add_scalar(
+            "eval/efficiency", efficiency_per_game.mean().item(), iteration
+        )
+
+    def calculate_bid_distribution(self, learners, actions_list, writer, iteration):
+        """Calculate the bid distribution for each stage. Log mean, stddev, and histogram.
+
+        Args:
+            learners (_type_): _description_
+            actions_list (_type_): _description_
+            writer (_type_): _description_
+            iteration (_type_): _description_
+        """
+        for stage in range(self.num_stages):
+            # Log mean
+            actions_in_this_stage = actions_list[stage]
+            agent_ids = list(set(learners.keys()) & set(actions_in_this_stage.keys()))
+            if len(set(learners.values())) == 1:
+                agent_ids = [list(learners.keys())[0]]
+
+            log_ut.log_data_dict_to_learner_loggers(
+                learners,
+                {
+                    agent_id: actions_in_this_stage[agent_id].mean().cpu().item()
+                    for agent_id in agent_ids
+                },
+                f"eval/bid_mean_stage_{stage}",
+            )
+
+            log_ut.log_data_dict_to_learner_loggers(
+                learners,
+                {
+                    agent_id: actions_in_this_stage[agent_id].std().cpu().item()
+                    for agent_id in agent_ids
+                },
+                f"eval/bid_stddev_stage_{stage}",
+            )
+
+            # Log full histogram
+            for agent_id in agent_ids:
+                writer.add_histogram(
+                    tag=f"eval/bid_distribution_stage_{stage}/Agent_{agent_id}",
+                    values=actions_in_this_stage[agent_id].cpu(),
+                    global_step=iteration,
+                    # bins=20
+                )
+
     def _get_plotting_settings(
         self, stage: int, agent_id: int, strategy, unique_strategies
     ) -> Dict:
@@ -794,7 +929,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         return mixed_equ_learned_actions
 
     def plot_br_strategy(
-        self, br_strategies: Dict[int, Callable]
+        self, br_strategies: Dict[int, Dict[int, Callable]]
     ) -> Optional[plt.Figure]:
         num_vals = 128
         valuations = torch.linspace(0.0, 1.0, num_vals, device=self.device)
