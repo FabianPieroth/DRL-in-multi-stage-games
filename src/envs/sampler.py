@@ -258,6 +258,44 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
         )
 
 
+class BertrandSymmetricIPVSampler(SymmetricIPVSampler):
+    """An IPV sampler with a CFD of $F(c) = 0.5(c + c^2)$."""
+
+    def __init__(
+        self,
+        num_agents: int,
+        valuation_size: int,
+        observation_size: int,
+        sampler_config,
+        default_batch_size=1,
+        default_device=None,
+    ):
+        distribution = torch.distributions.uniform.Uniform(
+            low=sampler_config.prior_low, high=sampler_config.prior_high
+        )
+        super().__init__(
+            distribution,
+            num_agents,
+            1,
+            2,
+            sampler_config,
+            default_batch_size,
+            default_device,
+        )
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+
+        # create an empty tensor on the output device, then sample in-place
+        uniform = torch.empty(
+            [*batch_sizes, self.num_agents, self.valuation_size], device=device
+        ).uniform_(self.base_distribution.low, self.base_distribution.high)
+
+        # do inverse CDF transform
+        icdf = lambda x: -0.5 + 0.5 * torch.sqrt(8 * x + 1)
+        return icdf(uniform)
+
+
 class MineralRightsValuationObservationSampler(ValuationObservationSampler):
     """The 'Mineral Rights' model is a common value model:
     There is a uniformly distributed common value of the item(s),
