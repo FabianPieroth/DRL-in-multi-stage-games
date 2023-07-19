@@ -22,7 +22,7 @@ def run_sequential_sales_experiment():
 
     num_stages_options = [1, 2, 4]
     mechanism_type_options = ["first", "second"]
-    algorithm_options = ["ppo", "reinforce"]
+    algorithm_options = ["reinforce", "ppo"]
     verifier_discretization = 64
     options = product(num_stages_options, mechanism_type_options, algorithm_options)
 
@@ -30,7 +30,7 @@ def run_sequential_sales_experiment():
         num_stages, mechanism_type, algorithm = option
 
         if num_stages > 3:
-            verifier_discretization = 16
+            verifier_discretization = 32
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -215,7 +215,7 @@ def run_signaling_contest_experiment():
     policy_sharing = True
 
     information_cases = ["true_valuations", "winning_bids"]
-    algorithms = ["ppo", "reinforce"]
+    algorithms = ["reinforce", "ppo"]
     options = product(algorithms, information_cases)
     log_std_init = -3.0
 
