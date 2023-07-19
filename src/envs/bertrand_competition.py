@@ -12,7 +12,6 @@ import src.utils.distributions_and_priors as dap_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import BertrandCompetitionEquilibrium
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
-from src.learners.utils import tensor_norm
 
 
 class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
@@ -240,7 +239,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
     def plot_strategies_vs_bne(
         self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
     ):
-        # TODO: Improve plots
+        # TODO: Improve plots and set non-active bids to zero - also in compute step
         """Evaluate and log current strategies."""
 
         plt.style.use("ggplot")
