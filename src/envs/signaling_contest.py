@@ -566,7 +566,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         agent_plot_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
         plt.rcParams["figure.figsize"] = (8, 5.5)
         fig = plt.figure(
-            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
+            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=600
         )
         ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
         ax_second_round_list = [

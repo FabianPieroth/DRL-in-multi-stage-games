@@ -9,6 +9,8 @@ import torch
 from gym import spaces
 
 import src.utils.distributions_and_priors as dap_ut
+import src.utils.evaluation_utils as ev_ut
+import src.utils.policy_utils as pl_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import BertrandCompetitionEquilibrium
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
@@ -25,7 +27,10 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         self.valuation_size = 1
         self.observation_size = config["observation_size"]
         self.action_size = 1
+        self.prior_low = config.sampler.prior_low
+        self.prior_high = config.sampler.prior_high
         self.sampler = self._init_sampler(config, device)
+        self.relu_layer = torch.nn.ReLU()
 
         super().__init__(config, device)
 
@@ -246,6 +251,14 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
                 obs_indices = (0, 1)
         return obs_indices
 
+    def clip_bids_to_positive(
+        self, ma_actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        return {
+            agent_id: self.relu_layer(sa_actions)
+            for agent_id, sa_actions in ma_actions.items()
+        }
+
     def custom_evaluation(self, learners, env, writer, iteration: int, config: Dict):
         """Method is called during training process and allows environment specific logging.
 
@@ -258,85 +271,259 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         self.plot_strategies_vs_bne(learners, writer, iteration, config)
 
     def plot_strategies_vs_bne(
-        self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
+        self, learners, writer, iteration: int, config, num_samples: int = 2 ** 12
     ):
         # TODO: Improve plots and set non-active bids to zero - also in compute step
         """Evaluate and log current strategies."""
 
         plt.style.use("ggplot")
-        fig = plt.figure()
+        total_num_second_round_plots = 5
+        ax_second_round_rotations = [
+            (30, -60),
+            (10, -100),
+            (-10, 80),
+            (30, 120),
+            (30, 45),
+        ]
+        cmap = plt.get_cmap("gnuplot")
+        agent_plot_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
+        plt.rcParams["figure.figsize"] = (8, 5.5)
+        fig = plt.figure(
+            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
+        )
+        ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
+        ax_second_round_list = [
+            fig.add_subplot(
+                1 + total_num_second_round_plots, 1, 2 + plot_id, projection="3d"
+            )
+            for plot_id in range(total_num_second_round_plots)
+        ]
         fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
-        agent_actions_list = []
-        equ_actions_list = []
 
-        states = self.sample_new_states(num_samples)
+        states_list, observations_list, actions_list, _ = ev_ut.run_algorithms(
+            env=self,
+            algorithms=learners,
+            num_envs=num_samples,
+            num_steps=self.num_stages,
+            deterministic=True,
+        )
+
+        agent_stddevs_list = []
         for stage in range(self.num_stages):
-            observations = self.get_observations(states)
-            ma_deterministic_actions = th_ut.get_ma_actions(
-                strategies, observations, True
+            ma_stddevs = th_ut.get_ma_learner_stddevs(
+                learners, observations_list[stage]
             )
-            ma_deterministic_actions = self.adapt_ma_actions_for_env(
-                ma_actions=ma_deterministic_actions, states=states
+            ma_stddevs = self.adapt_ma_actions_for_env(
+                ma_stddevs, states=states_list[stage]
             )
-            agent_actions_list.append(ma_deterministic_actions)
+            ma_stddevs = self.clip_bids_to_positive(ma_stddevs)
+            agent_stddevs_list.append(ma_stddevs)
 
-            equ_actions = th_ut.get_ma_actions(
-                self.equilibrium_strategies, observations
-            )
-            equ_actions_list.append(equ_actions)
+        self._plot_first_round_strategy(
+            ax_first_round,
+            config,
+            agent_stddevs_list[0][0],
+            states_list[0],
+            actions_list[0][0],
+            agent_plot_colors[0],
+        )
 
-            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
+        for ax_second_round, rotation in zip(
+            ax_second_round_list, ax_second_round_rotations
+        ):
+            ax_second_round.view_init(rotation[0], rotation[1])
+            ax_second_round.dist = 13
+            self._plot_second_round_strategy(
+                ax_second_round,
+                config,
+                states_list[1],
+                actions_list[1][1],
+                agent_plot_colors[1],
+            )
 
         # Firm 1's one-dim. quote
-        ax = fig.add_subplot(1, 2, 1)
-        ax.set_title("Firm 1's Quote")
-        ax.plot(
-            states[:, 0, 0].cpu().numpy(),
-            states[:, 1, 1].cpu().numpy(),
-            ".",
-            label=f"learned strategy",
-        )
-        ax.plot(
-            states[:, 0, 0].cpu().numpy(),
-            equ_actions_list[0][0].cpu().numpy(),
-            ".",
-            label=f"BNE strategy",
-        )
-        ax.set_xlabel("Firm 1's Costs")
-        ax.set_ylabel("Firm 1's Quote")
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.1])
-        ax.legend()
+        # ax = fig.add_subplot(1, 2, 1)
+        # ax.set_title("Firm 1's Quote")
+        # ax.plot(
+        #     states[:, 0, 0].cpu().numpy(),
+        #     states[:, 1, 1].cpu().numpy(),
+        #     ".",
+        #     label=f"learned strategy",
+        # )
+        # ax.plot(
+        #     states[:, 0, 0].cpu().numpy(),
+        #     equ_actions_list[0][0].cpu().numpy(),
+        #     ".",
+        #     label=f"BNE strategy",
+        # )
+        # ax.set_xlabel("Firm 1's Costs")
+        # ax.set_ylabel("Firm 1's Quote")
+        # ax.set_xlim([0, 1])
+        # ax.set_ylim([0, 1.1])
+        # ax.legend()
 
-        # Firm 2's two-dim. quote
-        ax = fig.add_subplot(1, 2, 2, projection="3d")
-        ax.set_title("Firm 2's Quote")
-        # ax.plot_trisurf(
-        ax.scatter(
-            states[:, 1, 0].cpu().numpy(),
-            states[:, 1, 1].cpu().numpy(),
-            states[:, 1, 0].cpu().numpy(),
-            alpha=0.7,
-            label=f"learned strategy",
-        )
-        ax.scatter(
-            states[:, 1, 0].cpu().numpy(),
-            states[:, 1, 1].cpu().numpy(),
-            equ_actions_list[1][1].cpu().numpy(),
-            alpha=0.7,
-            label=f"BNE strategy",
-        )
-        ax.set_xlabel("Firm 2's Costs")
-        ax.set_ylabel("Firm 1's Quote")
-        ax.set_zlabel("Firm 2's Quote")
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.1])
-        ax.set_zlim([0, 1.1])
+        # # Firm 2's two-dim. quote
+        # ax = fig.add_subplot(1, 2, 2, projection="3d")
+        # ax.set_title("Firm 2's Quote")
+        # # ax.plot_trisurf(
+        # ax.scatter(
+        #     states[:, 1, 0].cpu().numpy(),
+        #     states[:, 1, 1].cpu().numpy(),
+        #     states[:, 1, 0].cpu().numpy(),
+        #     alpha=0.7,
+        #     label=f"learned strategy",
+        # )
+        # ax.scatter(
+        #     states[:, 1, 0].cpu().numpy(),
+        #     states[:, 1, 1].cpu().numpy(),
+        #     equ_actions_list[1][1].cpu().numpy(),
+        #     alpha=0.7,
+        #     label=f"BNE strategy",
+        # )
+        # ax.set_xlabel("Firm 2's Costs")
+        # ax.set_ylabel("Firm 1's Quote")
+        # ax.set_zlabel("Firm 2's Quote")
+        # ax.set_xlim([0, 1])
+        # ax.set_ylim([0, 1.1])
+        # ax.set_zlim([0, 1.1])
 
+        # handles, labels = ax_first_round.get_legend_handles_labels()
+        # ax_first_round.legend(handles, labels, ncol=2, prop={"size": 6})
+        # handles, labels = ax_second_round_list[0].get_legend_handles_labels()
+        # ax_second_round_list[0].legend(handles, labels, ncol=2, prop={"size": 3})
         plt.tight_layout()
         plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
         writer.add_figure("images", fig, iteration)
         plt.close()
+
+    def _plot_first_round_strategy(
+        self, ax, config, leader_stddevs, states, leader_actions, agent_color
+    ):
+        leader_vals = states[:, 0, 0]
+        sorted_leader_vals, increasing_order = leader_vals.sort(axis=0)
+        sorted_leader_vals = sorted_leader_vals.detach().cpu().view(-1).numpy()
+        sorted_leader_actions = (
+            leader_actions[increasing_order].detach().cpu().view(-1).numpy()
+        )
+        sorted_leader_stddevs = (
+            leader_stddevs[increasing_order].detach().cpu().view(-1).numpy()
+        )
+        ax.set_title("First stage")
+        algo_name = pl_ut.get_algo_name(0, config)
+        (drawing,) = ax.plot(
+            sorted_leader_vals,
+            sorted_leader_actions,
+            linestyle="-",
+            label=f"Leader " + algo_name,
+            color=agent_color,
+        )
+        ax.fill_between(
+            sorted_leader_vals,
+            (sorted_leader_actions.squeeze() - sorted_leader_stddevs).clip(min=0),
+            (sorted_leader_actions.squeeze() + sorted_leader_stddevs).clip(min=0),
+            alpha=0.2,
+            color=drawing.get_color(),
+        )
+        self._plot_first_round_equilibrium_strategy(ax, drawing)
+        ax.set_xlabel("Firm 1's Costs")
+        ax.set_ylabel("Firm 1's Quote")
+        ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
+        ax.legend()
+
+    def _plot_first_round_equilibrium_strategy(
+        self, plot_axis, drawing, precision: int = 200
+    ):
+        leader_vals, leader_actions = self._get_actions_and_grid_in_first_stage(
+            self.equilibrium_strategies[0], precision
+        )
+        plot_axis.plot(
+            leader_vals.squeeze().detach().cpu().numpy(),
+            leader_actions.squeeze().detach().cpu().numpy(),
+            linestyle="--",
+            color=drawing.get_color(),
+            label=f"Leader equ",
+        )
+
+    def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
+        val_xs = torch.linspace(
+            self.prior_low, self.prior_high, steps=precision, device=self.device
+        )
+        opp_info = -1.0 * torch.ones_like(val_xs)
+        sa_obs = torch.stack((val_xs, opp_info), dim=-1)
+        bid_ys, _ = sa_learner.predict(sa_obs, deterministic=True)
+        return val_xs, bid_ys
+
+    def _plot_second_round_strategy(self, ax, config, states, follower_actions, color):
+        algo_name = pl_ut.get_algo_name(1, config)
+        follower_vals, leader_actions = states[:, 1, 0], states[:, 1, 1]
+
+        sorted_follower_vals, increasing_order = follower_vals.sort(axis=0)
+        sorted_follower_vals = sorted_follower_vals.detach().cpu().view(-1).numpy()
+        sorted_follower_actions = (
+            follower_actions[increasing_order].squeeze().detach().cpu().view(-1).numpy()
+        )
+        sorted_leader_actions = (
+            leader_actions[increasing_order].detach().cpu().view(-1).numpy()
+        )
+        ax.set_title("Second stage")
+        surf = ax.plot_trisurf(
+            sorted_follower_vals,
+            sorted_leader_actions,
+            sorted_follower_actions,
+            linewidth=0.3,
+            antialiased=True,
+            alpha=0.5,
+            color=color,
+            label=f"Follower " + algo_name,
+        )
+        # ## due to bug in matplotlib ## #
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+        # ############################## #
+        self._plot_second_round_equ_strategy_surface(ax, 100)
+
+        ax.set_xlabel("F's Costs")
+        ax.set_ylabel("L's Quote")
+        ax.set_zlabel("F's Quote")
+
+    def _plot_second_round_equ_strategy_surface(self, ax, plot_precision):
+        follower_val, leader_action, follower_action = self._get_actions_and_grid_in_second_stage(
+            self.equilibrium_strategies[1], plot_precision
+        )
+        surf = ax.plot_surface(
+            follower_val.cpu().numpy(),
+            leader_action.cpu().numpy(),
+            follower_action.cpu().numpy(),
+            alpha=0.8,
+        )
+        # ## due to bug in matplotlib ## #
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+        # ############################## #s
+
+    def _get_actions_and_grid_in_second_stage(self, sa_strategy, precision: int):
+        follower_val, leader_action = self._get_meshgrid_for_second_round_equ(precision)
+        # flatten mesh for forward
+        follower_val, leader_action = (
+            follower_val.reshape(precision ** 2),
+            leader_action.reshape(precision ** 2),
+        )
+        sa_obs = torch.stack((follower_val, leader_action), dim=-1)
+        follower_action, _ = sa_strategy.predict(sa_obs, deterministic=True)
+        follower_action = follower_action.reshape(precision, precision)
+        follower_val = follower_val.reshape(precision, precision)
+        leader_action = leader_action.reshape(precision, precision)
+        return follower_val, leader_action, follower_action
+
+    def _get_meshgrid_for_second_round_equ(self, precision):
+        follower_vals = torch.linspace(self.prior_low, self.prior_high, steps=precision)
+        leader_actions = np.linspace(0.5386, 0.9999, num=precision)
+        follower_grid_vals, leader_grid_actions = torch.meshgrid(
+            follower_vals,
+            torch.tensor(leader_actions, dtype=torch.float32),
+            indexing="xy",
+        )
+        return follower_grid_vals, leader_grid_actions
 
     def plot_br_strategy(
         self, br_strategies: Dict[int, Callable]
