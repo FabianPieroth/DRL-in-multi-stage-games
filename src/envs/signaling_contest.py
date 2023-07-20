@@ -150,7 +150,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     def adapt_ma_actions_for_env(
         self,
         ma_actions: Dict[int, torch.Tensor],
-        observations: Optional[Dict[int, torch.Tensor]] = None,
         states: Optional[Dict[int, torch.Tensor]] = None,
     ) -> Dict[int, torch.Tensor]:
         ma_actions = self.set_losers_bids_to_zero(states, ma_actions)

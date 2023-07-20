@@ -117,7 +117,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
         return states
 
-    def compute_step(self, cur_states, actions: torch.Tensor):
+    def compute_step(self, cur_states: torch.Tensor, actions: Dict[int, torch.Tensor]):
         """Compute a step in the game.
 
         :param cur_states: The current states of the games.
@@ -128,6 +128,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         :return episode-done markers:
         :return updated_states:
         """
+        self.adapt_ma_actions_for_env(ma_actions=actions, states=cur_states)
         batch_size = cur_states.shape[0]
 
         # get current stage
@@ -180,6 +181,26 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             agent_id: states[:, agent_id, :].clone()
             for agent_id in range(self.num_agents)
         }
+
+    def adapt_ma_actions_for_env(
+        self,
+        ma_actions: Dict[int, torch.Tensor],
+        states: Optional[Dict[int, torch.Tensor]] = None,
+    ) -> Dict[int, torch.Tensor]:
+        ma_actions = self.set_non_active_bids_to_zero(states, ma_actions)
+        return ma_actions
+
+    def set_non_active_bids_to_zero(
+        self, states: torch.Tensor, actions: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        """Improve learning signal by setting bids of non-active players to zero."""
+        # get current stage
+        stage = self._state2stage(states)
+        if stage == 0:
+            actions[1][:] = 0.0
+        else:
+            actions[0][:] = 0.0
+        return actions
 
     def render(self, state):
         return state
@@ -253,6 +274,9 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             observations = self.get_observations(states)
             ma_deterministic_actions = th_ut.get_ma_actions(
                 strategies, observations, True
+            )
+            ma_deterministic_actions = self.adapt_ma_actions_for_env(
+                ma_actions=ma_deterministic_actions, states=states
             )
             agent_actions_list.append(ma_deterministic_actions)
 
