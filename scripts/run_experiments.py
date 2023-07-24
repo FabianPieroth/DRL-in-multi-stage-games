@@ -30,7 +30,7 @@ def run_sequential_sales_experiment():
         num_stages, mechanism_type, algorithm = option
 
         if num_stages > 3:
-            verifier_discretization = 32
+            verifier_discretization = 16
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
