@@ -119,7 +119,7 @@ ids_sign_contest, testdata_sign_contest = zip(
 @pytest.mark.parametrize(
     "information_case, num_agents", testdata_sign_contest, ids=ids_sign_contest
 )
-def test_learning_signaling_contest(information_case, num_agents):
+def test_learning_bertrand_competition(information_case, num_agents):
     """Runs multi agent learning in sequential auctions for specified parameters."""
     io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
@@ -135,6 +135,27 @@ def test_learning_signaling_contest(information_case, num_agents):
         f"rl_envs=signaling_contest",
         f"rl_envs.num_agents={num_agents}",
         f"rl_envs.information_case={information_case}",
+    ]
+    config = io_ut.get_config(overrides=overrides)
+
+    tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)
+
+
+def test_learning_bertrand_competition():
+    """Runs multi agent learning in sequential auctions for specified parameters."""
+    io_ut.set_global_seed(0)
+    hydra.core.global_hydra.GlobalHydra().clear()
+
+    algorithms = ["ppo" for _ in range(2)]
+    overrides = [
+        f"device={DEVICE}",
+        f"algorithms={algorithms}",
+        f"n_steps_per_iteration={1}",
+        f"num_envs={20}",
+        f"iteration_num={1}",
+        f"rl_envs=bertrand_competition",
+        f"rl_envs.num_agents={2}",
     ]
     config = io_ut.get_config(overrides=overrides)
 
