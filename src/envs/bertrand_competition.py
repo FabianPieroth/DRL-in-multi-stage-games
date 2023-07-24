@@ -109,7 +109,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
         :param n: Batch size of how many auction games are played in parallel.
         :return: The new states, in shape=(n, num_agents, 2), where the last
-            dimension consists of the valuation and firm 1's quote (initialized
+            dimension consists of the valuation and the opponent firm's quote (initialized
             at -1).
         """
         states = -torch.ones((n, self.num_agents, 2), device=self.device)
@@ -200,9 +200,9 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         # get current stage
         stage = self._state2stage(states)
         if stage == 0:
-            actions[1][:] = 0.0
+            actions[1][:] *= 0.0
         else:
-            actions[0][:] = 0.0
+            actions[0][:] *= 0.0
         return actions
 
     def render(self, state):
@@ -271,7 +271,6 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
     def plot_strategies_vs_bne(
         self, learners, writer, iteration: int, config, num_samples: int = 2 ** 12
     ):
-        # TODO: Improve plots and set non-active bids to zero - also in compute step
         """Evaluate and log current strategies."""
 
         plt.style.use("ggplot")
