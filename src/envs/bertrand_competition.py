@@ -249,6 +249,37 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
                 obs_indices = (0, 1)
         return obs_indices
 
+    def get_ver_boundaries(
+        self, stage: int, agent_id: int, obs_indices: Tuple[int]
+    ) -> Dict[str, Tuple[float]]:
+        """Use default, unless we are in stage 1 and consider
+        the leader's bid in the observation for the follower.
+
+        Args:
+            stage (int): _description_
+            agent_id (int): _description_
+            obs_indices (Tuple[int]): _description_
+
+        Returns:
+            Dict[str, Tuple[float]]: _description_
+        """
+        low = tuple(
+            [
+                self.observation_spaces[agent_id].low[obs_index]
+                for obs_index in obs_indices
+            ]
+        )
+        high = tuple(
+            [
+                self.observation_spaces[agent_id].high[obs_index]
+                for obs_index in obs_indices
+            ]
+        )
+        if stage == 1 and agent_id == 1:
+            low = tuple([self.prior_low] * len(obs_indices))
+            high = tuple([self.prior_high, 1.3])
+        return {"low": low, "high": high}
+
     def clip_bids_to_positive(
         self, ma_actions: Dict[int, torch.Tensor]
     ) -> Dict[int, torch.Tensor]:
