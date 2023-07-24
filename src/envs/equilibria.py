@@ -365,14 +365,10 @@ class BertrandCompetitionEquilibrium(EquilibriumStrategy):
         super().__init__(agent_id)
 
     def _init_leader_inverse_first_round_strategy(self) -> Callable:
-        def leader_inverse_first_round_strategy(
-            valuations: torch.Tensor
-        ) -> torch.Tensor:
+        def leader_inverse_first_round_strategy(quotas: torch.Tensor) -> torch.Tensor:
             bid = (
-                -(10 - 6 * valuations - 4.5 * valuations ** 2 + 0.5 * valuations ** 3)
-                / (5 + 10.5 * valuations - valuations ** 2 - 0.5 * valuations ** 3)
-                + valuations
-            )
+                4 * torch.pow(quotas, 3) - 27 * torch.pow(quotas, 2) - 24 * quotas + 20
+            ) / (3 * torch.pow(quotas, 2) - 18 * quotas - 12)
             return bid
 
         return leader_inverse_first_round_strategy
@@ -393,8 +389,8 @@ class BertrandCompetitionEquilibrium(EquilibriumStrategy):
         # F(b) = 0.5(b + b**2)
         # f(b) = 0.5 + b
         # Q(p) = 10 - p
-        # q(p) = -p
-        # b - phi1(b) = ((10 - b)(1 - 0.5*b - 0.5*b**2)) / ((10 - b)(0.5 + b) + b*(1 - 0.5*b - 0.5*b**2))
+        # q(p) = -1
+        # b - phi1(b) = ((10 - b)(1 - 0.5*b - 0.5*b**2)) / ((10 - b)(0.5 + b) + (1 - 0.5*b - 0.5*b**2))
         def bid_function(observation: torch.Tensor):
             stage = self._obs2stage(observation)
             valuations = observation[:, 0]
