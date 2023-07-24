@@ -79,8 +79,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
             # observations: valuation, firm 1 quote(Agent 1) / stage-info (Agent 0)
             observation_spaces_dict[agent_id] = spaces.Box(
-                low=np.float32([val_low] * self.config.observation_size),
-                high=np.float32([val_high] * self.config.observation_size),
+                low=np.float32([val_low, -1.0]),
+                high=np.float32([val_high, 2 * val_high]),
             )
         return observation_spaces_dict
 
@@ -110,14 +110,14 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         :param n: Batch size of how many auction games are played in parallel.
         :return: The new states, in shape=(n, num_agents, 2), where the last
             dimension consists of the valuation and firm 1's quote (initialized
-            at zero).
+            at -1).
         """
         states = -torch.ones((n, self.num_agents, 2), device=self.device)
         # keep 2nd entry to -1 as to detect which stage it is (firm 1 must
         # quote a value above 0.)
 
         # draw valuations
-        valuations = self.sampler.draw_profiles(n)[0]
+        valuations, _ = self.sampler.draw_profiles(n)
         states[:, :, [0]] = valuations
 
         return states
@@ -141,7 +141,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
         new_states = cur_states.clone()
 
-        # 1. stage: firm 1 quotes
+        # 1. stage: add firm 1's quotes to firm 2's info
         if stage == 0:
             new_states[:, 1, 1] = actions[0].squeeze()
             new_states[:, 0, 1] = 1  # Set stage info for agent 0
@@ -151,7 +151,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             }
             dones = torch.zeros(batch_size, dtype=torch.bool, device=self.device)
 
-        # 2. stage: firm 2 quotes
+        # 2. stage: firm 2's quotes to firm 1's info
         if stage == 1:
             new_states[:, 0, 1] = actions[1].squeeze()
             rewards = self._compute_rewards(new_states, stage)
@@ -163,8 +163,6 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
     def _compute_rewards(self, states: torch.Tensor, stage: int) -> torch.Tensor:
         """Computes the rewards for the played competition."""
-        batch_size = states.shape[0]
-
         firm1_wins = states[:, 1, 1] < states[:, 0, 1]
         quantity = 10 - states[:, :, 1].min(axis=1).values
         return {
@@ -340,57 +338,6 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
                 actions_list[1][1],
                 agent_plot_colors[1],
             )
-
-        # Firm 1's one-dim. quote
-        # ax = fig.add_subplot(1, 2, 1)
-        # ax.set_title("Firm 1's Quote")
-        # ax.plot(
-        #     states[:, 0, 0].cpu().numpy(),
-        #     states[:, 1, 1].cpu().numpy(),
-        #     ".",
-        #     label=f"learned strategy",
-        # )
-        # ax.plot(
-        #     states[:, 0, 0].cpu().numpy(),
-        #     equ_actions_list[0][0].cpu().numpy(),
-        #     ".",
-        #     label=f"BNE strategy",
-        # )
-        # ax.set_xlabel("Firm 1's Costs")
-        # ax.set_ylabel("Firm 1's Quote")
-        # ax.set_xlim([0, 1])
-        # ax.set_ylim([0, 1.1])
-        # ax.legend()
-
-        # # Firm 2's two-dim. quote
-        # ax = fig.add_subplot(1, 2, 2, projection="3d")
-        # ax.set_title("Firm 2's Quote")
-        # # ax.plot_trisurf(
-        # ax.scatter(
-        #     states[:, 1, 0].cpu().numpy(),
-        #     states[:, 1, 1].cpu().numpy(),
-        #     states[:, 1, 0].cpu().numpy(),
-        #     alpha=0.7,
-        #     label=f"learned strategy",
-        # )
-        # ax.scatter(
-        #     states[:, 1, 0].cpu().numpy(),
-        #     states[:, 1, 1].cpu().numpy(),
-        #     equ_actions_list[1][1].cpu().numpy(),
-        #     alpha=0.7,
-        #     label=f"BNE strategy",
-        # )
-        # ax.set_xlabel("Firm 2's Costs")
-        # ax.set_ylabel("Firm 1's Quote")
-        # ax.set_zlabel("Firm 2's Quote")
-        # ax.set_xlim([0, 1])
-        # ax.set_ylim([0, 1.1])
-        # ax.set_zlim([0, 1.1])
-
-        # handles, labels = ax_first_round.get_legend_handles_labels()
-        # ax_first_round.legend(handles, labels, ncol=2, prop={"size": 6})
-        # handles, labels = ax_second_round_list[0].get_legend_handles_labels()
-        # ax_second_round_list[0].legend(handles, labels, ncol=2, prop={"size": 3})
         plt.tight_layout()
         plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
         writer.add_figure("images", fig, iteration)
