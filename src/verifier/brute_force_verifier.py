@@ -1,4 +1,5 @@
 """Verifier"""
+import gc
 import traceback
 from copy import deepcopy
 from typing import Callable, Dict, List, Tuple
@@ -143,27 +144,30 @@ class BFVerifier:
         )
         num_done_sims = 0
         batch_size = min(self.num_simulations, self.batch_size)
-        print(
-            f"Starting verification of agent {agent_id} with batch size {batch_size}."
-        )
         while num_done_sims <= self.num_simulations:
             try:
+                print(
+                    f"Starting verification of agent {agent_id} with batch size {batch_size}."
+                )
                 self._add_simulation_results_to_tree(
                     learners, agent_id, batch_size, information_tree
                 )
                 num_done_sims += batch_size
                 io_ut.progress_bar(num_done_sims, self.num_simulations)
             except RuntimeError as e:
-                """TODO: Some data seems to remain on the GPU if allocation
-                fails. If initial batch size = 2**18, then working batch_size =
-                1024. If initial batch size = 2**15, working batch size = 4096
-                for signaling contest!"""
                 self._catch_failed_simulation(batch_size, e)
                 batch_size = int(batch_size / 2)
-        return (
-            *information_tree.get_utility_loss_estimate(),
-            information_tree.get_best_response_estimate(),
-        )
+                self.clean_residuals()
+
+        self.clean_residuals()
+        utility_loss_estimates = information_tree.get_utility_loss_estimate()
+        best_responses = information_tree.get_best_response_estimate()
+
+        return (*utility_loss_estimates, best_responses)
+
+    def clean_residuals(self):
+        gc.collect()  # manually call gc to delete residuals
+        torch.cuda.empty_cache()
 
     def _catch_failed_simulation(self, batch_size: int, e):
         if self.device == "cpu" and str(e).startswith(_CPU_OOM_ERR_MSG_START):
