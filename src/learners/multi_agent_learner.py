@@ -169,7 +169,7 @@ class MultiAgentCoordinator:
     def estimate_utility_loss_against_equilibrium(self):
         """Approximate the utility loss if one agent deviates to equilibrium.
         Estimate:
-            \hat(u)_i(beta_i^*, beta_{-i}) - \hat(u)_i(beta_i, beta_{-i})
+            \hat(u)_i(beta_i^*, beta_{-i}^*) - \hat(u)_i(beta_i, beta_{-i}^*)
             where \beta^*=(\beta_i^*, \beta_{-i}^*) is an equilibrium strategy
             and \beta=(\beta_i, \beta_{-i}) is the learned strategy.
         """
