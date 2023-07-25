@@ -313,8 +313,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             (30, 120),
             (30, 45),
         ]
-        cmap = plt.get_cmap("gnuplot")
-        agent_plot_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
+        agent_plot_colors = ["red", "blue"]
         plt.rcParams["figure.figsize"] = (8, 5.5)
         fig = plt.figure(
             figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
@@ -451,13 +450,14 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             antialiased=True,
             alpha=0.5,
             color=color,
+            edgecolor=color,
             label=f"Follower " + algo_name,
         )
         # ## due to bug in matplotlib ## #
         surf._facecolors2d = surf._facecolor3d
         surf._edgecolors2d = surf._edgecolor3d
         # ############################## #
-        self._plot_second_round_equ_strategy_surface(ax, 100)
+        self._plot_second_round_equ_strategy_surface(ax, 50)
 
         ax.set_xlabel("F's Costs")
         ax.set_ylabel("L's Quote")
@@ -471,7 +471,9 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             follower_val.cpu().numpy(),
             leader_action.cpu().numpy(),
             follower_action.cpu().numpy(),
-            alpha=0.8,
+            alpha=0.2,
+            color="red",
+            edgecolor="black",
         )
         # ## due to bug in matplotlib ## #
         surf._facecolors2d = surf._facecolor3d
