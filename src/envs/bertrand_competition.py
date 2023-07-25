@@ -496,7 +496,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
     def _get_meshgrid_for_second_round_equ(self, precision):
         follower_vals = torch.linspace(self.prior_low, self.prior_high, steps=precision)
-        leader_actions = np.linspace(0.5386, 0.9999, num=precision)
+        leader_actions = np.linspace(0.5359, 0.9999, num=precision)
         follower_grid_vals, leader_grid_actions = torch.meshgrid(
             follower_vals,
             torch.tensor(leader_actions, dtype=torch.float32),
