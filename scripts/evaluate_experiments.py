@@ -116,7 +116,7 @@ def evaluate_signaling_contest_experiment():
         "eval/estimated_utility_loss",
         "eval/utility_loss",
     ]
-    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
 
     # Create pivot table
     assert df.size > 0, "No experiments were run for these parameters."
