@@ -24,6 +24,7 @@ def run_sequential_sales_experiment():
     mechanism_type_options = ["first", "second"]
     algorithm_options = ["reinforce", "ppo"]
     verifier_discretization = 64
+    verifier_batch_size = 32_768
     options = product(num_stages_options, mechanism_type_options, algorithm_options)
 
     for option in options:
@@ -31,6 +32,7 @@ def run_sequential_sales_experiment():
 
         if num_stages > 3:
             verifier_discretization = 16
+            verifier_batch_size = 256
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -49,6 +51,7 @@ def run_sequential_sales_experiment():
                     f"verify_br={True}",
                     f"verifier.action_discretization={verifier_discretization}",
                     f"verifier.obs_discretization={verifier_discretization}",
+                    f"verifier.batch_size={verifier_batch_size}",
                     f"rl_envs.mechanism_type={mechanism_type}",
                     f"rl_envs.num_stages={num_stages}",
                     f"rl_envs.num_agents={num_stages + 1}",
