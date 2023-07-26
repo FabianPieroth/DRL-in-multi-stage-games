@@ -6,16 +6,13 @@ from typing import Callable, Dict, List, Tuple
 
 import torch
 
+import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
 import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import VerifiableEnv
 from src.learners.base_learner import SABaseAlgorithm
 from src.verifier.information_set_tree import InformationSetTree
 from src.verifier.mean_utility_tracker import UtilityTracker
-
-_CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
-_CPU_OOM_ERR_MSG_START = "[enforce fail at alloc_cpu.cpp:73]"
-ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch size of 1 leads to OOM!"
 
 
 class BFVerifier:
@@ -155,7 +152,7 @@ class BFVerifier:
                 num_done_sims += batch_size
                 io_ut.progress_bar(num_done_sims, self.num_simulations)
             except RuntimeError as e:
-                self._catch_failed_simulation(batch_size, e)
+                ev_ut.catch_failed_simulation(self.device, batch_size, e)
                 batch_size = int(batch_size / 2)
                 self.clean_residuals()
 
@@ -168,15 +165,6 @@ class BFVerifier:
     def clean_residuals(self):
         gc.collect()  # manually call gc to delete residuals
         torch.cuda.empty_cache()
-
-    def _catch_failed_simulation(self, batch_size: int, e):
-        if self.device == "cpu" and str(e).startswith(_CPU_OOM_ERR_MSG_START):
-            raise RuntimeError("Can't determine variable batch size to fit in CPU.")
-        if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
-            raise e
-        if batch_size <= 1:
-            traceback.print_exc()
-            raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
 
     def get_rollout_utilities_from_states(
         self, states: torch.Tensor, learners: Dict[int, "Strategy"], agent_id: int
@@ -216,7 +204,7 @@ class BFVerifier:
                 num_done_sims += batch_size
                 io_ut.progress_bar(num_done_sims, self.num_simulations)
             except RuntimeError as e:
-                self._catch_failed_simulation(batch_size, e)
+                ev_ut.catch_failed_simulation(self.device, batch_size, e)
                 batch_size = int(batch_size / 2)
         actual_utility = actual_utility_tracker.get_mean_utility()
 
