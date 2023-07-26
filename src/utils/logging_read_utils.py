@@ -14,7 +14,7 @@ def python2latex(python_name: str) -> str:
     LaTeX format.
     """
 
-    if python_name.startswith("eval/action_equ_L2_distance_stage_"):
+    if python_name.startswith("eval/L2_distance_stage_"):
         stage = int(python_name[python_name.rfind("_") + 1 :]) + 1
         return "$L_2^{S" + str(stage) + "}$"
 

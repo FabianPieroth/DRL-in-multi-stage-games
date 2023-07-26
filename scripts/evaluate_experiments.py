@@ -21,10 +21,10 @@ def evaluate_sequential_sales_experiment():
         # "policy.action_dependent_std",
     ]
     metrics = [
-        "eval/action_equ_L2_distance_stage_0",
-        "eval/action_equ_L2_distance_stage_1",
-        "eval/action_equ_L2_distance_stage_2",
-        "eval/action_equ_L2_distance_stage_3",
+        "eval/L2_distance_stage_0",
+        "eval/L2_distance_stage_1",
+        "eval/L2_distance_stage_2",
+        "eval/L2_distance_stage_3",
         "eval/estimated_utility_loss",
         "eval/utility_loss",
     ]
@@ -46,7 +46,14 @@ def evaluate_asymmetric_second_price_sequential_sales_experiment():
     df = ex_ut.get_log_df(path)
 
     hyperparameters = ["agent_id"]
-    metrics = ["eval/estimated_utility_loss"]
+    metrics = [
+        "eval/estimated_utility_loss",
+        "eval/bid_mean_stage_0",
+        "eval/bid_mean_stage_1",
+        "eval_bid_stddev_stage_0",
+        "eval_bid_stddev_stage_0",
+        "eval/estimated_actual_utilities",
+    ]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)
 
     # Create pivot table
@@ -104,8 +111,8 @@ def evaluate_signaling_contest_experiment():
 
     hyperparameters = ["rl_envs.information_case"]
     metrics = [
-        "eval/action_equ_L2_distance_over_learner_distribution_stage_1",
-        "eval/action_equ_L2_distance_over_learner_distribution_stage_2",
+        "eval/L2_distance_stage_0",
+        "eval/L2_distance_stage_1",
         "eval/estimated_utility_loss",
         "eval/utility_loss",
     ]
