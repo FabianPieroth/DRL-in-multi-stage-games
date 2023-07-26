@@ -5,6 +5,7 @@ from stable_baselines3.common.distributions import DiagGaussianDistribution
 
 from src.envs.sampler import (
     AffiliatedValuationObservationSampler,
+    BertrandSymmetricIPVSampler,
     GaussianSymmetricIPVSampler,
     MineralRightsValuationObservationSampler,
     UniformSymmetricIPVSampler,
@@ -48,6 +49,8 @@ def get_sampler(
         sampler = MineralRightsValuationObservationSampler
     elif sampler_config.name == "affiliated_uniform":
         sampler = AffiliatedValuationObservationSampler
+    elif sampler_config.name == "bertrand":
+        sampler = BertrandSymmetricIPVSampler
     else:
         raise ValueError(
             "No valid prior specified! Please check: " + sampler_config.name

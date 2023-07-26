@@ -1,0 +1,5 @@
+name: "bertrand_competition"
+num_agents: 2
+observation_size: 2
+defaults:
+  - sampler: bertrand

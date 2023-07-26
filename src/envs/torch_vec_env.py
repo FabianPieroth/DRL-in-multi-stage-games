@@ -148,20 +148,19 @@ class BaseEnvForVec(ABC):
         ma_actions = th_ut.get_ma_actions(
             learners, observations, deterministic, excluded_agents, no_grad
         )
-        ma_actions = self.adapt_ma_actions_for_env(ma_actions, observations, states)
+        ma_actions = self.adapt_ma_actions_for_env(ma_actions, states)
         return ma_actions
 
     def adapt_ma_actions_for_env(
         self,
         ma_actions: Dict[int, torch.Tensor],
-        observations: Optional[Dict[int, torch.Tensor]] = None,
         states: Optional[Dict[int, torch.Tensor]] = None,
     ) -> Dict[int, torch.Tensor]:
         """Overwrite this method to apply env-specific adaptations to the ma_actions.
 
         Args:
             ma_actions (Dict[int, torch.Tensor]):
-            observations (Dict[int, torch.Tensor]):
+            states (Dict[int, torch.Tensor]):
 
         Returns:
             Dict[int, torch.Tensor]: Adapated actions
