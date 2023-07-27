@@ -152,7 +152,7 @@ class BFVerifier:
                 num_done_sims += batch_size
                 io_ut.progress_bar(num_done_sims, self.num_simulations)
             except RuntimeError as e:
-                ev_ut.catch_failed_simulation(self.device, batch_size, e)
+                ev_ut.catch_failed_batch_allocation(self.device, batch_size, e)
                 batch_size = int(batch_size / 2)
                 self.clean_residuals()
 
@@ -204,7 +204,7 @@ class BFVerifier:
                 num_done_sims += batch_size
                 io_ut.progress_bar(num_done_sims, self.num_simulations)
             except RuntimeError as e:
-                ev_ut.catch_failed_simulation(self.device, batch_size, e)
+                ev_ut.catch_failed_batch_allocation(self.device, batch_size, e)
                 batch_size = int(batch_size / 2)
         actual_utility = actual_utility_tracker.get_mean_utility()
 
