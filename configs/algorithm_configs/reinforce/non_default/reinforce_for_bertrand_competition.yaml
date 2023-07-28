@@ -3,3 +3,5 @@
 algorithm_configs:
   reinforce:
     n_rollout_steps: 2
+    learning_rate: 5.0e-5
+    
