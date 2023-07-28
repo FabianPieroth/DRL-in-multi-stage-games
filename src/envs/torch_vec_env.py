@@ -185,6 +185,28 @@ class BaseEnvForVec(ABC):
         """
         pass
 
+    def l2_loss_adaption_callback(
+        self,
+        states_list: List[Optional[Dict[int, torch.Tensor]]],
+        observations_list: List[Dict[int, torch.Tensor]],
+        equ_actions_list: List[Dict[int, torch.Tensor]],
+        learner_actions_list: List[Dict[int, torch.Tensor]],
+    ) -> Tuple[List[Dict[int, torch.Tensor]], List[Dict[int, torch.Tensor]]]:
+        """In some cases, there may be special cases to correctly calculate the L2-loss.
+        This callback allows to adapt the equ_actions and learner_actions accordingly.
+        Afterward, the calculation continues with a usual l2-distance calculation between the tensors.
+
+        Args:
+            states_list (List[Optional[Dict[int, torch.Tensor]]]): 
+            observations_list (List[Dict[int, torch.Tensor]]): 
+            equ_actions_list (List[Dict[int, torch.Tensor]]): 
+            learner_actions_list (List[Dict[int, torch.Tensor]]): 
+
+        Returns:
+            Tuple[List[Dict[int, torch.Tensor]], List[Dict[int, torch.Tensor]]]: 
+        """
+        return equ_actions_list, learner_actions_list
+
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[EquilibriumStrategy]]:
         """Overwrite this method to enable verification against the known
         equilibrium strategy. Each equilibrium strategy needs to be of type

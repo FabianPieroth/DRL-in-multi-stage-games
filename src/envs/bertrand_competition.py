@@ -1,7 +1,6 @@
 """
 """
-import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -298,6 +297,26 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             iteration: current training iteration
         """
         self.plot_strategies_vs_bne(learners, writer, iteration, config)
+
+    def l2_loss_adaption_callback(
+        self,
+        states_list: List[Optional[Dict[int, torch.Tensor]]],
+        observations_list: List[Dict[int, torch.Tensor]],
+        equ_actions_list: List[Dict[int, torch.Tensor]],
+        learner_actions_list: List[Dict[int, torch.Tensor]],
+    ) -> Tuple[List[Dict[int, torch.Tensor]], List[Dict[int, torch.Tensor]]]:
+        """The followers equilibrium strategy is not unique. If the leader's quote b1 is lower than
+        the follower's costs c2, then any b2 > b1 is in equilibrium. Therefore, we adapt the
+        actions so that the l2-distance in this case is zero.
+        """
+        follower_obs = observations_list[1][1]
+        c2 = follower_obs[:, 0]
+        b1 = follower_obs[:, 1]
+        mask = torch.logical_and(b1 < c2, b1 < learner_actions_list[1][1].squeeze())
+        # set follower's actions to 0.0
+        equ_actions_list[1][1][mask.unsqueeze(-1)] = 0.0
+        learner_actions_list[1][1][mask.unsqueeze(-1)] = 0.0
+        return equ_actions_list, learner_actions_list
 
     def plot_strategies_vs_bne(
         self, learners, writer, iteration: int, config, num_samples: int = 2 ** 12
