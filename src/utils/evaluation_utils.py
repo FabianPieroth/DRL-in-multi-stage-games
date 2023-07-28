@@ -63,6 +63,12 @@ def log_l2_distance_to_equilibrium(
             get_ma_actions_for_observation_list(
                 env, learners, learner_actions_list, states_list, observations_list
             )
+            equ_actions_list, learner_actions_list = env.l2_loss_adaption_callback(
+                states_list=states_list,
+                observations_list=observations_list,
+                equ_actions_list=equ_actions_list,
+                learner_actions_list=learner_actions_list,
+            )
             store_squared_l2_distance_in_dict(
                 l2_distances, learner_actions_list, equ_actions_list
             )

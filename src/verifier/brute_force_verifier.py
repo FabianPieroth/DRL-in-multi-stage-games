@@ -141,11 +141,11 @@ class BFVerifier:
         )
         num_done_sims = 0
         batch_size = min(self.num_simulations, self.batch_size)
+        print(
+            f"Starting verification of agent {agent_id} with batch size {batch_size}."
+        )
         while num_done_sims <= self.num_simulations:
             try:
-                print(
-                    f"Starting verification of agent {agent_id} with batch size {batch_size}."
-                )
                 self._add_simulation_results_to_tree(
                     learners, agent_id, batch_size, information_tree
                 )
@@ -156,6 +156,10 @@ class BFVerifier:
                 batch_size = int(batch_size / 2)
                 self.clean_residuals()
 
+        print(
+            f"Verification for agent {agent_id} was done with batch size {batch_size}."
+        )
+
         self.clean_residuals()
         utility_loss_estimates = information_tree.get_utility_loss_estimate()
         best_responses = information_tree.get_best_response_estimate()
@@ -164,7 +168,8 @@ class BFVerifier:
 
     def clean_residuals(self):
         gc.collect()  # manually call gc to delete residuals
-        torch.cuda.empty_cache()
+        with torch.cuda.device(self.device):
+            torch.cuda.empty_cache()
 
     def get_rollout_utilities_from_states(
         self, states: torch.Tensor, learners: Dict[int, "Strategy"], agent_id: int
