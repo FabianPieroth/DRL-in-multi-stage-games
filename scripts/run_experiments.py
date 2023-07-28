@@ -253,9 +253,48 @@ def run_signaling_contest_experiment():
     print("Done!")
 
 
+def run_bertrand_competition_experiment():
+    environment = "bertrand_competition"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 1
+    runs = 10
+    iteration_num = 10_000
+
+    algorithm_options = ["reinforce", "ppo"]
+    verifier_discretization = 128
+
+    for algorithm in algorithm_options:
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={False}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"verifier.action_discretization={verifier_discretization}",
+                    f"verifier.obs_discretization={verifier_discretization}",
+                    f"rl_envs=bertrand_competition",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
 if __name__ == "__main__":
     run_sequential_sales_experiment()
     run_asymmetric_second_price_sequential_sales_experiment()
     run_symmetric_budget_constraint_with_affiliation_experiments()
     run_sequential_sales_interdependent_plus_risk_experiment()
     run_signaling_contest_experiment()
+    run_bertrand_competition_experiment()
