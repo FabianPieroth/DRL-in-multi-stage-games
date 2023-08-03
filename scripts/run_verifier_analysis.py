@@ -21,12 +21,12 @@ from scripts.run_experiments import LOG_PATH
 from src.learners.multi_agent_learner import MultiAgentCoordinator
 from src.utils.coordinator_utils import get_env
 
-directory = f"{LOG_PATH}verifier/"
+directory = f"{LOG_PATH}/verifier/"
 
 # USER PARAMETERS
 num_stages_options = [2]
-num_simulations_options = [2 ** i for i in range(5, 25, 2)]
-action_discretization_options = [128, 64, 32, 16]
+num_simulations_options = [2 ** i for i in range(5, 27, 2)]
+action_discretization_options = [256, 128, 64, 32, 16]
 
 
 def enumerated_product(*args):
