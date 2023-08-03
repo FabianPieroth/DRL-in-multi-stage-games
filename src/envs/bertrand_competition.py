@@ -94,7 +94,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
             action_spaces_dict[agent_id] = spaces.Box(
                 low=np.float32([val_low] * self.action_size),
-                high=np.float32([2 * val_high] * self.action_size),
+                high=np.float32([1.3 * val_high] * self.action_size),
             )
         return action_spaces_dict
 
@@ -275,8 +275,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             ]
         )
         if stage == 1 and agent_id == 1:
-            low = tuple([self.prior_low] * len(obs_indices))
-            high = tuple([self.prior_high, 1.3])
+            low = tuple([self.prior_low, 0.4])
+            high = tuple([self.prior_high, 1.1])
         return {"low": low, "high": high}
 
     def clip_bids_to_positive(
