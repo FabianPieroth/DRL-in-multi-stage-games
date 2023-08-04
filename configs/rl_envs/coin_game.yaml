@@ -1,0 +1,15 @@
+name: "coin_game"
+num_agents: 3
+max_episode_length: 25
+grid_length: 8
+grid_width: 8
+num_max_coins_per_agent: 4
+spawn_rate: 0.25 # probability for a single coin to spawn per step
+only_pick_up_own_coin: false
+agents_can_stack: false
+coins_can_stack: false
+move_order_type: "random" # can be "random", "static"
+boundary_treatment_type: "loop" # can be "loop", "closed"
+reward_structure: "unitary"
+penalty_structure: "no_penalty"  # can be "no_penalty", "all_others"
+make_obs_invariant_to_agent_order: true
