@@ -1,7 +1,8 @@
 # Main configurations file with default values.
 
 # Available game environments
-valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest", "bertrand_competition", "simple_soccer"]
+valid_envs: ["rockpaperscissors", "sequential_auction", "signaling_contest", "bertrand_competition", "simple_soccer", "coin_game"]
+
 
 # Path setting for logging
 log_path: './logs/'

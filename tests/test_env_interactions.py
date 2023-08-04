@@ -119,8 +119,8 @@ ids_sign_contest, testdata_sign_contest = zip(
 @pytest.mark.parametrize(
     "information_case, num_agents", testdata_sign_contest, ids=ids_sign_contest
 )
-def test_learning_bertrand_competition(information_case, num_agents):
-    """Runs multi agent learning in sequential auctions for specified parameters."""
+def test_learning_signaling_contest(information_case, num_agents):
+    """Runs multi agent learning in signaling contest for specified parameters."""
     io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
 
@@ -143,7 +143,7 @@ def test_learning_bertrand_competition(information_case, num_agents):
 
 
 def test_learning_bertrand_competition():
-    """Runs multi agent learning in sequential auctions for specified parameters."""
+    """Runs multi agent learning in Bertrand Competition for specified parameters."""
     io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
 
@@ -156,6 +156,95 @@ def test_learning_bertrand_competition():
         f"iteration_num={1}",
         f"rl_envs=bertrand_competition",
         f"rl_envs.num_agents={2}",
+    ]
+    config = io_ut.get_config(overrides=overrides)
+
+    tst_ut.run_limited_learning(config)
+    io_ut.clean_logs_after_test(config)
+
+
+ids_coin_game, testdata_coin_game = zip(
+    # (num_agents, only_pick_up_own_coin, agents_can_stack, coins_can_stack, move_order_type, boundary_treatment_type
+    #  reward_structure, penalty_structure, make_obs_invariant_to_agent_order)
+    *[
+        [
+            "single_agent-standard",
+            (1, False, False, False, "random", "loop", "unitary", "no_penalty", True),
+        ],
+        [
+            "two_agents-standard",
+            (2, False, False, False, "random", "loop", "unitary", "no_penalty", True),
+        ],
+        [
+            "standard-only-pick-up-own-coin",
+            (2, True, False, False, "random", "loop", "unitary", "no_penalty", True),
+        ],
+        [
+            "standard-agents_can_stack",
+            (2, False, True, False, "random", "loop", "unitary", "no_penalty", True),
+        ],
+        [
+            "standard-coins_can_stack",
+            (2, False, False, True, "random", "loop", "unitary", "no_penalty", True),
+        ],
+        [
+            "standard-static-move-order",
+            (2, False, False, False, "static", "loop", "unitary", "no_penalty", True),
+        ],
+        [
+            "standard-closed-boundaries",
+            (2, False, False, False, "random", "closed", "unitary", "no_penalty", True),
+        ],
+        [
+            "standard-all-others-penalty",
+            (2, False, False, False, "random", "loop", "unitary", "all_others", True),
+        ],
+        [
+            "standard-obs-NOT-invariant",
+            (2, False, False, False, "random", "loop", "unitary", "no_penalty", False),
+        ],
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "num_agents, only_pick_up_own_coin, agents_can_stack, coins_can_stack, move_order_type, boundary_treatment_type, reward_structure, penalty_structure, make_obs_invariant_to_agent_order",
+    testdata_coin_game,
+    ids=ids_coin_game,
+)
+def test_learning_coin_game(
+    num_agents,
+    only_pick_up_own_coin,
+    agents_can_stack,
+    coins_can_stack,
+    move_order_type,
+    boundary_treatment_type,
+    reward_structure,
+    penalty_structure,
+    make_obs_invariant_to_agent_order,
+):
+    """Runs multi agent learning in sequential auctions for specified parameters."""
+    io_ut.set_global_seed(0)
+    hydra.core.global_hydra.GlobalHydra().clear()
+
+    algorithms = ["ppo" for _ in range(num_agents)]
+    overrides = [
+        f"device={DEVICE}",
+        f"algorithms={algorithms}",
+        f"policy_sharing={False}",
+        f"n_steps_per_iteration={25}",
+        f"num_envs={2}",
+        f"iteration_num={1}",
+        f"rl_envs=coin_game",
+        f"rl_envs.num_agents={num_agents}",
+        f"rl_envs.only_pick_up_own_coin={only_pick_up_own_coin}",
+        f"rl_envs.agents_can_stack={agents_can_stack}",
+        f"rl_envs.coins_can_stack={coins_can_stack}",
+        f"rl_envs.move_order_type={move_order_type}",
+        f"rl_envs.boundary_treatment_type={boundary_treatment_type}",
+        f"rl_envs.reward_structure={reward_structure}",
+        f"rl_envs.penalty_structure={penalty_structure}",
+        f"rl_envs.make_obs_invariant_to_agent_order={make_obs_invariant_to_agent_order}",
     ]
     config = io_ut.get_config(overrides=overrides)
 

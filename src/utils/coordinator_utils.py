@@ -4,6 +4,7 @@ from omegaconf import DictConfig
 
 import src.utils.logging_write_utils as log_ut
 from src.envs.bertrand_competition import BertrandCompetition
+from src.envs.coin_game import CoinGame
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.sequential_auction import SequentialAuction
 from src.envs.signaling_contest import SignalingContest
@@ -27,6 +28,8 @@ def get_env(config: DictConfig) -> MATorchVecEnv:
         env = SignalingContest(config.rl_envs, device=config.device)
     elif env_name == "simple_soccer":
         env = SimpleSoccer(config.rl_envs, device=config.device)
+    elif env_name == "coin_game":
+        env = CoinGame(config.rl_envs, device=config.device)
     elif env_name == "bertrand_competition":
         env = BertrandCompetition(config.rl_envs, device=config.device)
     else:
