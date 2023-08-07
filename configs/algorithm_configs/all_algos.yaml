@@ -9,6 +9,7 @@ defaults:
   - soccer_goal_wall: goal_wall_default
   - soccer_block: block_default
   - soccer_handcrafted: handcrafted_default
+  - random: random_default
   - optional ppo/non_default: ppo_for_${rl_envs}
   - optional reinforce/non_default: reinforce_for_${rl_envs}
   - optional dqn/non_default: dqn_for_${rl_envs}

@@ -55,6 +55,42 @@ Verify by running on all files
 
 For more information see https://pre-commit.com/.
 
+# Adding a new Learner
+
+## New learner class
+
+There are in general two ways to create a new learner.
+
+### Custom Learner
+
+Inherit from `MABaseAlgorithm` in `src/learners/base_learner.py`. Then overwrite the specified methods accordingly. See `src/learners/random_learner.py` as example.
+
+### Adapt StableBaselines3 Algorithm
+
+Inherit from `BaseAlgorithm` from stable_baselines3.common.base_class or one of its super classes. Furthermore, add the methods that are added in `MABaseAlgorithm`.
+Additionally, one needs to rewrite internal logic so that the data received by `ingest_data_into_learner` is sufficient for training. See VecPPO or GPUDQN as example.
+
+## Register the new learner
+
+There are several steps needed to register a new learner/algorithm to the framework.
+
+### Add learner to configurations
+
+Create a new folder with your algorithm's name `<algo-name>` in `configs/algorithm_configs`.
+
+Add a file named `<algo-name>_default.yaml` that includes configurations to your algorithm. This file will be passed into the learner during init.
+
+Add the line `- <algo-name>: <algo-name>_default` to `configs/algorithm_configs/all_algos.yaml`. 
+
+See the RandomLearner as minimal example.
+
+### Add learner to algorithm selection
+
+Import your learner class in `src.utils.policy_utils.py`.
+
+Add another `elif`-case that initializes your new learner.
+
+See RandomLearner as minimal example.
 
 # Maintainers and suggested citation
 
