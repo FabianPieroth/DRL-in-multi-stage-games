@@ -1,6 +1,9 @@
-from typing import Callable, Dict
+from typing import Callable, Dict, Union
 
+import gym
+import torch
 import torch.nn as nn
+from gym.spaces import Box, Discrete, MultiDiscrete
 from omegaconf import OmegaConf
 from stable_baselines3.common.base_class import BaseAlgorithm
 
@@ -9,6 +12,7 @@ from src.envs.simple_soccer import SimpleSoccer
 from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.gpu_dqn import GPUDQN
 from src.learners.ppo import VecPPO
+from src.learners.random_learner import RandomLearner
 from src.learners.reinforce import Reinforce
 from src.learners.rps_dummy_learner import RPSDummyLearner
 from src.learners.simple_soccer_policies.block_policy import BlockPolicy
@@ -16,7 +20,6 @@ from src.learners.simple_soccer_policies.chase_ball_policy import ChaseBallPolic
 from src.learners.simple_soccer_policies.goal_wall_policy import GoalWallPolicy
 from src.learners.simple_soccer_policies.handcrafted_policy import HandcraftedPolicy
 from src.learners.td3 import TD3
-from src.utils.torch_utils import Abs
 
 
 def get_policies(config: Dict, env: MATorchVecEnv) -> Dict[int, BaseAlgorithm]:
@@ -250,6 +253,16 @@ def get_learner_and_policy(
             seed=config.seed,
             device=config["device"],
         )
+    elif algo_name == "random":
+        return RandomLearner(
+            agent_id,
+            config,
+            env=env,
+            device=config["device"],
+            tensorboard_log=config["experiment_log_path"] + f"multi_agent_{agent_id}",
+            verbose=0,
+            seed=config.seed,
+        )
     else:
         raise ValueError(
             "No valid algorithm provided, check again for "
@@ -280,3 +293,74 @@ def all_equal(iterator):
     except StopIteration:
         return True
     return all(first == x for x in iterator)
+
+
+def sample_random_actions(
+    action_space: gym.Space, batch_size: int, device: Union[str, int]
+) -> torch.Tensor:
+    if isinstance(action_space, Box):
+        actions = sample_random_box_actions(action_space, batch_size, device)
+    elif isinstance(action_space, Discrete):
+        actions = sample_random_discrete_actions(action_space, batch_size, device)
+    elif isinstance(action_space, MultiDiscrete):
+        actions = sample_random_multidiscrete_actions(action_space, batch_size, device)
+    else:
+        raise NotImplementedError(
+            "No random sampling implemented for given action_space type!"
+        )
+    return actions
+
+
+def sample_random_box_actions(
+    action_space: Box, batch_size: int, device: Union[str, int]
+) -> torch.Tensor:
+    """In creating a sample of the box, each coordinate is sampled (independently) from a distribution
+    that is chosen according to the form of the interval:
+
+    * :math:`[a, b]` : uniform distribution
+    * :math:`[a, \infty)` : shifted exponential distribution
+    * :math:`(-\infty, b]` : shifted negative exponential distribution
+    * :math:`(-\infty, \infty)` : normal distribution"""
+    actions = torch.zeros((batch_size,) + action_space.shape, device=device)
+    unbounded = ~action_space.bounded_below & ~action_space.bounded_above
+    upp_bounded = ~action_space.bounded_below & action_space.bounded_above
+    low_bounded = action_space.bounded_below & ~action_space.bounded_above
+    bounded = action_space.bounded_below & action_space.bounded_above
+
+    # Vectorized sampling by interval type
+    actions[:, unbounded] = torch.normal(
+        mean=0.0,
+        std=1.0,
+        size=(batch_size,) + unbounded[unbounded].shape,
+        device=device,
+    )
+
+    actions[:, low_bounded] = actions[:, low_bounded].exponential_()
+
+    actions[:, upp_bounded] = -1.0 * actions[
+        :, upp_bounded
+    ].exponential_() + torch.tensor(action_space.high[upp_bounded], device=device)
+
+    # (a - b) * torch.rand(batch_size, bounded_action_size) + b
+    low = torch.tensor(action_space.low[bounded], device=device).unsqueeze(0)
+    high = torch.tensor(action_space.high[bounded], device=device).unsqueeze(0)
+    actions[:, bounded] = (low - high) * torch.rand(
+        (batch_size,) + bounded[bounded].shape, device=device
+    ) + high
+    return actions
+
+
+def sample_random_discrete_actions(
+    action_space: Discrete, batch_size: int, device: Union[str, int]
+) -> torch.Tensor:
+    return torch.randint(high=action_space.n, size=(batch_size,), device=device)
+
+
+def sample_random_multidiscrete_actions(
+    action_space: MultiDiscrete, batch_size: int, device: Union[str, int]
+) -> torch.Tensor:
+    actions_list = [
+        torch.randint(high=upper_bound, size=(batch_size,), device=device)
+        for upper_bound in action_space.nvec
+    ]
+    return torch.stack(actions_list, dim=1)
