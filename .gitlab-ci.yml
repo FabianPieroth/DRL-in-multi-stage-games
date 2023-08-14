@@ -1,5 +1,5 @@
 stages:
-  - test
+#  - test
   - deploy
 
 test:
@@ -9,7 +9,7 @@ test:
   - virtualenv sequential-auctions-on-gpu
   - source sequential-auctions-on-gpu/bin/activate
   - pip install -r requirements.txt
-#  - pytest --cov-report term-missing --junitxml=report.xml
+  - pytest --cov-report term-missing --junitxml=report.xml
 
 pages:
   stage: deploy
@@ -19,7 +19,8 @@ pages:
     - source docs/bin/activate
     - pip install sphinx furo
   script:
-    - cd docs && make html
+    - cd docs
+    - make html
   after_script:
     - mv docs/build/html/ ./public/
   artifacts:
