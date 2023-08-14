@@ -9,3 +9,17 @@ test:
   - source sequential-auctions-on-gpu/bin/activate
   - pip install -r requirements.txt
   - pytest --cov-report term-missing --junitxml=report.xml
+
+pages:
+  stage: deploy
+  script:
+  # - pip install -U sphinx sphinx_rtd_theme
+  # - mv docs/build/html/ public/
+  - sphinx-build -b html docs/source/ public/
+  # - sphinx-build -b docs/build/html/ public/
+  # - sphinx-build -b html . public
+  artifacts:
+    paths:
+    - public
+  # only:
+  # - main

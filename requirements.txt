@@ -18,6 +18,8 @@ imageio==2.16.1
 pynverse==0.1.4.4
 moviepy
 tqdm
+sphinx
+sphinx_rtd_theme
 
 # 2022-05-30 
 #Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 
