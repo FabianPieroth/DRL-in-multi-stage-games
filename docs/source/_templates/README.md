@@ -1,0 +1,1 @@
+Workaround to include functions in Sphinx's autosummary from https://stackoverflow.com/a/62613202.

@@ -7,9 +7,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Cont-MARL"
-copyright = "2023, FP, NK"
+copyright = "2023, Fabian Raoul Pieroth, Nils Kohring"
 author = "FP, NK"
-release = "0.0.1"
+release = ""
 
 import os
 import sys
