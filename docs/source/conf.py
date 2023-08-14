@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.abspath("../.."))  # Source code dir relative to this
 extensions = [
     "sphinx.ext.autodoc",  # Core library for html generation from docstrings
     "sphinx.ext.autosummary",  # Create neat summary tables
+    "myst_parser",  # Support for Markdown files
 ]
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
 
