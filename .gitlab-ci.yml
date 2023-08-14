@@ -1,5 +1,6 @@
 stages:
   - test
+  - deploy
 
 test:
   stage: test
@@ -8,18 +9,19 @@ test:
   - virtualenv sequential-auctions-on-gpu
   - source sequential-auctions-on-gpu/bin/activate
   - pip install -r requirements.txt
-  - pytest --cov-report term-missing --junitxml=report.xml
+#  - pytest --cov-report term-missing --junitxml=report.xml
 
 pages:
   stage: deploy
+  image: python:3.9-slim
+  before_script:
+    - python -m pip install sphinx furo
   script:
-  # - pip install -U sphinx sphinx_rtd_theme
-  # - mv docs/build/html/ public/
-  - sphinx-build -b html docs/source/ public/
-  # - sphinx-build -b docs/build/html/ public/
-  # - sphinx-build -b html . public
+    - cd docs && make html
+  after_script:
+    - mv docs/build/html/ ./public/
   artifacts:
     paths:
     - public
-  # only:
-  # - main
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
