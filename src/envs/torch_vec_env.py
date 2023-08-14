@@ -175,12 +175,14 @@ class BaseEnvForVec(ABC):
         iteration: int,
         config: Dict,
     ):
-        """Method is called during training process and allows environment specific logging.
+        """Method is called during training process and allows environment
+        specific logging.
 
         Args:
             learners (Dict[int, BaseAlgorithm]):
             env (_type_): evaluation env
             writer: tensorboard summary writer
+            iteration (int): current iteration
             config: Dict of additional data
         """
         pass
