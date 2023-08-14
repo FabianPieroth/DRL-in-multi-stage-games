@@ -13,9 +13,11 @@ test:
 
 pages:
   stage: deploy
-  image: python:3.9-slim
   before_script:
-    - python -m pip install sphinx furo
+    - pip install virtualenv
+    - virtualenv docs
+    - source docs/bin/activate
+    - pip install sphinx furo
   script:
     - cd docs && make html
   after_script:
