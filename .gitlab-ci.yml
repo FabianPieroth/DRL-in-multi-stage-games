@@ -15,8 +15,8 @@ pages:
   stage: deploy
   before_script:
     - pip install virtualenv
-    - virtualenv docs
-    - source docs/bin/activate
+    - virtualenv sequential-auctions-on-gpu-docs
+    - source sequential-auctions-on-gpu-docs/bin/activate
     - pip install sphinx furo
   script:
     - cd docs
