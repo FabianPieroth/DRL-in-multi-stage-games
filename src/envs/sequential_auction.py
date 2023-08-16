@@ -138,15 +138,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         else:
             "No valid budgets provided. If a list is provided, the length of budgets must equal num_agents."
 
-    # TODO: @Nils: Is this redundant?
-    def _init_dummy_strategies(self):
-        return [
-            lambda obs, deterministic=True: torch.zeros(
-                (obs.shape[0], self.config.action_size), device=obs.device
-            )
-            for _ in range(self.num_agents)
-        ]
-
     def _get_num_agents(self) -> int:
         num_agents = self.config.num_agents
         # `num_actual_agents` may be larger than `num_agents` when we use
