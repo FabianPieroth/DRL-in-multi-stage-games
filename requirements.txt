@@ -14,16 +14,16 @@ black==22.1.0
 isort==5.10.1
 pytest==7.0.1
 pytest-cov==3.0.0
-imageio==2.16.1
 pynverse==0.1.4.4
-moviepy
-tqdm
-sphinx
-sphinx_rtd_theme
+tqdm==4.64.0
+
+imageio==2.16.1
+moviepy==1.0.3
+sphinx==6.2.1
 
 # 2022-05-30 
-#Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 
-# we fix this by downgrading protobuf manualle
+# Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 
+# we fix this by downgrading protobuf manually
 # this is necessary while tb 2.9.1 / 2.8.2 / 2.7.3 are not yet available on pip
 # see https://github.com/tensorflow/tensorflow/issues/53234 for detail
 protobuf >= 3.9.2, < 3.20
