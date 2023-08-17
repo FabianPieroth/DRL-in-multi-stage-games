@@ -4,7 +4,6 @@ information_case: "true_valuations"
 sample_tullock_allocations: false
 prior_bounds: [1.0, 1.5]
 num_agents: 4
-action_size: 1
 valuation_size: 1
 impact_factor: 1.0
 use_valuation: true

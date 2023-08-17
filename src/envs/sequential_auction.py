@@ -1,7 +1,7 @@
-"""
-Simple sequential auction game following Krishna.
+"""Simple sequential auction game following Krishna.
 
-Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
+Single stage auction vendored from
+(bnelearn)[https://github.com/heidekrueger/bnelearn].
 """
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -22,15 +22,15 @@ from src.utils.evaluation_utils import run_algorithms
 
 
 class SequentialAuction(VerifiableEnv, BaseEnvForVec):
-    """Sequential first price sealed bid auction.
-
-    In each stage there is a single item sold.
+    """Sequential sealed bid auctions with either first- or second-price
+    payment rules. Each round, a single item is sold to one of the unit-demand
+    bidders who drops out for following rounds. The auction ends after all
+    items have been sold.
     """
 
     DUMMY_PRICE_KEY = -1
     ACTION_LOWER_BOUND = 0.0
     ACTION_UPPER_BOUND = 1.1
-    ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.num_stages = config.num_stages
@@ -39,7 +39,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         # NOTE: unit-demand only atm
         self.valuation_size = config.valuation_size
         self.signal_size = self.valuation_size
-        self.action_size = config.action_size
         self.payments_start_index = self.get_payments_start_index()
         self.valuations_start_index = 0
         self.state_signal_start_index = (
@@ -199,6 +198,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
 
     def _init_action_spaces(self):
         """Returns dict with agent - action space pairs.
+
+        NOTE: Only supports unit-demand (1D bids/actions).
+
         Returns:
             Dict[int, Space]: agent_id: action space
         """
@@ -207,8 +209,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             val_low = self.sampler.support_bounds[agent_id, 0, 0].cpu().detach().item()
             val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
             action_spaces_dict[agent_id] = spaces.Box(
-                low=np.float32([val_low] * self.config.action_size),
-                high=np.float32([val_high] * self.config.action_size),
+                low=np.float32([val_low]), high=np.float32([val_high])
             )
         return action_spaces_dict
 
@@ -555,7 +556,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 obs_indices = (2,)
             else:
                 warnings.warn(
-                    "Verifier only implemented for reduced_observation_space=True. Win/lose is given per round here."
+                    """Verifier only implemented for
+                    `reduced_observation_space=True`. Win/lose is given per
+                    round here."""
                 )
                 obs_indices = (stage,)
         return obs_indices

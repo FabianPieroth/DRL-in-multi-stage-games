@@ -37,8 +37,6 @@ class CoinGame(BaseEnvForVec):
     However, an agent gets a penalty if an opponent agent picks up one of its coins.
     This is an extension to multiple agents including several extensions to study dependency structures."""
 
-    ACTION_DIM = 1
-
     def __init__(self, config: Dict, device: str = None):
         self.num_actions = 5
         self.grid_length = config.grid_length

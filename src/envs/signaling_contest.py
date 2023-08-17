@@ -19,14 +19,29 @@ from src.learners.utils import tensor_norm
 
 
 class SignalingContest(BaseEnvForVec, VerifiableEnv):
-    """Two Stage Contest with different information sets."""
+    """Two-stage contest with different information sets following
+    https://ideas.repec.org/p/qed/wpaper/1184.html:
+
+    > This paper analyzes the signaling effect of bidding in a two-round
+    > elimination contest. Before the final round, bids in the preliminary
+    > round are revealed and act as signals of the contestants' private
+    > valuations. Depending on his valuation, a incentive to bluff or sandbag
+    > in the preliminary round in order to gain an advantage in the final
+    > round. I analyze this signaling effect and characterize the equilibrium
+    > in this game. Compared to the benchmark model, in which private
+    > valuations are revealed automatically before the final round and thus no
+    > signaling of bids takes place, I find that strong contestants bluff and
+    > weak contestants sandbag. In a separating equilibrium, bids in the
+    > preliminary round fully reveal the contestants' private valuations.
+    > However, this signaling effect makes the equilibrium bidding strategy in
+    > the preliminary round steeper for high valuations and flatter for low
+    > valuations compared to the benchmark model.
+    """
 
     DUMMY_PRICE_KEY = -1
-    ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.valuation_size = config["valuation_size"]
-        self.action_size = config["action_size"]
         self.prior_low, self.prior_high = config["prior_bounds"]
         self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
         self.num_stages = 2
@@ -115,8 +130,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             Dict[int, Space]: agent_id: action space
         """
         sa_action_space = spaces.Box(
-            low=np.float32([self.ACTION_LOWER_BOUND] * self.config["action_size"]),
-            high=np.float32([self.ACTION_UPPER_BOUND] * self.config["action_size"]),
+            low=np.float32([self.ACTION_LOWER_BOUND]),
+            high=np.float32([self.ACTION_UPPER_BOUND]),
         )
         return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
 
@@ -130,8 +145,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         [n, valuation + allocation + stage + winning bids + winning valuations]
         """
         states = torch.zeros(
-            (n, self.num_agents, self.valuation_size + 1 + 1 + 2 * self.action_size),
-            device=self.device,
+            (n, self.num_agents, self.valuation_size + 1 + 1 + 2), device=self.device
         )
 
         # ipv symmetric uniform priors
@@ -373,11 +387,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         rel_cur_states: torch.Tensor,
     ) -> torch.Tensor:
         winner_info = torch.zeros(
-            (
-                rel_cur_states.shape[0],
-                rel_cur_states.shape[1],
-                self.valuation_size + self.action_size,
-            ),
+            (rel_cur_states.shape[0], rel_cur_states.shape[1], self.valuation_size + 1),
             device=rel_cur_states.device,
         )
         winner_mask_ind_agent = (allocations == 1.0).squeeze()
@@ -452,7 +462,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         observation_dict = {}
         for agent_id in player_positions:
             slicing_indices = self._get_obs_slicing_indices(information_case)
-            # shape = (batch_size, valuation_size + allocation_index + 1 + action_size)
+            # shape = (batch_size, valuation_size + allocation_index + 1 + 1)
             observation_dict[agent_id] = (
                 states[:, agent_id, :]
                 .index_select(1, slicing_indices)
@@ -468,7 +478,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 0,
                 self.valuation_size,
                 self.stage_index,
-                self.valuation_size + self.allocation_index + 1 + self.action_size,
+                self.valuation_size + self.allocation_index + 1 + 1,
             ]
         elif information_case == "winning_bids":
             slice_indices = [

@@ -15,8 +15,6 @@ SCISSORS = 2
 class RockPaperScissors(BaseEnvForVec):
     """Iterated RockPaperScissors game as simple env example."""
 
-    ACTION_DIM = 1
-
     def __init__(self, config: Dict, device: str = None):
         super().__init__(config, device)
         self.state_shape = (self.num_agents, 2)
