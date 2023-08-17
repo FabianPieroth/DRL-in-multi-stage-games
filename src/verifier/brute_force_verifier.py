@@ -41,7 +41,12 @@ class BFVerifier:
         self.num_simulations = num_simulations
         self.action_discretization = action_discretization
         self.obs_discretization = obs_discretization
-        self.action_dim = env.model.action_size
+
+        assert (
+            len(self.env.action_space.shape) != 1
+        ), "Action space must be 1D for verifier."
+        self.action_dim = 1
+
         self.batch_size = batch_size
         self.device = device
         if self.env_is_compatible_with_verifier:
