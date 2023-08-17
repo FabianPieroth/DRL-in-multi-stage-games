@@ -555,7 +555,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                 obs_indices = (2,)
             else:
                 warnings.warn(
-                    "Verifier only implemented for reduced_observation_space=True. Win/lose is given per round here."
+                    """Verifier only implemented for
+                    `reduced_observation_space=True`. Win/lose is given per
+                    round here."""
                 )
                 obs_indices = (stage,)
         return obs_indices

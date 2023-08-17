@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Callable, Dict, List, Tuple
 
 import torch
+from gym.spaces.discrete import Discrete
 
 import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
@@ -43,7 +44,8 @@ class BFVerifier:
         self.obs_discretization = obs_discretization
 
         assert (
-            len(self.env.action_space.shape) != 1
+            isinstance(self.env.action_space, Discrete)
+            or len(self.env.action_space.shape) == 1
         ), "Action space must be 1D for verifier."
         self.action_dim = 1
 
