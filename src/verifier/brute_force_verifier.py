@@ -47,7 +47,6 @@ class BFVerifier:
             isinstance(self.env.action_space, Discrete)
             or len(self.env.action_space.shape) == 1
         ), "Action space must be 1D for verifier."
-        self.action_dim = 1
 
         self.batch_size = batch_size
         self.device = device
@@ -473,7 +472,7 @@ class BFVerifier:
 
         Returns:
             torch.Tensor: shape=(cur_sim_size, action_discretization,
-                *(env.action_size))
+                *action_size)
         """
         agent_grid_actions = self.env.get_action_grid(
             agent_id, grid_size=self.action_discretization

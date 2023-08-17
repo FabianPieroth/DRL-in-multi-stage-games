@@ -39,7 +39,6 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         # NOTE: unit-demand only atm
         self.valuation_size = config.valuation_size
         self.signal_size = self.valuation_size
-        self.action_size = config.action_size
         self.payments_start_index = self.get_payments_start_index()
         self.valuations_start_index = 0
         self.state_signal_start_index = (
@@ -199,6 +198,9 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
 
     def _init_action_spaces(self):
         """Returns dict with agent - action space pairs.
+
+        NOTE: Only supports unit-demand (1D bids/actions).
+
         Returns:
             Dict[int, Space]: agent_id: action space
         """
@@ -207,8 +209,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             val_low = self.sampler.support_bounds[agent_id, 0, 0].cpu().detach().item()
             val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
             action_spaces_dict[agent_id] = spaces.Box(
-                low=np.float32([val_low] * self.config.action_size),
-                high=np.float32([val_high] * self.config.action_size),
+                low=np.float32([val_low]), high=np.float32([val_high])
             )
         return action_spaces_dict
 

@@ -20,7 +20,6 @@ class InformationSetTree(object):
         self.num_agents = self.env.model.num_agents
         self.action_discretization = action_discretization
         self.num_stages = self.env.model.num_stages
-        self.action_dim = env.model.action_size
         self.device = device
 
         self.actual_utility_tracker = UtilityTracker(agent_id, device)
@@ -90,21 +89,21 @@ class InformationSetTree(object):
 
     def get_utility_loss_estimate(self) -> Tuple[float]:
         """Iteratively compute best-response utility estimate.
-        Shape of self.nodes_utility_estimates = (N_V^1, N_A, ..., N_V^k, N_A).
+        Shape of
+        `self.nodes_utility_estimates = (N_V^1, N_A, ..., N_V^k, N_A)`.
+
         Visitation counts are identical in size. Iterate reversely over stages:
+
         1. max over last dim (br given previous trajectory)
         2. calculate visitation probabilities over obs
         3. weight utilities of br by visitation probabilities
+
         Returns:
             Tuple(float): 
                 estimated utility of learner
                 estimated utility loss
                 estimated relative utility loss
         """
-        assert (
-            self.env.model.action_size == 1
-        ), "We assume one dimensional action spaces in all rounds!"
-
         # Utility estimate at last/terminal stage for all simulations
         estimated_br_utilities = self.calc_monte_carlo_utility_estimations()
         nodes_counts = self.nodes_counts.view(self.all_nodes_shape)
