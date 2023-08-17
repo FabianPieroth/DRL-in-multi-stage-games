@@ -1,7 +1,7 @@
-"""
-Simple sequential auction game following Krishna.
+"""Simple sequential auction game following Krishna.
 
-Single stage auction vendored from bnelearn [https://github.com/heidekrueger/bnelearn].
+Single stage auction vendored from
+(bnelearn)[https://github.com/heidekrueger/bnelearn].
 """
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -22,15 +22,15 @@ from src.utils.evaluation_utils import run_algorithms
 
 
 class SequentialAuction(VerifiableEnv, BaseEnvForVec):
-    """Sequential first price sealed bid auction.
-
-    In each stage there is a single item sold.
+    """Sequential sealed bid auctions with either first- or second-price
+    payment rules. Each round, a single item is sold to one of the unit-demand
+    bidders who drops out for following rounds. The auction ends after all
+    items have been sold.
     """
 
     DUMMY_PRICE_KEY = -1
     ACTION_LOWER_BOUND = 0.0
     ACTION_UPPER_BOUND = 1.1
-    ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.num_stages = config.num_stages

@@ -18,10 +18,12 @@ from src.verifier.mean_utility_tracker import UtilityTracker
 class BFVerifier:
     """Verifier that tries out a grid of alternative actions and choses the
     best combination as approximation to a best response.
+
     Assumptions:
-    1. The number of stages is equal for all initial conditions
-    2. We assume that the initial conditions are independent between the agents
-    3. We only support single dimension actions at the moment
+        1. The number of stages is equal for all initial conditions.
+        2. We assume that the initial conditions are independent between the
+           agents.
+        3. We only support single dimension actions at the moment.
     """
 
     def __init__(
@@ -39,12 +41,12 @@ class BFVerifier:
         self.num_simulations = num_simulations
         self.action_discretization = action_discretization
         self.obs_discretization = obs_discretization
-        self.action_dim = env.model.ACTION_DIM
+        self.action_dim = env.model.action_size
         self.batch_size = batch_size
         self.device = device
         if self.env_is_compatible_with_verifier:
             self.num_stages = self.env.model.num_stages
-            self.env.model.verfier_env_info = self.env.model.get_verifier_env_infos(
+            self.env.model.verifier_env_info = self.env.model.get_verifier_env_infos(
                 obs_discretization=self.obs_discretization
             )
 
@@ -53,8 +55,9 @@ class BFVerifier:
     ) -> Tuple[
         torch.Tensor, torch.Tensor, torch.Tensor, Dict[int, Dict[int, Callable]]
     ]:
-        """Build information set tree for single agent and calcuate best-reponse over grid.
-        Return the estimated metrics plus the br-strategies.
+        """Build information set tree for single agent and calculate best
+        response over grid. Return the estimated metrics plus the BR
+        strategies.
 
         Args:
             strategies (Dict[int, SABaseAlgorithm]):
@@ -135,7 +138,7 @@ class BFVerifier:
         information_tree = InformationSetTree(
             agent_id,
             self.env,
-            self.env.model.verfier_env_info.discretizations,
+            self.env.model.verifier_env_info.discretizations,
             self.action_discretization,
             self.device,
         )

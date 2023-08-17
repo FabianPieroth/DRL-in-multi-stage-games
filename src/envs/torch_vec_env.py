@@ -341,7 +341,7 @@ class VerifiableEnv(ABC):
     def get_obs_bin_indices(
         self, agent_id: int, agent_obs: torch.Tensor, stage: int
     ) -> torch.Tensor:
-        discr, indices, boundaries = self.verfier_env_info.get_info(stage, agent_id)
+        discr, indices, boundaries = self.verifier_env_info.get_info(stage, agent_id)
 
         obs_bins = torch.zeros(
             (agent_obs.shape[0], len(indices)), dtype=torch.long, device=self.device

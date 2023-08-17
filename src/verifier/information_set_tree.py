@@ -20,7 +20,7 @@ class InformationSetTree(object):
         self.num_agents = self.env.model.num_agents
         self.action_discretization = action_discretization
         self.num_stages = self.env.model.num_stages
-        self.action_dim = env.model.ACTION_DIM
+        self.action_dim = env.model.action_size
         self.device = device
 
         self.actual_utility_tracker = UtilityTracker(agent_id, device)
@@ -102,7 +102,7 @@ class InformationSetTree(object):
                 estimated relative utility loss
         """
         assert (
-            self.env.model.ACTION_DIM == 1
+            self.env.model.action_size == 1
         ), "We assume one dimensional action spaces in all rounds!"
 
         # Utility estimate at last/terminal stage for all simulations

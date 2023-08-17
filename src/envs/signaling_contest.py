@@ -19,10 +19,26 @@ from src.learners.utils import tensor_norm
 
 
 class SignalingContest(BaseEnvForVec, VerifiableEnv):
-    """Two Stage Contest with different information sets."""
+    """Two-stage contest with different information sets following
+    https://ideas.repec.org/p/qed/wpaper/1184.html:
+
+    > This paper analyzes the signaling effect of bidding in a two-round
+    > elimination contest. Before the final round, bids in the preliminary
+    > round are revealed and act as signals of the contestants' private
+    > valuations. Depending on his valuation, a incentive to bluff or sandbag
+    > in the preliminary round in order to gain an advantage in the final
+    > round. I analyze this signaling effect and characterize the equilibrium
+    > in this game. Compared to the benchmark model, in which private
+    > valuations are revealed automatically before the final round and thus no
+    > signaling of bids takes place, I find that strong contestants bluff and
+    > weak contestants sandbag. In a separating equilibrium, bids in the
+    > preliminary round fully reveal the contestants' private valuations.
+    > However, this signaling effect makes the equilibrium bidding strategy in
+    > the preliminary round steeper for high valuations and flatter for low
+    > valuations compared to the benchmark model.
+    """
 
     DUMMY_PRICE_KEY = -1
-    ACTION_DIM = 1
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.valuation_size = config["valuation_size"]

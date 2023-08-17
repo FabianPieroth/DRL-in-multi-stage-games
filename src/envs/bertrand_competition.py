@@ -1,5 +1,4 @@
-"""
-"""
+"""Bertrand competition"""
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -16,10 +15,14 @@ from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
 
 
 class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
-    """Bertrand Competition as in https://doi.org/10.1016/j.econlet.2009.03.017
-    """
+    """Bertrand competition as in https://doi.org/10.1016/j.econlet.2009.03.017
 
-    ACTION_DIM = 1
+    > We compare equilibria with sequential and simultaneous moves under
+    > homogeneous-good Bertrand competition when unit costs are private
+    > information. Under an alternative interpretation, we examine the
+    > consequences of awarding a right of first refusal in a first-price
+    > procurement auction with endogenous quantity.
+    """
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.num_stages = 2
