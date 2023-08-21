@@ -345,7 +345,7 @@ class GPUDQN(OffPolicyAlgorithm):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         dones,
         infos,
         new_obs,
@@ -451,7 +451,7 @@ class GPUDQN(OffPolicyAlgorithm):
 
     def get_actions_with_data(
         self, sa_obs: th.Tensor
-    ) -> Tuple[th.Tensor, th.Tensor, Tuple]:
+    ) -> Tuple[th.Tensor, th.Tensor, Dict]:
         """Computes actions for the current state for env.step()
 
         Args:
@@ -460,12 +460,12 @@ class GPUDQN(OffPolicyAlgorithm):
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         actions, _ = self.predict(sa_obs, deterministic=False)
         actions_for_env = actions.clone()
-        additional_actions_data = ()
-        return actions_for_env, actions, additional_actions_data
+        additional_data = {}
+        return actions_for_env, actions, additional_data
 
     def _update_info_buffer(
         self, infos: List[Dict[str, Any]], dones: Optional[np.ndarray] = None

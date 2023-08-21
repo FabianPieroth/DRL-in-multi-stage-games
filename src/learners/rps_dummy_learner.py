@@ -51,14 +51,14 @@ class RPSDummyLearner(MABaseAlgorithm):
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         action_to_play = self.action_dict[self.dummy_action]
         num_envs = sa_obs.shape[0]
         actions = torch.ones([num_envs], dtype=int, device=self.device) * action_to_play
         actions_for_env = actions
-        additional_actions_data = ()
-        return actions_for_env, actions, additional_actions_data
+        additional_data = {}
+        return actions_for_env, actions, additional_data
 
     def predict(
         self,
@@ -78,7 +78,7 @@ class RPSDummyLearner(MABaseAlgorithm):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         dones,
         infos,
         new_obs,

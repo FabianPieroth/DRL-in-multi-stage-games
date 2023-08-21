@@ -8,7 +8,7 @@ from torch import Tensor
 
 from src.envs.equilibria import EquilibriumStrategy
 from src.envs.torch_vec_env import BaseEnvForVec
-from src.learners.base_learner import MABaseAlgorithm, SABaseAlgorithm
+from src.learners.base_learner import MABaseAlgorithm, OnPolicyBaseAlgorithm
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 _CPU_OOM_ERR_MSG_START = "[enforce fail at alloc_cpu.cpp:73]"
@@ -27,7 +27,7 @@ def catch_failed_batch_allocation(device: int, batch_size: int, e):
 
 def log_l2_distance_to_equilibrium(
     env: BaseEnvForVec,
-    learners: Dict[int, Union[MABaseAlgorithm, SABaseAlgorithm]],
+    learners: Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]],
     equ_strategies: Dict[int, EquilibriumStrategy],
     num_envs: int,
     num_stages: int,
@@ -94,7 +94,7 @@ def normalize_batch_wise_calculated_l2_distance(
 
 def get_ma_actions_for_observation_list(
     env: BaseEnvForVec,
-    learners: Dict[int, Union[MABaseAlgorithm, SABaseAlgorithm]],
+    learners: Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]],
     learner_actions_list: List[Dict[int, torch.Tensor]],
     states_list: List[Optional[Dict[int, torch.Tensor]]],
     observations_list: List[Dict[int, torch.Tensor]],
@@ -135,7 +135,7 @@ def store_squared_l2_distance_in_dict(
 
 
 def log_l2_distances(
-    learners: Dict[int, Union[MABaseAlgorithm, SABaseAlgorithm]],
+    learners: Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]],
     distances_l2: Dict[int, List[float]],
 ):
     for agent_id, distances in distances_l2.items():
@@ -147,7 +147,7 @@ def log_l2_distances(
 
 def run_algorithms(
     env: BaseEnvForVec,
-    algorithms: Dict[int, Union[MABaseAlgorithm, SABaseAlgorithm]],
+    algorithms: Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]],
     num_envs: int,
     num_steps: int,
     deterministic: bool = False,

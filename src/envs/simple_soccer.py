@@ -635,17 +635,17 @@ class SimpleSoccer(BaseEnvForVec):
     def get_ma_action(self, learners):
         actions_for_env = {}
         actions = {}
-        additional_actions_data = {}
+        additional_data = {}
         for agent_id, learner in learners.items():
             (
                 sa_actions_for_env,
                 sa_actions,
-                sa_additional_actions_data,
+                sa_additional_data,
             ) = learner.get_actions_with_data(agent_id)
             actions_for_env[agent_id] = sa_actions_for_env
             actions[agent_id] = sa_actions
-            additional_actions_data[agent_id] = sa_additional_actions_data
-        return actions_for_env, actions, additional_actions_data
+            additional_data[agent_id] = sa_additional_data
+        return actions_for_env, actions, additional_data
 
     def render(self, state: SoccerStates):
         time = state.times.cpu().numpy()

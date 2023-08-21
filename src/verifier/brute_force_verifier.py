@@ -2,7 +2,7 @@
 import gc
 import traceback
 from copy import deepcopy
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 
 import torch
 from gym.spaces.discrete import Discrete
@@ -11,7 +11,7 @@ import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
 import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import VerifiableEnv
-from src.learners.base_learner import SABaseAlgorithm
+from src.learners.base_learner import MABaseAlgorithm, OnPolicyBaseAlgorithm
 from src.verifier.information_set_tree import InformationSetTree
 from src.verifier.mean_utility_tracker import UtilityTracker
 
@@ -57,7 +57,9 @@ class BFVerifier:
             )
 
     def verify_br(
-        self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
+        self,
+        strategies: Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]],
+        agent_ids: List[int] = None,
     ) -> Tuple[
         torch.Tensor, torch.Tensor, torch.Tensor, Dict[int, Dict[int, Callable]]
     ]:
@@ -92,7 +94,9 @@ class BFVerifier:
         return actual_utilities, utility_losses, relative_utility_losses, best_responses
 
     def verify_against_equilibrium(
-        self, strategies: Dict[int, SABaseAlgorithm], agent_ids: List[int] = None
+        self,
+        strategies: Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]],
+        agent_ids: List[int] = None,
     ):
         """Use analytical equilibrium to estimate utility loss (exact ex post,
         still approximates interim and ex ante).

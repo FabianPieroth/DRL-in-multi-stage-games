@@ -14,7 +14,7 @@ from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 
 
-class SABaseAlgorithm(PPO, ABC):
+class OnPolicyBaseAlgorithm(PPO, ABC):
     """
     Base class that extends Stable Baselines 3 PPO and a reduced version for
     the vanilla Reinforce algorithm to vectorized learning.
@@ -29,7 +29,7 @@ class SABaseAlgorithm(PPO, ABC):
         # Or have an action dependent std
         self.action_dependent_std = action_dependent_std
 
-        super(SABaseAlgorithm, self).__init__(**kwargs)
+        super(OnPolicyBaseAlgorithm, self).__init__(**kwargs)
         self._change_space_attributes_to_tensors()
 
     def _change_space_attributes_to_tensors(self):
@@ -65,7 +65,9 @@ class SABaseAlgorithm(PPO, ABC):
             self.policy.reset_noise(env.num_envs)
 
     @abstractmethod
-    def get_actions_with_data(self, obs_tensor: th.Tensor):
+    def get_actions_with_data(
+        self, obs_tensor: th.Tensor
+    ) -> Tuple[th.Tensor, th.Tensor, Dict]:
         """Computes actions for the current state for env.step()
 
         Args:
@@ -74,7 +76,7 @@ class SABaseAlgorithm(PPO, ABC):
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         pass
 
@@ -90,7 +92,7 @@ class SABaseAlgorithm(PPO, ABC):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         dones,
         infos,
         new_obs,
@@ -114,7 +116,7 @@ class SABaseAlgorithm(PPO, ABC):
             last_episode_starts,
             sa_actions,
             sa_rewards,
-            sa_additional_actions_data,
+            sa_additional_data,
             agent_id,
         )
 
@@ -140,17 +142,16 @@ class SABaseAlgorithm(PPO, ABC):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         agent_id: int,
     ):
-        sa_values, sa_log_probs = sa_additional_actions_data
         self.rollout_buffer.add(
             sa_last_obs,
             sa_actions,
             sa_rewards,
             last_episode_starts,
-            sa_values,
-            sa_log_probs,
+            sa_additional_data["values"],
+            sa_additional_data["log_probs"],
             th.ones(1, dtype=int) * agent_id,
         )
 
@@ -343,7 +344,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         dones,
         infos,
         new_obs,
@@ -364,7 +365,7 @@ class MABaseAlgorithm(BaseAlgorithm):
 
     def get_actions_with_data(
         self, sa_obs: th.Tensor
-    ) -> Tuple[th.Tensor, th.Tensor, Tuple]:
+    ) -> Tuple[th.Tensor, th.Tensor, Dict]:
         """Computes actions for the current state for env.step()
 
         Args:
@@ -373,7 +374,7 @@ class MABaseAlgorithm(BaseAlgorithm):
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         raise NotImplementedError()
 
