@@ -57,15 +57,15 @@ class MultiAgentCoordinator:
     def get_ma_action(self, obs: Dict[int, torch.Tensor]):
         actions_for_env = {}
         actions = {}
-        additional_actions_data = {}
+        additional_data = {}
         for agent_id, learner in self.learners.items():
-            sa_actions_for_env, sa_actions, sa_additional_actions_data = learner.get_actions_with_data(
+            sa_actions_for_env, sa_actions, sa_additional_data = learner.get_actions_with_data(
                 obs[agent_id]
             )
             actions_for_env[agent_id] = sa_actions_for_env
             actions[agent_id] = sa_actions
-            additional_actions_data[agent_id] = sa_additional_actions_data
-        return actions_for_env, actions, additional_actions_data
+            additional_data[agent_id] = sa_additional_data
+        return actions_for_env, actions, additional_data
 
     def ingest_ma_data_into_learners(
         self,
@@ -73,7 +73,7 @@ class MultiAgentCoordinator:
         last_episode_starts,
         actions,
         rewards,
-        additional_actions_data,
+        additional_data,
         dones,
         infos,
         new_obs,
@@ -87,7 +87,7 @@ class MultiAgentCoordinator:
                 last_episode_starts,
                 actions[agent_id],
                 rewards[agent_id],
-                additional_actions_data[agent_id],
+                additional_data[agent_id],
                 dones,
                 infos,
                 new_obs,
@@ -245,9 +245,7 @@ class MultiAgentCoordinator:
                 print(f"Iteration {iteration} starts.")
                 self._log(iteration)
 
-            actions_for_env, actions, additional_actions_data = self.get_ma_action(
-                last_obs
-            )
+            actions_for_env, actions, additional_data = self.get_ma_action(last_obs)
 
             new_obs, rewards, dones, infos = self.env.step(actions_for_env)
 
@@ -258,7 +256,7 @@ class MultiAgentCoordinator:
                 last_episode_starts,
                 actions,
                 rewards,
-                additional_actions_data,
+                additional_data,
                 dones,
                 infos,
                 new_obs,
