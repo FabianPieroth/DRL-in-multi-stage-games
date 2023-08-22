@@ -18,7 +18,7 @@ pages:
     - virtualenv sequential-auctions-on-gpu
     - source sequential-auctions-on-gpu/bin/activate
     - pip install -r requirements.txt
-    - pip install sphinx furo myst-parser
+    - pip install sphinx==6.2.1 furo==2023.8.19 myst-parser==2.0.0
   script:
     - cd docs
     - make clean

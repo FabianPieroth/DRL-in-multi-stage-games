@@ -19,7 +19,6 @@ tqdm==4.64.0
 
 imageio==2.16.1
 moviepy==1.0.3
-sphinx==6.2.1
 
 # 2022-05-30 
 # Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 
