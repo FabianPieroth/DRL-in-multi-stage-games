@@ -21,6 +21,7 @@ pages:
     - pip install sphinx furo myst-parser
   script:
     - cd docs
+    - make clean
     - make html
   after_script:
     - mv docs/build/html/ ./public/
