@@ -21,6 +21,7 @@ pages:
     - pip install sphinx furo myst-parser
   script:
     - cd docs
+    - rm -r source/_autosummary/
     - make clean
     - make html
   after_script:

@@ -68,7 +68,7 @@ class BFVerifier:
         strategies.
 
         Args:
-            strategies (Dict[int, SABaseAlgorithm]):
+            strategies (Dict[int, Union[MABaseAlgorithm, OnPolicyBaseAlgorithm]]):
             agent_ids (List[int], optional): Defaults to None.
 
         Returns:
