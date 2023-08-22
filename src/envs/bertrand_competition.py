@@ -218,6 +218,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
     def provide_env_verifier_info(
         self, stage: int, agent_id: int, obs_discretization: int
     ) -> Tuple:
+        """Get the discretization shape and the indices of the observation."""
         discr_shapes = self._get_ver_obs_discretization_shape(
             obs_discretization, agent_id, stage
         )
@@ -240,6 +241,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
                 return (obs_discretization, obs_discretization)
 
     def _get_ver_obs_dim_indices(self, agent_id: int, stage: int) -> Tuple[int]:
+        """Get the indices of the observation that are considered for
+        verification."""
         if agent_id == 0:
             obs_indices = (0,)
         else:

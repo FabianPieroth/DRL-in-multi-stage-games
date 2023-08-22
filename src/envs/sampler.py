@@ -233,6 +233,7 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
         default_batch_size=1,
         default_device=None,
     ):
+        """Constructs a Gaussian sampler."""
         distribution = torch.distributions.normal.Normal(
             loc=sampler_config.mean, scale=sampler_config.stddev
         )
@@ -270,6 +271,7 @@ class BertrandSymmetricIPVSampler(SymmetricIPVSampler):
         default_batch_size=1,
         default_device=None,
     ):
+        """Constructs a Bertrand sampler."""
         distribution = torch.distributions.uniform.Uniform(
             low=sampler_config.prior_low, high=sampler_config.prior_high
         )

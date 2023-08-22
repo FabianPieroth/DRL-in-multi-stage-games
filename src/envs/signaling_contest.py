@@ -341,7 +341,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def get_ver_boundaries(
         self, stage: int, agent_id: int, obs_indices: Tuple[int]
-    ) -> Tuple[float]:
+    ) -> Dict[str, Tuple[float]]:
+        """Get the boundaries for the verifier."""
         low = [
             self.observation_spaces[agent_id].low[obs_index]
             for obs_index in obs_indices
