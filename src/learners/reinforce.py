@@ -19,12 +19,12 @@ from stable_baselines3.common.utils import get_schedule_fn
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from torch.nn import functional as F
 
-from src.learners.base_learner import SABaseAlgorithm
+from src.learners.base_learner import OnPolicyBaseAlgorithm
 from src.learners.rollout_buffer import SimpleVecRolloutBuffer
 from src.learners.utils import explained_variance
 
 
-class Reinforce(SABaseAlgorithm):
+class Reinforce(OnPolicyBaseAlgorithm):
     """
     Reinforce algorithm.
     """
@@ -42,7 +42,8 @@ class Reinforce(SABaseAlgorithm):
             clipped_actions = th.clip(
                 actions, self.action_space.low, self.action_space.high
             )
-        return clipped_actions, actions, (None, log_probs)
+        additional_data = {"values": None, "log_probs": log_probs}
+        return clipped_actions, actions, additional_data
 
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         # Placeholder values that have the length needed for `compute_returns`

@@ -41,19 +41,19 @@ class RandomLearner(MABaseAlgorithm):
 
     def get_actions_with_data(
         self, sa_obs: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, Tuple]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Dict]:
         """Draws random actions for the given action spaces.
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         actions = pl_ut.sample_random_actions(
             self.action_space, sa_obs.shape[0], self.device
         )
         actions_for_env = actions
-        additional_actions_data = ()
-        return actions_for_env, actions, additional_actions_data
+        additional_data = {}
+        return actions_for_env, actions, additional_data
 
     def predict(
         self,
@@ -73,7 +73,7 @@ class RandomLearner(MABaseAlgorithm):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         dones,
         infos,
         new_obs,

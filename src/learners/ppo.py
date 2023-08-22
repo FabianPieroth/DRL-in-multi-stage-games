@@ -1,4 +1,6 @@
 """Customized PPO learner and corresponding buffer"""
+from typing import Dict, Tuple
+
 import gym
 import numpy as np
 import torch as th
@@ -6,17 +8,19 @@ from gym import spaces
 from stable_baselines3.common.utils import get_schedule_fn
 from torch.nn import functional as F
 
-from src.learners.base_learner import SABaseAlgorithm
+from src.learners.base_learner import OnPolicyBaseAlgorithm
 from src.learners.rollout_buffer import VecRolloutBuffer
 from src.learners.utils import explained_variance
 
 
-class VecPPO(SABaseAlgorithm):
+class VecPPO(OnPolicyBaseAlgorithm):
     """
     Extends Stable Baselines 3 PPO to vectorized learning.
     """
 
-    def get_actions_with_data(self, sa_obs: th.Tensor):
+    def get_actions_with_data(
+        self, sa_obs: th.Tensor
+    ) -> Tuple[th.Tensor, th.Tensor, Dict]:
         self.prepare_step(self.rollout_buffer.pos, self.env)
         with th.no_grad():
             actions, values, log_probs = self.policy.forward(sa_obs)
@@ -28,7 +32,8 @@ class VecPPO(SABaseAlgorithm):
             clipped_actions = th.clip(
                 actions, self.action_space.low, self.action_space.high
             )
-        return clipped_actions, actions, (values, log_probs)
+        additional_data = {"values": values, "log_probs": log_probs}
+        return clipped_actions, actions, additional_data
 
     def postprocess_rollout(self, sa_new_obs, dones, policy_sharing: bool):
         with th.no_grad():

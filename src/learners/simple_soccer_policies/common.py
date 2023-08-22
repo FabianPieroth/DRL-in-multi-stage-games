@@ -116,10 +116,10 @@ class SoccerBasePolicy(MABaseAlgorithm):
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         agent_actions, _ = self.predict(sa_obs)
-        return agent_actions, agent_actions, ()
+        return agent_actions, agent_actions, {}
 
 
 def extract_data_from_obs(

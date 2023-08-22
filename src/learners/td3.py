@@ -386,7 +386,7 @@ class TD3(OffPolicyAlgorithm):
         last_episode_starts,
         sa_actions,
         sa_rewards,
-        sa_additional_actions_data,
+        sa_additional_data,
         dones,
         infos,
         new_obs,
@@ -504,7 +504,7 @@ class TD3(OffPolicyAlgorithm):
         Returns:
             actions_for_env: possibly adapted actions for env
             actions: predicted actions by policy
-            additional_actions_data: additional data needed for algorithm later on
+            additional_data: additional data needed for algorithm later on
         """
         low, high = (
             th.Tensor(self.action_space.low).to(self.device),
@@ -523,8 +523,8 @@ class TD3(OffPolicyAlgorithm):
         assert low <= actions_for_env.all() <= high
         assert -1.0 <= buffer_action.all() <= 1.0
 
-        additional_actions_data = ()
-        return (actions_for_env, buffer_action, additional_actions_data)
+        additional_data = {}
+        return actions_for_env, buffer_action, additional_data
 
     def scale_action(self, action: th.Tensor) -> th.Tensor:
         """
