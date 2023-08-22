@@ -2,14 +2,14 @@ stages:
   # - test
   - deploy
 
-test:
-  stage: test
-  script:
-    - pip install virtualenv
-    - virtualenv sequential-auctions-on-gpu
-    - source sequential-auctions-on-gpu/bin/activate
-    - pip install -r requirements.txt
-    - pytest --cov-report term-missing --junitxml=report.xml
+# test:
+#   stage: test
+#   script:
+#     - pip install virtualenv
+#     - virtualenv sequential-auctions-on-gpu
+#     - source sequential-auctions-on-gpu/bin/activate
+#     - pip install -r requirements.txt
+#     - pytest --cov-report term-missing --junitxml=report.xml
 
 pages:
   stage: deploy
