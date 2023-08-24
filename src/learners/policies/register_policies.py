@@ -7,7 +7,9 @@ from src.learners.policies.custom_policies import *
 
 
 def register_policies():
-    """All custom policies must be registered in StableBaselines."""
+    """All custom policies from `custom_policies.py` are traversed and
+    registered in StableBaselines3.
+    """
 
     for c_name, c_type in globals().items():
         if (
