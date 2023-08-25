@@ -6,11 +6,13 @@ import torch.nn as nn
 from gym.spaces import Box, Discrete, MultiDiscrete
 from omegaconf import OmegaConf
 from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.torch_layers import FlattenExtractor
 
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.simple_soccer import SimpleSoccer
 from src.envs.torch_vec_env import MATorchVecEnv
 from src.learners.gpu_dqn import GPUDQN
+from src.learners.networks.feature_extractors import CustomCNNExtractor
 from src.learners.ppo import VecPPO
 from src.learners.random_learner import RandomLearner
 from src.learners.reinforce import Reinforce
@@ -73,9 +75,9 @@ def get_learner_and_policy(
 ) -> BaseAlgorithm:
     algo_name = get_algo_name(agent_id, config)
     env.set_env_for_current_agent(agent_id)
+    algorithm_config = config["algorithm_configs"][algo_name]
+    n_rollout_steps = algorithm_config["n_rollout_steps"]
     if algo_name == "ppo":
-        algorithm_config = config["algorithm_configs"]["ppo"]
-        n_rollout_steps = algorithm_config["n_rollout_steps"]
         if algorithm_config.full_batch_updates:
             batch_size = n_rollout_steps * config["num_envs"]
         else:
@@ -121,8 +123,6 @@ def get_learner_and_policy(
             verbose=0,
         )
     elif algo_name == "reinforce":
-        algorithm_config = config["algorithm_configs"]["reinforce"]
-        n_rollout_steps = algorithm_config["n_rollout_steps"]
         if config["policy_sharing"]:
             n_rollout_steps *= env.model.num_agents
         return Reinforce(
@@ -191,63 +191,60 @@ def get_learner_and_policy(
             verbose=0,
         )
     elif algo_name == "dqn":
-        dqn_config = config["algorithm_configs"]["dqn"]
         if config["policy_sharing"]:
-            n_rollout_steps = dqn_config["n_rollout_steps"]
             n_rollout_steps *= env.model.num_agents
         return GPUDQN(
-            policy=dqn_config["policy"],
+            policy=algorithm_config["policy"],
             env=env,
             learning_rate=1e-4,
-            buffer_size=dqn_config["buffer_size"],
-            learning_starts=dqn_config["learning_starts"],
-            batch_size=dqn_config["batch_size"],
-            tau=dqn_config["tau"],
-            gradient_steps=dqn_config["gradient_steps"],
-            gamma=dqn_config["gamma"],
-            train_freq=(dqn_config["n_rollout_steps"], "step"),
+            buffer_size=algorithm_config["buffer_size"],
+            learning_starts=algorithm_config["learning_starts"],
+            batch_size=algorithm_config["batch_size"],
+            tau=algorithm_config["tau"],
+            gradient_steps=algorithm_config["gradient_steps"],
+            gamma=algorithm_config["gamma"],
+            train_freq=(algorithm_config["n_rollout_steps"], "step"),
             optimize_memory_usage=False,
-            target_update_interval=dqn_config["target_update_interval"],
-            exploration_fraction=dqn_config["exploration_fraction"],
-            exploration_initial_eps=dqn_config["exploration_initial_eps"],
-            exploration_final_eps=dqn_config["exploration_final_eps"],
+            target_update_interval=algorithm_config["target_update_interval"],
+            exploration_fraction=algorithm_config["exploration_fraction"],
+            exploration_initial_eps=algorithm_config["exploration_initial_eps"],
+            exploration_final_eps=algorithm_config["exploration_final_eps"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
             seed=None,
             device=config["device"],
         )
     elif algo_name == "td3":
-        td3_config = config["algorithm_configs"]["td3"]
         if config["policy_sharing"]:
-            n_rollout_steps = td3_config["n_rollout_steps"]
             n_rollout_steps *= env.model.num_agents
         else:
-            n_rollout_steps = td3_config["n_rollout_steps"]
+            n_rollout_steps = algorithm_config["n_rollout_steps"]
 
         learning_rate = (
             get_lr_schedule(
-                td3_config["learning_rate_schedule"], td3_config["learning_rate"]
+                algorithm_config["learning_rate_schedule"],
+                algorithm_config["learning_rate"],
             )
-            if "learning_rate_schedule" in td3_config
-            else td3_config["learning_rate"]
+            if "learning_rate_schedule" in algorithm_config
+            else algorithm_config["learning_rate"]
         )
 
         return TD3(
-            policy=td3_config["policy"],
+            policy=algorithm_config["policy"],
             env=env,
             learning_rate=learning_rate,
-            buffer_size=td3_config["buffer_size"],
-            learning_starts=td3_config["learning_starts"],
-            batch_size=td3_config["batch_size"],
-            tau=td3_config["tau"],
-            gradient_steps=td3_config["gradient_steps"],
-            action_noise=td3_config["action_noise"],
-            gamma=td3_config["gamma"],
+            buffer_size=algorithm_config["buffer_size"],
+            learning_starts=algorithm_config["learning_starts"],
+            batch_size=algorithm_config["batch_size"],
+            tau=algorithm_config["tau"],
+            gradient_steps=algorithm_config["gradient_steps"],
+            action_noise=algorithm_config["action_noise"],
+            gamma=algorithm_config["gamma"],
             train_freq=(n_rollout_steps, "step"),
             optimize_memory_usage=False,
-            policy_delay=td3_config["policy_delay"],
-            target_policy_noise=td3_config["target_policy_noise"],
-            target_noise_clip=td3_config["target_noise_clip"],
+            policy_delay=algorithm_config["policy_delay"],
+            target_policy_noise=algorithm_config["target_policy_noise"],
+            target_noise_clip=algorithm_config["target_noise_clip"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
             verbose=0,
             seed=config.seed,
