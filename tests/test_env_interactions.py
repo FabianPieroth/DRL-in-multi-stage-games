@@ -165,50 +165,179 @@ def test_learning_bertrand_competition():
 
 ids_coin_game, testdata_coin_game = zip(
     # (num_agents, only_pick_up_own_coin, agents_can_stack, coins_can_stack, move_order_type, boundary_treatment_type
-    #  reward_structure, penalty_structure, make_obs_invariant_to_agent_order)
+    #  reward_structure, penalty_structure, make_obs_invariant_to_agent_order, observation_type)
     *[
         [
             "single_agent-standard",
-            (1, False, False, False, "random", "loop", "unitary", "no_penalty", True),
+            (
+                1,
+                False,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "two_agents-standard",
-            (2, False, False, False, "random", "loop", "unitary", "no_penalty", True),
+            (
+                2,
+                False,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-only-pick-up-own-coin",
-            (2, True, False, False, "random", "loop", "unitary", "no_penalty", True),
+            (
+                2,
+                True,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-agents_can_stack",
-            (2, False, True, False, "random", "loop", "unitary", "no_penalty", True),
+            (
+                2,
+                False,
+                True,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-coins_can_stack",
-            (2, False, False, True, "random", "loop", "unitary", "no_penalty", True),
+            (
+                2,
+                False,
+                False,
+                True,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-static-move-order",
-            (2, False, False, False, "static", "loop", "unitary", "no_penalty", True),
+            (
+                2,
+                False,
+                False,
+                False,
+                "static",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-closed-boundaries",
-            (2, False, False, False, "random", "closed", "unitary", "no_penalty", True),
+            (
+                2,
+                False,
+                False,
+                False,
+                "random",
+                "closed",
+                "unitary",
+                "no_penalty",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-all-others-penalty",
-            (2, False, False, False, "random", "loop", "unitary", "all_others", True),
+            (
+                2,
+                False,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "all_others",
+                True,
+                "coordinates",
+            ),
         ],
         [
             "standard-obs-NOT-invariant",
-            (2, False, False, False, "random", "loop", "unitary", "no_penalty", False),
+            (
+                2,
+                False,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                False,
+                "coordinates",
+            ),
+        ],
+        [
+            "field-obs-invariant",
+            (
+                2,
+                False,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                True,
+                "field",
+            ),
+        ],
+        [
+            "field-obs-NOT-invariant",
+            (
+                2,
+                False,
+                False,
+                False,
+                "random",
+                "loop",
+                "unitary",
+                "no_penalty",
+                False,
+                "field",
+            ),
         ],
     ]
 )
 
 
 @pytest.mark.parametrize(
-    "num_agents, only_pick_up_own_coin, agents_can_stack, coins_can_stack, move_order_type, boundary_treatment_type, reward_structure, penalty_structure, make_obs_invariant_to_agent_order",
+    "num_agents, only_pick_up_own_coin, agents_can_stack, coins_can_stack, move_order_type, boundary_treatment_type, reward_structure, penalty_structure, make_obs_invariant_to_agent_order, observation_type",
     testdata_coin_game,
     ids=ids_coin_game,
 )
@@ -222,6 +351,7 @@ def test_learning_coin_game(
     reward_structure,
     penalty_structure,
     make_obs_invariant_to_agent_order,
+    observation_type,
 ):
     """Runs multi agent learning in sequential auctions for specified parameters."""
     io_ut.set_global_seed(0)
@@ -245,6 +375,7 @@ def test_learning_coin_game(
         f"rl_envs.reward_structure={reward_structure}",
         f"rl_envs.penalty_structure={penalty_structure}",
         f"rl_envs.make_obs_invariant_to_agent_order={make_obs_invariant_to_agent_order}",
+        f"rl_envs.observation_type={observation_type}",
     ]
     config = io_ut.get_config(overrides=overrides)
 
