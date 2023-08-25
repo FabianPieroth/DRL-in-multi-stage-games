@@ -6,7 +6,10 @@ import torch.nn as nn
 from gym.spaces import Box, Discrete, MultiDiscrete
 from omegaconf import OmegaConf
 from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.torch_layers import FlattenExtractor
+from stable_baselines3.common.torch_layers import (
+    BaseFeaturesExtractor,
+    FlattenExtractor,
+)
 
 from src.envs.rock_paper_scissors import RockPaperScissors
 from src.envs.simple_soccer import SimpleSoccer
@@ -45,12 +48,14 @@ def set_space_translators_in_env(config: Dict, env: MATorchVecEnv):
         )
 
 
-def get_policy(config_policy):
-    return dict(
+def get_policy_kwargs(config_policy, **kwargs):
+    policy_kwargs = dict(
         net_arch=[OmegaConf.to_container(config_policy.net_arch)],
         activation_fn=eval(str(config_policy.activation_fn)),
         action_activation_fn=eval(str(config_policy.action_activation_fn)),
     )
+    policy_kwargs.update(kwargs)
+    return policy_kwargs
 
 
 def get_lr_schedule(lr_schedule_name: str, initial_value: float) -> Callable:
@@ -77,6 +82,7 @@ def get_learner_and_policy(
     env.set_env_for_current_agent(agent_id)
     algorithm_config = config["algorithm_configs"][algo_name]
     n_rollout_steps = algorithm_config["n_rollout_steps"]
+    feature_extractor = get_algorithm_feature_extractor(algorithm_config)
     if algo_name == "ppo":
         if algorithm_config.full_batch_updates:
             batch_size = n_rollout_steps * config["num_envs"]
@@ -107,7 +113,9 @@ def get_learner_and_policy(
             sde_sample_freq=-1,
             target_kl=None,
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
-            policy_kwargs=get_policy(config.policy),
+            policy_kwargs=get_policy_kwargs(
+                config.policy, **{"features_extractor_class": feature_extractor}
+            ),
             verbose=0,
             seed=config.seed,
             device=config["device"],
@@ -148,7 +156,9 @@ def get_learner_and_policy(
             sde_sample_freq=-1,
             target_kl=None,
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
-            policy_kwargs=get_policy(config.policy),
+            policy_kwargs=get_policy_kwargs(
+                config.policy, **{"features_extractor_class": feature_extractor}
+            ),
             verbose=0,
             seed=config.seed,
             device=config["device"],
@@ -210,6 +220,9 @@ def get_learner_and_policy(
             exploration_initial_eps=algorithm_config["exploration_initial_eps"],
             exploration_final_eps=algorithm_config["exploration_final_eps"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
+            policy_kwargs=get_policy_kwargs(
+                config.policy, **{"features_extractor_class": feature_extractor}
+            ),
             verbose=0,
             seed=None,
             device=config["device"],
@@ -267,6 +280,21 @@ def get_learner_and_policy(
             + " with model type: "
             + str(type(env.model).__name__)
         )
+
+
+def get_algorithm_feature_extractor(algorithm_config: Dict) -> BaseFeaturesExtractor:
+    feature_extractor = FlattenExtractor
+    if "feature_extractor" in algorithm_config:
+        if algorithm_config["feature_extractor"] == "flatten":
+            feature_extractor = FlattenExtractor
+        elif algorithm_config["feature_extractor"] == "customCNN":
+            feature_extractor = CustomCNNExtractor
+        else:
+            raise ValueError(
+                "No valid feature extractor selected! Check "
+                + algorithm_config["feature_extractor"]
+            )
+    return feature_extractor
 
 
 def get_algo_name(agent_id: int, config: Dict):
