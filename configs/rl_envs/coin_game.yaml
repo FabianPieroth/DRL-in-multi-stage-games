@@ -8,8 +8,9 @@ spawn_rate: 0.25 # probability for a single coin to spawn per step
 only_pick_up_own_coin: false
 agents_can_stack: false
 coins_can_stack: false
+observation_type: "coordinates"  # can be "field", "coordinates"
 move_order_type: "random" # can be "random", "static"
 boundary_treatment_type: "loop" # can be "loop", "closed"
 reward_structure: "unitary"
 penalty_structure: "no_penalty"  # can be "no_penalty", "all_others"
-make_obs_invariant_to_agent_order: true
+make_obs_invariant_to_agent_order: false

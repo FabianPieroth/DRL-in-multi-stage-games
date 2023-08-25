@@ -12,6 +12,7 @@ from tensordict import TensorDict
 
 import src.utils.evaluation_utils as ev_ut
 import src.utils.logging_write_utils as log_ut
+import src.utils.spaces_utils as sp_ut
 import src.utils.torch_utils as th_ut
 from src.envs.torch_vec_env import BaseEnvForVec
 
@@ -83,11 +84,25 @@ class CoinGame(BaseEnvForVec):
         )
 
     def _get_observation_space(self, agent_id: int) -> spaces.Space:
-        return spaces.Box(
-            low=-1.0,
-            high=np.inf,
-            shape=(self.num_agents, self._get_agent_state_info_size()),
-        )
+        if self.config.observation_type == "coordinates":
+            obs_space = spaces.Box(
+                low=-1.0,
+                high=np.inf,
+                shape=(self.num_agents, self._get_agent_state_info_size()),
+            )
+        elif self.config.observation_type == "field":
+            num_channels = self.num_agents * 2 + 1
+            obs_space = spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(num_channels, self.grid_length, self.grid_width),
+            )
+        else:
+            raise ValueError(
+                "No valid observation_type selected! Check "
+                + self.config.observation_type
+            )
+        return obs_space
 
     def _init_action_spaces(self) -> Dict[int, Space]:
         return {
@@ -331,6 +346,20 @@ class CoinGame(BaseEnvForVec):
             state_dim).
         :returns observations: Dict of Observations of shape (num_env, num_agents, state_dim).
         """
+        if self.config.observation_type == "coordinates":
+            obs_dict = self._get_coordinates_observations(states)
+        elif self.config.observation_type == "field":
+            obs_dict = self._get_field_observations(states)
+        else:
+            raise ValueError(
+                "No valid observation_type selected! Check "
+                + self.config.observation_type
+            )
+        return obs_dict
+
+    def _get_coordinates_observations(
+        self, states: TensorDict
+    ) -> Dict[int, torch.Tensor]:
         obs_dict = {}
         observations = torch.cat(list(states.values()), dim=2)
         for agent_id in range(self.num_agents):
@@ -341,6 +370,87 @@ class CoinGame(BaseEnvForVec):
                 torch.roll(observations, rolling_index, dims=1).detach().clone()
             )
         return obs_dict
+
+    def _get_field_observations(self, states: TensorDict) -> Dict[int, torch.Tensor]:
+        obs_dict = {}
+
+        global_field_obs = self._get_global_field_obs(states)
+        for agent_id in range(self.num_agents):
+            if self.config.make_obs_invariant_to_agent_order:
+                rolling_index = 2 * (self.num_agents - agent_id)
+                sa_field_obs = global_field_obs.detach().clone()
+                sa_field_obs[:, :-1, :, :] = torch.roll(
+                    sa_field_obs[:, :-1, :, :], rolling_index, dims=1
+                )
+                obs_dict[agent_id] = sa_field_obs
+            else:
+                obs_dict[agent_id] = global_field_obs.detach().clone()
+        return obs_dict
+
+    def _get_global_field_obs(self, states: TensorDict) -> torch.Tensor:
+        flat_xy_shape = states.batch_size + (
+            self.observation_spaces[0].shape[0],
+            self.observation_spaces[0].shape[1] * self.observation_spaces[0].shape[2],
+        )
+        batch_of_ones = torch.ones(
+            states.batch_size + (self.num_max_coins_per_agent,), device=self.device
+        )
+
+        global_field_obs = torch.zeros(flat_xy_shape, device=self.device)
+        global_field_obs[:, -1, :] = (
+            states["progress_info"][0, 0, 0] / states["progress_info"][0, 0, 1]
+        )
+        for coin_id in range(self.num_max_coins_per_agent):
+            for agent_id in range(self.num_agents):
+                self._place_agent_on_grid(
+                    states["agents_xy"][:, agent_id, :],
+                    batch_of_ones,
+                    global_field_obs,
+                    agent_id,
+                )
+                self._place_coin_on_grid(
+                    batch_of_ones,
+                    global_field_obs,
+                    agent_id,
+                    states["coins_xy_" + str(coin_id)],
+                )
+
+        field_xy_shape = states.batch_size + self.observation_spaces[0].shape
+        return global_field_obs.reshape(field_xy_shape)
+
+    def _place_agent_on_grid(
+        self,
+        agent_xy: torch.Tensor,
+        batch_of_ones: torch.Tensor,
+        global_field_obs: torch.Tensor,
+        agent_id: int,
+    ):
+        agent_flat_indices = sp_ut.ravel_multi_index(
+            agent_xy.long(), shape=(self.grid_length, self.grid_width)
+        ).unsqueeze(1)
+        global_field_obs[:, agent_id * 2, :].scatter_(
+            dim=1, index=agent_flat_indices, src=batch_of_ones
+        )
+
+    def _place_coin_on_grid(
+        self,
+        batch_of_ones: torch.Tensor,
+        global_field_obs: torch.Tensor,
+        agent_id: int,
+        coins_xy: torch.Tensor,
+    ):
+        coins_exist = self._coins_exist(coins_xy)
+        coin_flat_indices = sp_ut.ravel_multi_index(
+            coins_xy[coins_exist[:, agent_id], agent_id, :].long(),
+            shape=(self.grid_length, self.grid_width),
+        ).unsqueeze(1)
+        global_field_obs[
+            coins_exist[:, agent_id], agent_id * 2 + 1, :
+        ] = global_field_obs[
+            coins_exist[:, agent_id], agent_id * 2 + 1, :
+        ].scatter_add_(
+            dim=1, index=coin_flat_indices, src=batch_of_ones
+        )
 
     def move_agents(
         self, states: torch.Tensor, actions: Dict[int, torch.Tensor]
