@@ -220,9 +220,7 @@ def get_learner_and_policy(
             exploration_initial_eps=algorithm_config["exploration_initial_eps"],
             exploration_final_eps=algorithm_config["exploration_final_eps"],
             tensorboard_log=config["experiment_log_path"] + f"Agent_{agent_id}",
-            policy_kwargs=get_policy_kwargs(
-                config.policy, **{"features_extractor_class": feature_extractor}
-            ),
+            policy_kwargs={"features_extractor_class": feature_extractor},
             verbose=0,
             seed=None,
             device=config["device"],
