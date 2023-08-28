@@ -6,3 +6,4 @@ algorithm_configs:
     learning_rate: 1e-3
     gamma: 0.99
     full_batch_updates: false
+    feature_extractor: "flatten" # "flatten" and "customCNN"
