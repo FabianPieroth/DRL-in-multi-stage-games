@@ -22,7 +22,7 @@ Implemented are the following algorithms:
 | REINFORCE        |          ☑|        ☑ |
 | PPO              |          ☑|        ☑ |
 | Deep Q-learning  |          ☐|        ☑ |
-| TD3              |          ☑|        ☑ |
+| TD3              |          ☑|        ☐ |
 
 ## Limitations
 * Only supports simultaneous move games
