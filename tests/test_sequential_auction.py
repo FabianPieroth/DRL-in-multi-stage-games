@@ -15,7 +15,7 @@ def test_sequential_auction_in_bne():
     """
     io_ut.set_global_seed(0)
 
-    batch_size: int = 2 ** 10  # The higher the lower the error tolerance should be
+    batch_size: int = 2**10  # The higher the lower the error tolerance should be
 
     overrides = [f"device={DEVICE}", f"rl_envs=sequential_auction"]
     config = io_ut.get_config(overrides=overrides)
@@ -29,7 +29,6 @@ def test_sequential_auction_in_bne():
 
     # Simulate game
     for stage in range(env.num_stages):
-
         has_won_already = env._has_won_already_from_state(states, stage)
         actions = th_ut.get_ma_actions(env.equilibrium_strategies, observations)
 

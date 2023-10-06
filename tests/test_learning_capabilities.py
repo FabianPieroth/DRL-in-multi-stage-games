@@ -100,7 +100,7 @@ def test_learning_in_sequential_auction(
         env=ma_learner.env.model,
         learners=ma_learner.learners,
         equ_strategies=ma_learner.env.model.equilibrium_strategies,
-        num_envs=2 ** 14,
+        num_envs=2**14,
         num_stages=ma_learner.env.model.num_stages,
     )
     average_l2_distance = (
@@ -153,7 +153,7 @@ def test_learning_in_signaling_contest(
         env=ma_learner.env.model,
         learners=ma_learner.learners,
         equ_strategies=ma_learner.env.model.equilibrium_strategies,
-        num_envs=2 ** 14,
+        num_envs=2**14,
         num_stages=ma_learner.env.model.num_stages,
     )
     average_l2_distance = (
@@ -195,7 +195,7 @@ def test_learning_in_rps(algo_name, iteration_num, error_bound):
 
     # Run learning
     ma_learner = tst_ut.run_limited_learning(config)
-    states = ma_learner.env.model.sample_new_states(n=2 ** 12)
+    states = ma_learner.env.model.sample_new_states(n=2**12)
     observations = ma_learner.env.model.get_observations(states)
     ma_actions = th_ut.get_ma_actions(
         ma_learner.learners, observations, deterministic=False

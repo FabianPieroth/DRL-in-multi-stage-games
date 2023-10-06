@@ -166,7 +166,6 @@ def get_log_df(path: str):
 
     summary_df = pd.DataFrame()
     for subdir, _, files in tqdm(list(os.walk(path))):
-
         if not any(f.endswith("run_config.yaml") for f in files):
             continue  # Directory {path} does not contain results in proper format.")
 

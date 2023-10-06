@@ -3,6 +3,7 @@ logs/
 .vscode
 outputs
 sequential-auctions-on-gpu/
+sequential-games/
 
 
 ### Linux ###

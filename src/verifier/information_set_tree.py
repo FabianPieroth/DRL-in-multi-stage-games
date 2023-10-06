@@ -34,7 +34,9 @@ class InformationSetTree(object):
         self.all_nodes_shape = self._get_all_nodes_shape()
 
         # Initialize all game tree node utilities & visitation counts to zero
-        self.nodes_utility_estimates: torch.Tensor = self._init_nodes_utility_estimates()
+        self.nodes_utility_estimates: torch.Tensor = (
+            self._init_nodes_utility_estimates()
+        )
         self.nodes_counts = self._init_nodes_utility_estimates().long()
 
         self.max_nodes_index = self.nodes_counts.shape[0]
@@ -99,7 +101,7 @@ class InformationSetTree(object):
         3. weight utilities of br by visitation probabilities
 
         Returns:
-            Tuple(float): 
+            Tuple(float):
                 estimated utility of learner
                 estimated utility loss
                 estimated relative utility loss
@@ -110,7 +112,6 @@ class InformationSetTree(object):
 
         # Backwards traversal of game tree
         for stage in reversed(range(self.num_stages)):
-
             # Select action with highest utility
             estimated_br_utilities, br_indices = torch.max(
                 estimated_br_utilities, dim=-1

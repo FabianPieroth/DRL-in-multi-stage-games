@@ -17,7 +17,6 @@ class MultiAgentCoordinator:
     """Coordinates simultaneous learning of multiple learners."""
 
     def __init__(self, config: Dict, env):
-
         # Register all custom policies
         register_policies()
 
@@ -58,9 +57,11 @@ class MultiAgentCoordinator:
         actions = {}
         additional_data = {}
         for agent_id, learner in self.learners.items():
-            sa_actions_for_env, sa_actions, sa_additional_data = learner.get_actions_with_data(
-                obs[agent_id]
-            )
+            (
+                sa_actions_for_env,
+                sa_actions,
+                sa_additional_data,
+            ) = learner.get_actions_with_data(obs[agent_id])
             actions_for_env[agent_id] = sa_actions_for_env
             actions[agent_id] = sa_actions
             additional_data[agent_id] = sa_additional_data
@@ -96,7 +97,7 @@ class MultiAgentCoordinator:
             )
 
     def break_for_policy_sharing(self, agent_id: int):
-        """If all agents share the same policy, we only train and log with the one at 
+        """If all agents share the same policy, we only train and log with the one at
         index 0.
         """
         return self.config.policy_sharing and agent_id > 0
@@ -105,7 +106,7 @@ class MultiAgentCoordinator:
         """Use our verifier to evaluate each learned strategy against the
         current opponents. The verifier estimates the best response of each agent
         against the opponent strategies to estimate the agent utility loss.
-        Estimates: 
+        Estimates:
             sup_{beta_i \in \Sigma_i} \hat(u)_i(beta_i, beta_{-i})
             by approximating the best response beta_i^* in the space of step functions.
         """
@@ -146,7 +147,7 @@ class MultiAgentCoordinator:
             plt.close()
 
     def verify_policies_against_known_equilibrium(self) -> None:
-        """If an equilibrium is available, we can evaluate learned strategies 
+        """If an equilibrium is available, we can evaluate learned strategies
         using the known equilibrium strategies.
         """
         if not (
@@ -176,9 +177,11 @@ class MultiAgentCoordinator:
         if self.config.policy_sharing:
             agent_ids = [0]
 
-        equilibrium_utilities, utility_losses, relative_utility_losses = self.verifier.verify_against_equilibrium(
-            self.learners, agent_ids=agent_ids
-        )
+        (
+            equilibrium_utilities,
+            utility_losses,
+            relative_utility_losses,
+        ) = self.verifier.verify_against_equilibrium(self.learners, agent_ids=agent_ids)
 
         # Logging
         log_ut.log_data_dict_to_learner_loggers(
@@ -215,8 +218,8 @@ class MultiAgentCoordinator:
     def learn(self) -> "OnPolicyAlgorithm":
         """Main training loop for multi-agent learning: Here, (1) the agents
         are asked to submit actions, (2) these are passed to the environment,
-        and (3) the utilities are passed back to the agents for learning.        
-        
+        and (3) the utilities are passed back to the agents for learning.
+
         Adapted from Stable-Baselines 3 `OnPolicyAlgorithm`.
         """
         iteration = 0

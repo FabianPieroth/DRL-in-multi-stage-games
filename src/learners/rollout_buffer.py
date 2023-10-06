@@ -65,7 +65,6 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
     """
 
     def reset(self) -> None:
-
         self.observations = th.zeros(
             (self.buffer_size, self.n_envs) + self.obs_shape,
             dtype=th.float32,
@@ -179,7 +178,6 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
 
         # Prepare the data
         if not self.generator_ready:
-
             _tensor_names = ["observations", "actions", "log_probs", "returns"]
 
             for tensor in _tensor_names:

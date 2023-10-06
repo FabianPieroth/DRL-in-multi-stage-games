@@ -199,13 +199,13 @@ class BaseEnvForVec(ABC):
         Afterward, the calculation continues with a usual l2-distance calculation between the tensors.
 
         Args:
-            states_list (List[Optional[Dict[int, torch.Tensor]]]): 
-            observations_list (List[Dict[int, torch.Tensor]]): 
-            equ_actions_list (List[Dict[int, torch.Tensor]]): 
-            learner_actions_list (List[Dict[int, torch.Tensor]]): 
+            states_list (List[Optional[Dict[int, torch.Tensor]]]):
+            observations_list (List[Dict[int, torch.Tensor]]):
+            equ_actions_list (List[Dict[int, torch.Tensor]]):
+            learner_actions_list (List[Dict[int, torch.Tensor]]):
 
         Returns:
-            Tuple[List[Dict[int, torch.Tensor]], List[Dict[int, torch.Tensor]]]: 
+            Tuple[List[Dict[int, torch.Tensor]], List[Dict[int, torch.Tensor]]]:
         """
         return equ_actions_list, learner_actions_list
 

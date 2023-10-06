@@ -36,7 +36,8 @@ NOOP = (0, 0)
 class CoinGame(BaseEnvForVec):
     """Multi-Agent Coin game. Standard setting is a two person social dilemma. Each agent has special coins for itself.
     However, an agent gets a penalty if an opponent agent picks up one of its coins.
-    This is an extension to multiple agents including several extensions to study dependency structures."""
+    This is an extension to multiple agents including several extensions to study dependency structures.
+    """
 
     def __init__(self, config: Dict, device: str = None):
         self.num_actions = 5
@@ -186,10 +187,11 @@ class CoinGame(BaseEnvForVec):
 
     def _get_state_info_sizes_dict(self) -> Dict[str, int]:
         """Info contains:
-            (x, y) coordinate of agent
-            (grid_length, grid_width)
-            (current_step, max_episode_length)
-            (coin_exists, ) + (x_i, y_i) coordinates of coins for 1 <= i <= num_max_coins_per_agent"""
+        (x, y) coordinate of agent
+        (grid_length, grid_width)
+        (current_step, max_episode_length)
+        (coin_exists, ) + (x_i, y_i) coordinates of coins for 1 <= i <= num_max_coins_per_agent
+        """
         return {
             "agent_xy": 2,
             "grid_lw": 2,
@@ -278,7 +280,7 @@ class CoinGame(BaseEnvForVec):
     def sample_new_states(self, n: int) -> Any:
         """Create new initial states.
 
-        :param n: Batch size of how many games are played in parallel.        
+        :param n: Batch size of how many games are played in parallel.
         :return: the new states, in shape=(n, num_agents, size_info).
         """
         states = TensorDict(
@@ -298,7 +300,7 @@ class CoinGame(BaseEnvForVec):
 
     def compute_step(self, cur_states, actions: Dict[int, torch.Tensor]):
         """Compute a step in the game.
-        
+
         :param cur_states: The current states of the games.
         :param actions: Dict[agent_id, actions]
         :return observations:
@@ -324,8 +326,7 @@ class CoinGame(BaseEnvForVec):
     def _compute_rewards(
         self, collecting_info: Dict[int, torch.Tensor]
     ) -> torch.Tensor:
-        """Compute the rewards depending on which coins were collected.
-        """
+        """Compute the rewards depending on which coins were collected."""
         reward_dict = {}
         for agent_id in range(self.num_agents):
             agent_num_collected_coins_per_agent = collecting_info[agent_id].sum(dim=2)
@@ -701,11 +702,16 @@ class CoinGame(BaseEnvForVec):
         writer=None,
         iteration: int = 0,
         config: Dict = None,
-        num_samples=2 ** 16,
+        num_samples=2**16,
     ):
         self._store_eval_videos(learners, env, iteration, config, num_videos=3)
 
-        states_list, observations_list, actions_list, rewards_list = ev_ut.run_algorithms(
+        (
+            states_list,
+            observations_list,
+            actions_list,
+            rewards_list,
+        ) = ev_ut.run_algorithms(
             self, learners, num_samples, self.max_episode_length, deterministic=True
         )
         self._eval_collected_coins_by_agents(learners, states_list, actions_list)
@@ -719,9 +725,10 @@ class CoinGame(BaseEnvForVec):
         rollout_collected_coins_dict = self._get_number_of_coins_collected_in_rollout(
             states_list, actions_list
         )
-        own_coin_collection_dict, remaining_coins_collection_dict = self._extract_coins_collected_to_log(
-            rollout_collected_coins_dict
-        )
+        (
+            own_coin_collection_dict,
+            remaining_coins_collection_dict,
+        ) = self._extract_coins_collected_to_log(rollout_collected_coins_dict)
         # Store data
         log_ut.log_data_dict_to_learner_loggers(
             learners, own_coin_collection_dict, f"eval/own_coins_collected"

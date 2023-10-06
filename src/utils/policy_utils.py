@@ -69,7 +69,7 @@ def get_lr_schedule(lr_schedule_name: str, initial_value: float) -> Callable:
         )
     elif lr_schedule_name == "exponential":
         return lambda progress_remaining: max(
-            MIN_LR, initial_value * (progress_remaining ** 10)
+            MIN_LR, initial_value * (progress_remaining**10)
         )
     else:
         raise ValueError(f"Learning rate scheduler {lr_schedule_name} unknown.")

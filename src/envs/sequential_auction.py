@@ -583,7 +583,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         }
 
     def custom_evaluation(
-        self, learners, env, writer, iteration: int, config: Dict, num_samples=2 ** 20
+        self, learners, env, writer, iteration: int, config: Dict, num_samples=2**20
     ):
         """Method is called during training process and allows environment specific logging.
 
@@ -605,7 +605,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self.calculate_bid_distribution(learners, actions_list, writer, iteration)
 
     def plot_strategies_vs_bne(
-        self, strategies, writer, iteration: int, config, num_samples: int = 2 ** 12
+        self, strategies, writer, iteration: int, config, num_samples: int = 2**12
     ):
         """Evaluate and log current strategies."""
         plt.style.use("ggplot")
@@ -762,7 +762,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self, last_stage_states: torch.Tensor, writer, iteration: int
     ):
         """Calculate the seller's revenue, i.e., the expected prices paid.
-        Log revenue per stage and overall. """
+        Log revenue per stage and overall."""
         prices = last_stage_states[
             ...,
             :,
@@ -784,7 +784,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                     Percentage of bidder with highest value wins the item
         Efficiency per game:
                     Percentage of K bidders with highest values win the K items
-        Calculate the market efficiency over all stages (i.e., percentage of K bidders 
+        Calculate the market efficiency over all stages (i.e., percentage of K bidders
         """
         # Sort valuations
         valuations = last_stage_states[..., :, : self.valuation_size]

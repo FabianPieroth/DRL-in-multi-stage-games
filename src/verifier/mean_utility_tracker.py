@@ -13,7 +13,7 @@ class UtilityTracker(object):
         )
 
     def add_utility(self, utilities: torch.Tensor):
-        """Sum up utilities along batch dimension and add 
+        """Sum up utilities along batch dimension and add
         batch size to counter.
 
         Args:

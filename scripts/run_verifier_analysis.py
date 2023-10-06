@@ -25,7 +25,7 @@ directory = f"{LOG_PATH}/verifier/"
 
 # USER PARAMETERS
 num_stages_options = [2]
-num_simulations_options = [2 ** i for i in range(5, 27, 2)]
+num_simulations_options = [2**i for i in range(5, 27, 2)]
 action_discretization_options = [256, 128, 64, 32, 16]
 
 

@@ -139,7 +139,6 @@ def get_env_log_path_extension(config: DictConfig) -> str:
 
 
 def wrap_up_learning_logging(config: DictConfig):
-
     if config.delete_logs_after_training:
         delete_folder(config.experiment_log_path)
 
