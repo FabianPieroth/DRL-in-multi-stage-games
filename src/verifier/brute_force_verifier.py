@@ -108,7 +108,6 @@ class BFVerifier:
         relative_utility_losses = {agent_id: None for agent_id in agent_ids}
 
         for agent_id in agent_ids:
-
             # 1. Calculate NE utility of this agent
             equilibrium_utility = self.estimate_agent_average_utility(
                 equ_strategies, agent_id
@@ -136,10 +135,10 @@ class BFVerifier:
         """
         Args:
             learners (_type_): holds agents' strategies
-            agent_id (int): 
+            agent_id (int):
 
         Returns:
-            Tuple: 
+            Tuple:
                 estimated utility of learner
                 estimated utility loss
                 estimated relative utility loss
@@ -241,7 +240,7 @@ class BFVerifier:
         Args:
             learners (_type_): holds agents' strategies
             agent_id (int):
-            batch_size (int): 
+            batch_size (int):
             information_tree (InformationSetTree): game tree
         """
 
@@ -317,8 +316,10 @@ class BFVerifier:
             # shape = (sim_size * self.action_discretization * sims_to_be_made)
             # where sims_to_be_made = action_discretization **
             #   (num_stages - (stage + 1))
-            repeated_agent_rewards = self._repeat_rewards_and_flatten_to_full_stage_sim_size(
-                rewards[agent_id], stage + 1
+            repeated_agent_rewards = (
+                self._repeat_rewards_and_flatten_to_full_stage_sim_size(
+                    rewards[agent_id], stage + 1
+                )
             )
             best_response_utilities += repeated_agent_rewards
 
@@ -388,11 +389,11 @@ class BFVerifier:
     def _get_sim_size_action_bins(self, sim_size: int, stage: int) -> torch.Tensor:
         """Get repeated action bin indices to track tree path indices.
         Args:
-            sim_size (int): 
-            stage (int): 
+            sim_size (int):
+            stage (int):
 
         Returns:
-            torch.Tensor: 
+            torch.Tensor:
         """
         action_bins = torch.arange(self.action_discretization, device=self.device)
         repeated_action_bins = (
@@ -414,20 +415,22 @@ class BFVerifier:
         self, agent_id: int, agent_obs: torch.Tensor, stage: int
     ) -> torch.Tensor:
         """Indices of bins for each simulation of current stage. Repeat this, as
-        this information is needed for all branching simulations to index the 
+        this information is needed for all branching simulations to index the
         final path followed by each simulation.
 
         Args:
             agent_id (int):
-            agent_obs (torch.Tensor): 
+            agent_obs (torch.Tensor):
             stage (int):
 
         Returns:
             torch.Tensor: (sim_size * sims_to_be_made, 1)
         """
         obs_bin_indices = self.env.model.get_obs_bin_indices(agent_id, agent_obs, stage)
-        repeated_obs_bin_indices = self._repeat_obs_bins_and_flatten_to_full_stage_sim_size(
-            obs_bin_indices, stage
+        repeated_obs_bin_indices = (
+            self._repeat_obs_bins_and_flatten_to_full_stage_sim_size(
+                obs_bin_indices, stage
+            )
         )
 
         return repeated_obs_bin_indices

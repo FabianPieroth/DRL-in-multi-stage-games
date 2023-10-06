@@ -103,7 +103,6 @@ class ReplayBuffer(BaseBuffer):
                 )
 
     def reset(self) -> None:
-
         self.observations = th.zeros(
             (self.buffer_size, self.n_envs) + self.obs_shape,
             dtype=th.float32,
@@ -139,7 +138,6 @@ class ReplayBuffer(BaseBuffer):
         done: np.ndarray,
         infos: List[Dict[str, Any]],
     ) -> None:
-
         # Reshape needed when using multiple envs with discrete observations
         # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
         if isinstance(self.observation_space, spaces.Discrete):

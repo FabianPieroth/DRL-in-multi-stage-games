@@ -23,7 +23,6 @@ class OnPolicyBaseAlgorithm(PPO, ABC):
     def __init__(
         self, action_dependent_std: bool = False, log_std_init: float = -2.0, **kwargs
     ):
-
         self.log_std_init = log_std_init  # default was 1.0 in SB3
 
         # Or have an action dependent std

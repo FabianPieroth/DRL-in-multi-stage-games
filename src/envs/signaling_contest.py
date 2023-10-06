@@ -96,8 +96,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ratio_support = self.prior_high / self.prior_low
         density_factor = (self.num_agents / 2 - 1) * min_density * self.prior_low
         ratio_factor = max(
-            (ratio_support - 1) * ratio_support ** 4 / 2,
-            (ratio_support ** 2 - ratio_support)
+            (ratio_support - 1) * ratio_support**4 / 2,
+            (ratio_support**2 - ratio_support)
             / (8.0 - 4.0 * ratio_support ** (3 / 2)),
         )
         return ratio_factor < density_factor
@@ -745,8 +745,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         val_x, opp_info = self._get_meshgrid_for_second_round_equ(precision)
         # flatten mesh for forward
         val_x, opp_info = (
-            val_x.reshape(precision ** 2),
-            opp_info.reshape(precision ** 2),
+            val_x.reshape(precision**2),
+            opp_info.reshape(precision**2),
         )
         sa_obs = self.get_obs_from_val_and_opp_info(
             val_x, opp_info, stage=1.0, won_first_round=won_first_round

@@ -257,7 +257,7 @@ class SignalingContestEquilibrium(EquilibriumStrategy):
             if stage == 1:
                 bid = self.first_round_equ_strategy(valuations)
             elif stage == 2:
-                bid = (valuations ** 2 * opponent_vals) / (
+                bid = (valuations**2 * opponent_vals) / (
                     valuations + opponent_vals
                 ) ** 2
             else:
@@ -386,6 +386,7 @@ class BertrandCompetitionEquilibrium(EquilibriumStrategy):
 
     def _get_leader_equilibrium(self) -> Callable:
         """See paper eq. (2)"""
+
         # F(b) = 0.5(b + b**2)
         # f(b) = 0.5 + b
         # Q(p) = 10 - p
@@ -404,11 +405,11 @@ class BertrandCompetitionEquilibrium(EquilibriumStrategy):
 
     def _get_follower_equilibrium(self) -> Callable:
         """Given b1, firm 2 has to match that bid to win. It will want to
-            do so whenever b1 >= c2, and will thus set b2 = min{b1, pM(c2)},
-            where pM(c2) is the monopoly price for unit cost c2. If b1 < c2,
-            firm 2 will not match but rather set some price b2 > b1 so as to
-            lose.
-            """
+        do so whenever b1 >= c2, and will thus set b2 = min{b1, pM(c2)},
+        where pM(c2) is the monopoly price for unit cost c2. If b1 < c2,
+        firm 2 will not match but rather set some price b2 > b1 so as to
+        lose.
+        """
 
         def bid_function(observation: torch.Tensor):
             stage = self._obs2stage(observation)

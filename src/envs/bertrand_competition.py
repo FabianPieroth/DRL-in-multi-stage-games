@@ -323,7 +323,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         return equ_actions_list, learner_actions_list
 
     def plot_strategies_vs_bne(
-        self, learners, writer, iteration: int, config, num_samples: int = 2 ** 12
+        self, learners, writer, iteration: int, config, num_samples: int = 2**12
     ):
         """Evaluate and log current strategies."""
 
@@ -487,7 +487,11 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         ax.set_zlabel("F's Quote")
 
     def _plot_second_round_equ_strategy_surface(self, ax, plot_precision):
-        follower_val, leader_action, follower_action = self._get_actions_and_grid_in_second_stage(
+        (
+            follower_val,
+            leader_action,
+            follower_action,
+        ) = self._get_actions_and_grid_in_second_stage(
             self.equilibrium_strategies[1], plot_precision
         )
         surf = ax.plot_surface(
@@ -507,8 +511,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         follower_val, leader_action = self._get_meshgrid_for_second_round_equ(precision)
         # flatten mesh for forward
         follower_val, leader_action = (
-            follower_val.reshape(precision ** 2),
-            leader_action.reshape(precision ** 2),
+            follower_val.reshape(precision**2),
+            leader_action.reshape(precision**2),
         )
         sa_obs = torch.stack((follower_val, leader_action), dim=-1)
         follower_action, _ = sa_strategy.predict(sa_obs, deterministic=True)
