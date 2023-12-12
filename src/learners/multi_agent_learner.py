@@ -110,7 +110,7 @@ class MultiAgentCoordinator:
             sup_{beta_i \in \Sigma_i} \hat(u)_i(beta_i, beta_{-i})
             by approximating the best response beta_i^* in the space of step functions.
         """
-        if self.verifier.env_is_compatible_with_verifier and self.config.verify_br:
+        if self.verifier.env_is_verifiable and self.config.verify_br:
             # Estimate the ex ante utility loss (i.e., averaged loss over prior)
             print(f"Verifying against current strategies:")
             agent_ids = self.learners.keys()
@@ -150,10 +150,7 @@ class MultiAgentCoordinator:
         """If an equilibrium is available, we can evaluate learned strategies
         using the known equilibrium strategies.
         """
-        if not (
-            self.verifier.env_is_compatible_with_verifier
-            and self.env.model.equilibrium_strategies_known
-        ):
+        if not self.verifier.equ_metrics_can_be_measured:
             return
         print(f"\nVerifying against known equilibrium strategies:")
         self.estimate_utility_loss_against_equilibrium()
@@ -204,7 +201,7 @@ class MultiAgentCoordinator:
             and \beta^*=(\beta_i^*, \beta_{-i}^*) is a equilibrium strategy.
         """
         assert (
-            self.verifier.env_is_compatible_with_verifier
+            self.verifier.env_is_verifiable
             and self.env.model.equilibrium_strategies_known
         )
         agent_ids = self.learners.keys()

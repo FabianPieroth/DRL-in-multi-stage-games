@@ -37,7 +37,8 @@ class BFVerifier:
         device: str,
     ):
         self.env = env
-        self.env_is_compatible_with_verifier = isinstance(env.model, VerifiableEnv)
+        self.env_is_verifiable = isinstance(env.model, VerifiableEnv)
+        self.equ_metrics_can_be_measured = self._env_equ_metric_measurability(env.model)
         self.num_agents = self.env.model.num_agents
         self.num_simulations = num_simulations
         self.action_discretization = action_discretization
@@ -50,11 +51,27 @@ class BFVerifier:
 
         self.batch_size = batch_size
         self.device = device
-        if self.env_is_compatible_with_verifier:
+        if self.equ_metrics_can_be_measured:
+            self.num_stages = self.env.model.num_stages
+        if self.env_is_verifiable:
             self.num_stages = self.env.model.num_stages
             self.env.model.verifier_env_info = self.env.model.get_verifier_env_infos(
                 obs_discretization=self.obs_discretization
             )
+
+    def _env_equ_metric_measurability(self, env_model) -> bool:
+        """Return a boolean value whether the environment satisfies
+        the necessary assumptions to measure metrics against a
+        known equilibrium strategy or not.
+        These are:
+        - env.model has attribute 'num_stages'
+        - env.model has known equilibrium strategies
+        """
+        env_has_num_stages = hasattr(env_model, "num_stages")
+        if env_has_num_stages:
+            if env_model.num_stages is None:
+                return False
+        return env_has_num_stages and env_model.equilibrium_strategies_known
 
     def verify_br(
         self,
