@@ -34,6 +34,12 @@ algorithms: ["ppo"]
 # learner.
 policy_sharing: false
 
+store_learner: false # Whether to store the learners.
+load_learner: false  # Whether to load the learners.
+# specifies the paths to the stored learners. One for each to be loaded.
+# it goes by order. If one is not provided, then it is skipped.
+paths_to_stored_learners: []
+
 # Load default sub-configurations for environment, algorithm, etc.
 defaults:
   - algorithm_configs: all_algos

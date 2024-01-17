@@ -1,4 +1,5 @@
 """Multi agent learning for SB3"""
+import warnings
 from typing import Dict
 
 import matplotlib.pyplot as plt
@@ -294,16 +295,28 @@ class MultiAgentCoordinator:
 
         # 2. Eval log
         if (iteration + 1) % self.config.eval_freq == 0:
-            print(f"\nStart evaluation:")
+            print("\nStart evaluation:")
             with torch.no_grad():
                 self._evaluate_policies(iteration, self.config.n_eval_episodes)
                 self.verify_policies_br(iteration)
                 self.verify_policies_against_known_equilibrium()
-            print(f"\nEnd evaluation.\n")
+            self._store_learner(iteration)
+            print("\nEnd evaluation.\n")
 
         # 3. Update `num_timesteps` in logs
         for learner in self.learners.values():
             learner.logger.dump(step=learner.num_timesteps)
+
+    def _store_learner(self, iteration):
+        if self.config.store_learner:
+            for agent_id, learner in self.learners.items():
+                try:
+                    learner.save(path=learner.logger.dir + "_iter_" + str(iteration))
+                    print("Stored learner for agent " + str(agent_id))
+                except AttributeError:
+                    warnings.warn(
+                        "Could not store learner for agent " + str(agent_id) + "!"
+                    )
 
     def _evaluate_policies(self, iteration: int, n_eval_episodes: int) -> None:
         """Evaluate current training progress."""
@@ -351,6 +364,31 @@ class MultiAgentCoordinator:
                 log_path=self.config.experiment_log_path,
                 reset_num_timesteps=reset_num_timesteps,
             )
+            self._load_learner(agent_id, learner)
             callbacks[agent_id].on_training_start(locals(), globals())
             total_timesteps = max(timesteps, total_timesteps)
         return total_timesteps, callbacks
+
+    def _load_learner(self, agent_id, learner):
+        if self.config.load_learner and agent_id < len(
+            self.config.paths_to_stored_learners
+        ):
+            path_to_load = self.config.paths_to_stored_learners[agent_id]
+            try:
+                learner.set_parameters(
+                    load_path_or_dict=path_to_load, device=learner.device
+                )
+                print(
+                    "Loaded learner for agent "
+                    + str(agent_id)
+                    + " from "
+                    + path_to_load
+                )
+            except (AttributeError, FileNotFoundError):
+                warnings.warn(
+                    "Could not load learner for agent "
+                    + str(agent_id)
+                    + " from "
+                    + path_to_load
+                    + "!"
+                )
