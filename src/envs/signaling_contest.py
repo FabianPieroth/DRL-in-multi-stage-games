@@ -98,7 +98,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             }
         else:
             print("No analytical equilibrium available.")
-            return None
+            return {agent_id: None for agent_id in range(self.num_agents)}
 
     def _get_num_agents(self) -> int:
         assert (
