@@ -253,6 +253,53 @@ def run_signaling_contest_experiment():
     print("Done!")
 
 
+def run_signaling_contest_risk_experiment():
+    environment = "signaling_contest"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 6
+    runs = 10
+    iteration_num = 10_000
+    policy_sharing = True
+
+    information_cases = ["true_valuations", "winning_bids"]
+    algorithms = ["reinforce", "ppo"]
+    risk_aversion_params = [0.75, 0.5, 0.25]
+    options = product(algorithms, information_cases, risk_aversion_params)
+    log_std_init = -3.0
+
+    for option in options:
+        algorithm, information_case, risk_aversion = option
+        if algorithm == "reinforce" and information_case == "winning_bids":
+            log_std_init = -2.0
+
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={policy_sharing}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"rl_envs=signaling_contest",
+                    f"rl_envs.information_case={information_case}",
+                    f"rl_envs.risk_aversion={risk_aversion}",
+                    f"policy.log_std_init={log_std_init}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
 def run_bertrand_competition_experiment():
     environment = "bertrand_competition"
     log_path = f"{LOG_PATH}/{environment}_experiment/"
@@ -292,9 +339,11 @@ def run_bertrand_competition_experiment():
 
 
 if __name__ == "__main__":
-    run_sequential_sales_experiment()
+    run_signaling_contest_risk_experiment()
+
+    """run_sequential_sales_experiment()
     run_asymmetric_second_price_sequential_sales_experiment()
     run_symmetric_budget_constraint_with_affiliation_experiments()
     run_sequential_sales_interdependent_plus_risk_experiment()
     run_signaling_contest_experiment()
-    run_bertrand_competition_experiment()
+    run_bertrand_competition_experiment()"""
