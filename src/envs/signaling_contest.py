@@ -2,7 +2,6 @@
 Simple signaling contest with two stages and four player.
 """
 import time
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -10,12 +9,12 @@ import numpy as np
 import torch
 from gym import spaces
 
+import src.utils.distributions_and_priors as dap_ut
 import src.utils.policy_utils as pl_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SignalingContestEquilibrium
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
-from src.learners.utils import tensor_norm
 
 
 class SignalingContest(BaseEnvForVec, VerifiableEnv):
@@ -42,8 +41,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.valuation_size = config["valuation_size"]
-        self.prior_low, self.prior_high = config["prior_bounds"]
-        self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
         self.num_stages = 2
         # obs indices
         self.group_split_index = int(config["num_agents"] / 2)
@@ -52,10 +49,25 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.payments_start_index = self.valuation_size + self.allocation_index + 1
         self.relu_layer = torch.nn.ReLU()
 
+        self.risk_aversion = config.risk_aversion
+        self.sampler = self._init_sampler(config, device)
+        self.prior_low = self.sampler.support_bounds[:, :, 0].squeeze()
+        self.prior_high = self.sampler.support_bounds[:, :, 1].squeeze()
+        self.ACTION_UPPER_BOUNDS = 2 * self.prior_high
         super().__init__(config, device)
 
         self.all_pay_mechanism = self._init_all_pay_mechanism()
         self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
+
+    def _init_sampler(self, config, device):
+        num_agents = config.num_agents
+        return dap_ut.get_sampler(
+            num_agents,
+            self.valuation_size,
+            self.valuation_size,
+            config.sampler,
+            default_device=device,
+        )
 
     def _init_all_pay_mechanism(self) -> Mechanism:
         return AllPayAuction(self.device)
@@ -67,8 +79,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
         equilibrium_config = {
             "device": self.device,
-            "prior_low": self.prior_low,
-            "prior_high": self.prior_high,
+            "prior_low": self.prior_low[0].item(),
+            "prior_high": self.prior_high[0].item(),
             "num_agents": self.num_agents,
             "information_case": self.config["information_case"],
             "stage_index": self.stage_index,
@@ -76,31 +88,17 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             "valuation_size": self.valuation_size,
             "payments_start_index": self.payments_start_index,
         }
-        return {
-            agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
-            for agent_id in range(self.num_agents)
-        }
-
-    def _is_equilibrium_ensured_to_exist(self):
-        if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
-            warnings.warn(
-                "The sufficient conditions for a separating equilibrium do not hold! An equilibrium is not ensured to exist!"
-            )
-
-    def is_support_ratio_bounded(self) -> bool:
-        ratio_support = self.prior_high / self.prior_low
-        return 1.0 < ratio_support and ratio_support < 4.0 ** (1 / 3)
-
-    def does_min_density_bound_hold(self) -> bool:
-        min_density = 1.0 / (self.prior_high - self.prior_low)
-        ratio_support = self.prior_high / self.prior_low
-        density_factor = (self.num_agents / 2 - 1) * min_density * self.prior_low
-        ratio_factor = max(
-            (ratio_support - 1) * ratio_support**4 / 2,
-            (ratio_support**2 - ratio_support)
-            / (8.0 - 4.0 * ratio_support ** (3 / 2)),
-        )
-        return ratio_factor < density_factor
+        if (
+            self.sampler.sampler_config.name == "symmetric_uniform"
+            and self.risk_aversion == 1.0
+        ):
+            return {
+                agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
+                for agent_id in range(self.num_agents)
+            }
+        else:
+            print("No analytical equilibrium available.")
+            return None
 
     def _get_num_agents(self) -> int:
         assert (
@@ -117,23 +115,32 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 - stage
                 - bid/valuation of winning opponent
         """
-        low = [self.prior_low] + [0.0] + [0.0] + [self.ACTION_LOWER_BOUND]
-        high = [self.prior_high] + [1.0] + [1.0] + [self.ACTION_UPPER_BOUND]
-        return {
-            agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
-            for agent_id in range(self.num_agents)
-        }
+        obs_space_dict = {}
+        for agent_id in range(self.num_agents):
+            low = [self.prior_low[agent_id].item()] + [0.0] + [0.0] + [0.0]
+            high = (
+                [self.prior_high[agent_id].item()]
+                + [1.0]
+                + [1.0]
+                + [self.ACTION_UPPER_BOUNDS[agent_id].item()]
+            )
+            obs_space_dict[agent_id] = spaces.Box(
+                low=np.float32(low), high=np.float32(high)
+            )
+        return obs_space_dict
 
     def _init_action_spaces(self):
         """Returns dict with agent - action space pairs.
         Returns:
             Dict[int, Space]: agent_id: action space
         """
-        sa_action_space = spaces.Box(
-            low=np.float32([self.ACTION_LOWER_BOUND]),
-            high=np.float32([self.ACTION_UPPER_BOUND]),
-        )
-        return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
+        action_space_dict = {}
+        for agent_id in range(self.num_agents):
+            action_space_dict[agent_id] = spaces.Box(
+                low=np.float32([0.0]),
+                high=np.float32([self.ACTION_UPPER_BOUNDS[agent_id].item()]),
+            )
+        return action_space_dict
 
     def to(self, device) -> Any:
         """Set device"""
@@ -148,8 +155,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             (n, self.num_agents, self.valuation_size + 1 + 1 + 2), device=self.device
         )
 
-        # ipv symmetric uniform priors
-        states[:, :, : self.valuation_size].uniform_(self.prior_low, self.prior_high)
+        # draw valuations
+        valuations, signals = self.sampler.draw_profiles(n)
+        states[:, :, : self.valuation_size] = valuations
 
         # no allocations
         states[:, :, self.valuation_size] = 0.0
@@ -353,9 +361,12 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ]
         if stage == 1:
             if self.config["information_case"] == "true_valuations":
-                low[-1], high[-1] = self.prior_low, self.prior_high
+                low[-1], high[-1] = (
+                    self.prior_low[agent_id].item(),
+                    self.prior_high[agent_id].item(),
+                )
             elif self.config["information_case"] == "winning_bids":
-                low[-1], high[-1] = 0.0, 0.5 * self.prior_high
+                low[-1], high[-1] = 0.0, 0.5 * self.prior_high[agent_id].item()
             else:
                 raise ValueError("Unknown information case!")
         return {"low": tuple(low), "high": tuple(high)}
@@ -431,6 +442,11 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             sa_valuations = states[:, agent_id, : self.valuation_size].squeeze()
             sa_allocations = allocations[:, agent_id, :].squeeze()
             rewards = sa_valuations * sa_allocations - sa_payments
+
+        rewards = (
+            rewards.relu() ** self.risk_aversion
+            - (-rewards).relu() ** self.risk_aversion
+        )
         return rewards
 
     def get_observations(
@@ -768,9 +784,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         return sa_obs
 
     def _get_meshgrid_for_second_round_equ(self, precision):
-        val_xs = torch.linspace(self.prior_low, self.prior_high, steps=precision)
+        val_xs = torch.linspace(
+            min(self.prior_low).item(), max(self.prior_high).item(), steps=precision
+        )
         if self.config["information_case"] == "true_valuations":
-            info_ys = torch.linspace(self.prior_low, self.prior_high, steps=precision)
+            info_ys = torch.linspace(
+                min(self.prior_low).item(), max(self.prior_high).item(), steps=precision
+            )
             val_x, opp_info = torch.meshgrid(val_xs, info_ys, indexing="xy")
         elif self.config["information_case"] == "winning_bids":
             info_ys = np.linspace(0.000001, 0.297682, num=precision)
@@ -815,11 +835,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             color=drawing.get_color(),
         )
         self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
-        lin = np.linspace(0, self.prior_high, 2)
+        lin = np.linspace(0, max(self.prior_high).item(), 2)
         ax.plot(lin, lin, "--", color="grey")
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
-        ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
+        ax.set_xlim(
+            [min(self.prior_low).item() - 0.1, max(self.prior_high).item() + 0.1]
+        )
 
     def _plot_first_round_equilibrium_strategy(
         self, ax, agent_id: int, drawing, precision: int = 200
@@ -837,7 +859,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
         val_xs = torch.linspace(
-            self.prior_low, self.prior_high, steps=precision, device=self.device
+            self.prior_low[sa_learner.agent_id].item(),
+            self.prior_high[sa_learner.agent_id].item(),
+            steps=precision,
+            device=self.device,
         )
         opp_info = -1.0 * torch.ones_like(val_xs)
         sa_obs = self.get_obs_from_val_and_opp_info(
@@ -850,20 +875,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self, br_strategies: Dict[int, Dict[int, Callable]]
     ) -> Optional[plt.Figure]:
         num_vals = 128
-        valuations = torch.linspace(
-            self.prior_low, self.prior_high, num_vals, device=self.device
-        )
-        agent_obs = torch.cat(
-            (valuations.unsqueeze(-1), torch.zeros((num_vals, 3), device=self.device)),
-            dim=1,
-        )
         plt.style.use("ggplot")
         fig = plt.figure(figsize=(4.5, 4.5), clear=True)
         ax = fig.add_subplot(111)
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
-        ax.set_xlim([self.prior_low, self.prior_high])
-        ax.set_ylim([-0.05, self.prior_high * 1 / 3])
+        ax.set_xlim([min(self.prior_low).item(), max(self.prior_high).item()])
+        ax.set_ylim([-0.05, max(self.prior_high) * 1 / 3])
 
         colors = [
             (0 / 255.0, 150 / 255.0, 196 / 255.0),
@@ -874,6 +892,19 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         line_types = ["-", "--", "-.", ":"]
 
         for agent_id, agent_br in br_strategies.items():
+            valuations = torch.linspace(
+                self.prior_low[agent_id].item(),
+                self.prior_high[agent_id].item(),
+                num_vals,
+                device=self.device,
+            )
+            agent_obs = torch.cat(
+                (
+                    valuations.unsqueeze(-1),
+                    torch.zeros((num_vals, 3), device=self.device),
+                ),
+                dim=1,
+            )
             if agent_id > 3:
                 color = (0 / 255.0, 150 / 255.0, 196 / 255.0)
                 line_type = "-"
