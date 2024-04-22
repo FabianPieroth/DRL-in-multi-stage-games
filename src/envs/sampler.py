@@ -47,7 +47,10 @@ class ValuationObservationSampler(ABC):
         """Parses an integer batch_size_argument into a list. If none given,
         defaults to the list containing the default_batch_size of the instance.
         """
-        batch_sizes = batch_sizes_argument or self.default_batch_size
+        if batch_sizes_argument is not None:
+            batch_sizes = batch_sizes_argument
+        else:
+            batch_sizes = self.default_batch_size
         if isinstance(batch_sizes, int):
             batch_sizes = [batch_sizes]
         return batch_sizes
