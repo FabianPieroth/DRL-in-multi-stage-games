@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym import spaces
+from tensordict import TensorDict
 
 import src.utils.distributions_and_priors as dap_ut
 import src.utils.policy_utils as pl_ut
@@ -147,16 +148,31 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.device = device
         return self
 
-    def sample_new_states(self, n: int) -> Any:
+    def sample_new_states(self, n: int) -> TensorDict:
         """Samples number n initial states.
-        [n, valuation + allocation + stage + winning bids + winning valuations]
+        [n, num_agents, valuation + valuation_signal + allocation + stage + winning bids + winning valuations/signals/bids]
+        """
+        # draw valuations
+        valuations, val_signals = self.sampler.draw_profiles(n)
+        states = TensorDict(
+            {
+                "vals": valuations,
+                "val_signals": val_signals,
+                "allocation": torch.zeros((n, self.num_agents, 1), device=self.device),
+                "stage": torch.zeros((n, self.num_agents, 1), device=self.device),
+                "winning_bids": torch.ones((n, self.num_agents, 1), device=self.device)
+                * SignalingContest.DUMMY_PRICE_KEY,
+                "winners_info": torch.ones((n, self.num_agents, 1), device=self.device)
+                * SignalingContest.DUMMY_PRICE_KEY,
+            },
+            batch_size=n,
+            device=self.device,
+        )
         """
         states = torch.zeros(
             (n, self.num_agents, self.valuation_size + 1 + 1 + 2), device=self.device
         )
 
-        # draw valuations
-        valuations, signals = self.sampler.draw_profiles(n)
         states[:, :, : self.valuation_size] = valuations
 
         # no allocations
@@ -165,9 +181,33 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         states[:, :, self.stage_index] = 0.0
 
         # dummy prices and winning valuations
-        states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY
-
+        states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY"""
         return states
+
+    def states_dict_to_old_tensor_format(
+        self, states: TensorDict, signals_instead_of_vals=False
+    ) -> torch.Tensor:
+        """We adapt the information of the env by allowing for the agents to
+        receive a signal about their valuation instead of their true valuation.
+        This increases the state size.
+        This method turns the state into the old format so that other methods
+        can stay identical.
+
+        Returns:
+            torch.Tensor: [n, num_agents,
+            valuation/signal + allocation + stage + winning bids + winning valuations]
+        """
+        signal_type = "vals"
+        if signals_instead_of_vals:
+            signal_type = "val_signals"
+        keys_to_cat = (
+            signal_type,
+            "allocation",
+            "stage",
+            "winning_bids",
+            "winners_info",
+        )
+        return torch.cat([states[key] for key in keys_to_cat], dim=-1)
 
     def adapt_ma_actions_for_env(
         self,
@@ -214,24 +254,35 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         actions = self.set_losers_bids_to_zero(cur_states, actions)
         action_profile = torch.stack(tuple(actions.values()), dim=1)
         new_states = cur_states.detach().clone()
+
+        cur_states_old_format = self.states_dict_to_old_tensor_format(
+            cur_states, signals_instead_of_vals=True
+        )
+
         cur_stage = self._state2stage(cur_states)
 
         if cur_stage == 1:
             winning_info, allocations, payments = self._get_first_round_info(
-                cur_states, action_profile
+                cur_states_old_format, action_profile
             )
             # store winning_info to new_states
-            new_states[:, :, self.allocation_index] = winning_info[:, :, 0]
-            new_states[:, :, self.stage_index] += 1.0
-            new_states[:, :, self.payments_start_index :] = winning_info[:, :, 1:]
-            dones = torch.zeros((cur_states.shape[0]), device=cur_states.device).bool()
+            new_states["allocation"][:, :, 0] = winning_info[:, :, 0]
+            new_states["stage"] += 1.0
+            new_states["winning_bids"][:, :, 0] = winning_info[:, :, 1]
+            new_states["winners_info"][:, :, 0] = winning_info[:, :, 2]
+            dones = torch.zeros(
+                (cur_states.batch_size), device=cur_states.device
+            ).bool()
         elif cur_stage == 2:
-            allocations_prev_round = cur_states[
-                :, :, self.allocation_index : self.allocation_index + 1
-            ]
+            new_states["stage"] += 1.0
+            allocations_prev_round = cur_states["allocation"]
             aggregated_allocations = torch.sum(allocations_prev_round.squeeze(), axis=1)
             allocations = torch.zeros(
-                (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
+                (
+                    cur_states.batch_size[0],
+                    allocations_prev_round.shape[1],
+                    self.valuation_size,
+                ),
                 device=self.device,
             )
             payments = action_profile
@@ -260,7 +311,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             allocations[aggregated_allocations == 2] = allocations[
                 aggregated_allocations == 2
             ].scatter_(1, first_round_winner_indices, sec_round_allocations)
-            dones = torch.ones((cur_states.shape[0]), device=cur_states.device).bool()
+            dones = torch.ones(cur_states.batch_size, device=cur_states.device).bool()
         else:
             raise ValueError("The setting only considers two stages at the moment!")
 
@@ -439,7 +490,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         if stage == 1:
             rewards = -sa_payments
         else:
-            sa_valuations = states[:, agent_id, : self.valuation_size].squeeze()
+            sa_valuations = states["vals"][:, agent_id, :].squeeze()
             sa_allocations = allocations[:, agent_id, :].squeeze()
             rewards = sa_valuations * sa_allocations - sa_payments
 
@@ -455,7 +506,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         player_positions: List = None,
         information_case: str = None,
     ) -> torch.Tensor:
-        """Return the observations at the player at `player_position`.
+        """Return the observations to the player at `player_position`.
 
         :param states: The current states of shape (num_env, num_agents,
             state_dim).
@@ -464,7 +515,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         :returns observations: Observations of shape (num_env, obs_private_dim
             + obs_public_dim)
         """
-        batch_size = states.shape[0]
+        states_old_format = self.states_dict_to_old_tensor_format(
+            states, signals_instead_of_vals=True
+        )
+        batch_size = states_old_format.shape[0]
         player_positions = (
             list(range(self.num_agents))
             if player_positions is None
@@ -481,9 +535,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             slicing_indices = self._get_obs_slicing_indices(information_case)
             # shape = (batch_size, valuation_size + allocation_index + 1 + 1)
             observation_dict[agent_id] = (
-                states[:, agent_id, :]
+                states_old_format[:, agent_id, :]
                 .index_select(1, slicing_indices)
-                .to(device=states.device)
+                .to(device=states_old_format.device)
                 .detach()
             )
 
@@ -514,19 +568,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def _state2stage(self, states):
         """Get the current stage from the state."""
-        if states.shape[0] == 0:  # empty batch
+        if states["stage"].shape[0] == 0:  # empty batch
             stage = -1
-        elif states[0, 0, self.stage_index].detach().item() == 0:
-            stage = 1
-        else:
-            stage = 2
-        return stage
-
-    def _obs2stage(self, obs):
-        """Get the current stage from the observation."""
-        if obs.shape[0] == 0:  # empty batch
-            stage = -1
-        elif obs[0, self.stage_index].detach().item() == 0:
+        elif states["stage"][0, 0, 0].detach().item() == 0:
             stage = 1
         else:
             stage = 2
@@ -540,8 +584,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         """
         lost_already_dict = {}
         for agent_id in range(self.num_agents):
-            allocation_true = state[:, agent_id, self.allocation_index] == 0
-            could_have_lost = state[:, agent_id, self.stage_index] > 0
+            allocation_true = state["allocation"][:, agent_id, 0] == 0
+            could_have_lost = state["stage"][:, agent_id, 0] > 0
             lost_already_dict[agent_id] = torch.logical_and(
                 allocation_true, could_have_lost
             )
