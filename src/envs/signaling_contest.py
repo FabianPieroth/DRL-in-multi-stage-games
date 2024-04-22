@@ -730,7 +730,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             surf._facecolors2d = surf._facecolor3d
             surf._edgecolors2d = surf._edgecolor3d
             # ############################## #
-        if agent_id == 0:
+        if agent_id == 0 and self.equilibrium_strategies[agent_id]:
             self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
 
         if self.config["information_case"] == "true_valuations":
@@ -834,7 +834,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             alpha=0.2,
             color=drawing.get_color(),
         )
-        self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
+        if self.equilibrium_strategies[agent_id]:
+            self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
         lin = np.linspace(0, max(self.prior_high).item(), 2)
         ax.plot(lin, lin, "--", color="grey")
         ax.set_xlabel("valuation $v$")
