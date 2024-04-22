@@ -882,7 +882,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
         ax.set_xlim([min(self.prior_low).item(), max(self.prior_high).item()])
-        ax.set_ylim([-0.05, max(self.prior_high) * 1 / 3])
+        ax.set_ylim([-0.05, max(self.prior_high).item() * 1 / 3])
 
         colors = [
             (0 / 255.0, 150 / 255.0, 196 / 255.0),
