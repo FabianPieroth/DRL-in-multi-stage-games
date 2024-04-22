@@ -168,20 +168,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             batch_size=n,
             device=self.device,
         )
-        """
-        states = torch.zeros(
-            (n, self.num_agents, self.valuation_size + 1 + 1 + 2), device=self.device
-        )
-
-        states[:, :, : self.valuation_size] = valuations
-
-        # no allocations
-        states[:, :, self.valuation_size] = 0.0
-        # First stage starting
-        states[:, :, self.stage_index] = 0.0
-
-        # dummy prices and winning valuations
-        states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY"""
         return states
 
     def states_dict_to_old_tensor_format(
@@ -411,7 +397,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             for obs_index in obs_indices
         ]
         if stage == 1:
-            if self.config["information_case"] == "true_valuations":
+            if self.config["information_case"] == "winners_signal":
                 low[-1], high[-1] = (
                     self.prior_low[agent_id].item(),
                     self.prior_high[agent_id].item(),
@@ -518,7 +504,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         states_old_format = self.states_dict_to_old_tensor_format(
             states, signals_instead_of_vals=True
         )
-        batch_size = states_old_format.shape[0]
         player_positions = (
             list(range(self.num_agents))
             if player_positions is None
@@ -544,7 +529,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         return observation_dict
 
     def _get_obs_slicing_indices(self, information_case: str):
-        if information_case == "true_valuations":
+        if information_case == "winners_signal":
             slice_indices = [
                 0,
                 self.valuation_size,
@@ -777,7 +762,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         if agent_id == 0 and self.equilibrium_strategies[agent_id]:
             self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
 
-        if self.config["information_case"] == "true_valuations":
+        if self.config["information_case"] == "winners_signal":
             y_label = "opponent $v$"
         elif self.config["information_case"] == "winning_bids":
             y_label = "opponent $b$"
@@ -831,7 +816,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         val_xs = torch.linspace(
             min(self.prior_low).item(), max(self.prior_high).item(), steps=precision
         )
-        if self.config["information_case"] == "true_valuations":
+        if self.config["information_case"] == "winners_signal":
             info_ys = torch.linspace(
                 min(self.prior_low).item(), max(self.prior_high).item(), steps=precision
             )
