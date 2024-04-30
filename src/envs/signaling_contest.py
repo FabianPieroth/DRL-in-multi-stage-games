@@ -123,7 +123,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 [self.prior_high[agent_id].item()]
                 + [1.0]
                 + [1.0]
-                + [self.ACTION_UPPER_BOUNDS[agent_id].item()]
+                + [max(self.ACTION_UPPER_BOUNDS).item()]
             )
             obs_space_dict[agent_id] = spaces.Box(
                 low=np.float32(low), high=np.float32(high)
@@ -399,11 +399,11 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         if stage == 1:
             if self.config["information_case"] == "winners_signal":
                 low[-1], high[-1] = (
-                    self.prior_low[agent_id].item(),
-                    self.prior_high[agent_id].item(),
+                    min(self.prior_low).item(),
+                    max(self.prior_high).item(),
                 )
             elif self.config["information_case"] == "winning_bids":
-                low[-1], high[-1] = 0.0, 0.5 * self.prior_high[agent_id].item()
+                low[-1], high[-1] = 0.0, 0.5 * max(self.prior_high).item()
             else:
                 raise ValueError("Unknown information case!")
         return {"low": tuple(low), "high": tuple(high)}
