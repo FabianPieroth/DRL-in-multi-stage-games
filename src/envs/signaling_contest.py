@@ -50,7 +50,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.payments_start_index = self.valuation_size + self.allocation_index + 1
         self.relu_layer = torch.nn.ReLU()
 
-        self.risk_aversion = config.risk_aversion
+        self.cara_risk_aversion = config.cara_risk_aversion
         self.sampler = self._init_sampler(config, device)
         self.prior_low = self.sampler.support_bounds[:, :, 0].squeeze()
         self.prior_high = self.sampler.support_bounds[:, :, 1].squeeze()
@@ -91,7 +91,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         }
         if (
             self.sampler.sampler_config.name == "symmetric_uniform"
-            and self.risk_aversion == 1.0
+            and self.cara_risk_aversion == 1.0
         ):
             return {
                 agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
@@ -480,10 +480,11 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             sa_allocations = allocations[:, agent_id, :].squeeze()
             rewards = sa_valuations * sa_allocations - sa_payments
 
-        rewards = (
-            rewards.relu() ** self.risk_aversion
-            - (-rewards).relu() ** self.risk_aversion
-        )
+        # We implement the CARA utility function for risk-averse bidders
+        if self.cara_risk_aversion != 0.0:
+            rewards = (
+                1.0 - torch.exp(-self.cara_risk_aversion * rewards)
+            ) / self.cara_risk_aversion
         return rewards
 
     def get_observations(
