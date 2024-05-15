@@ -91,7 +91,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         }
         if (
             self.sampler.sampler_config.name == "symmetric_uniform"
-            and self.cara_risk_aversion == 1.0
+            and self.cara_risk_aversion == 0.0
         ):
             return {
                 agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
