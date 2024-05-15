@@ -126,6 +126,46 @@ def evaluate_signaling_contest_experiment():
     ex_ut.save_df(pivot, environment, path)
 
 
+def evaluate_signaling_contest_interdependencies_experiment():
+    environment = "signaling_contest"
+    path = f"{LOG_PATH}/{environment}_interdependencies_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.information_case", "rl_envs.sampler.name"]
+    metrics = [
+        "eval/estimated_utility_loss",
+        "eval/utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment, path)
+
+
+def evaluate_signaling_contest_risk_experiment():
+    environment = "signaling_contest"
+    path = f"{LOG_PATH}/{environment}_risk_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.information_case", "rl_envs.cara_risk_aversion"]
+    metrics = [
+        "eval/estimated_utility_loss",
+        "eval/utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment, path)
+
+
 def evaluate_bertrand_competition_experiment():
     environment = "bertrand_competition"
     path = f"{LOG_PATH}/{environment}_experiment/{environment}"
@@ -151,9 +191,11 @@ def evaluate_bertrand_competition_experiment():
 
 
 if __name__ == "__main__":
-    evaluate_sequential_sales_experiment()
-    evaluate_sequential_sales_interdependent_plus_risk_experiment()
-    evaluate_sequential_sales_symmetric_budget_constraints_with_affiliation_experiment()
-    evaluate_asymmetric_second_price_sequential_sales_experiment()
-    evaluate_signaling_contest_experiment()
-    evaluate_bertrand_competition_experiment()
+    # evaluate_sequential_sales_experiment()
+    # evaluate_sequential_sales_interdependent_plus_risk_experiment()
+    # evaluate_sequential_sales_symmetric_budget_constraints_with_affiliation_experiment()
+    # evaluate_asymmetric_second_price_sequential_sales_experiment()
+    # evaluate_signaling_contest_experiment()
+    # evaluate_signaling_contest_interdependencies_experiment()
+    evaluate_signaling_contest_risk_experiment()
+    # evaluate_bertrand_competition_experiment()
