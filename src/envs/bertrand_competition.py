@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym import spaces
+from tensordict import TensorDict
 
 import src.utils.distributions_and_priors as dap_ut
 import src.utils.evaluation_utils as ev_ut
@@ -119,14 +120,26 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             dimension consists of the valuation and the opponent firm's quote (initialized
             at -1).
         """
-        states = -torch.ones((n, self.num_agents, 2), device=self.device)
+        # states = -torch.ones((n, self.num_agents, 2), device=self.device)
         # keep 2nd entry to -1 as to detect which stage it is (firm 1 must
         # quote a value above 0.)
 
-        # draw valuations
-        valuations, _ = self.sampler.draw_profiles(n)
-        states[:, :, [0]] = valuations
-
+        # draw valuations and signals
+        valuations, val_signals = self.sampler.draw_profiles(n)
+        # states[:, :, [0]] = valuations
+        states = TensorDict(
+            {
+                "vals": valuations,
+                "val_signals": val_signals,
+                "quoted_prices": -torch.ones(
+                    (n, self.num_agents, 1), device=self.device
+                )
+                # keep 2nd entry to -1 as to detect which stage it is (firm 1 must
+                # quote a value above 0.)
+            },
+            batch_size=n,
+            device=self.device,
+        )
         return states
 
     def compute_step(self, cur_states: torch.Tensor, actions: Dict[int, torch.Tensor]):
@@ -150,8 +163,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
         # 1. stage: add firm 1's quotes to firm 2's info
         if stage == 0:
-            new_states[:, 1, 1] = actions[0].squeeze()
-            new_states[:, 0, 1] = 1  # Set stage info for agent 0
+            new_states["quoted_prices"][:, 1, 0] = actions[0].squeeze()
+            new_states["quoted_prices"][:, 0, 0] = 1  # Set stage info for agent 0
             rewards = {
                 0: torch.zeros(batch_size, device=self.device),
                 1: torch.zeros(batch_size, device=self.device),
@@ -160,7 +173,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
         # 2. stage: firm 2's quotes to firm 1's info
         if stage == 1:
-            new_states[:, 0, 1] = actions[1].squeeze()
+            new_states["quoted_prices"][:, 0, 0] = actions[1].squeeze()
             rewards = self._compute_rewards(new_states, stage)
             dones = torch.ones(batch_size, dtype=torch.bool, device=self.device)
 
@@ -170,13 +183,17 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
     def _compute_rewards(self, states: torch.Tensor, stage: int) -> torch.Tensor:
         """Computes the rewards for the played competition."""
-        firm1_wins = states[:, 1, 1] < states[:, 0, 1]
-        quantity = 10 - states[:, :, 1].min(axis=1).values
-        leader_reward = firm1_wins * quantity * (states[:, 1, 1] - states[:, 0, 0])
+        firm1_wins = states["quoted_prices"][:, 1, 0] < states["quoted_prices"][:, 0, 0]
+        quantity = 10 - states["quoted_prices"][:, :, 0].min(axis=1).values
+        leader_reward = (
+            firm1_wins
+            * quantity
+            * (states["quoted_prices"][:, 1, 0] - states["vals"][:, 0, 0])
+        )
         follower_reward = (
             torch.logical_not(firm1_wins)
             * quantity
-            * (states[:, 0, 1] - states[:, 1, 0])
+            * (states["quoted_prices"][:, 0, 0] - states["vals"][:, 1, 0])
         )
         return {
             0: self.apply_cara_risk_aversion(leader_reward),
@@ -198,10 +215,16 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         :returns observations: Observations consisting of own valuation and
             other firm's quote.
         """
-        return {
-            agent_id: states[:, agent_id, :].clone()
-            for agent_id in range(self.num_agents)
-        }
+        obs_dict = {}
+        for agent_id in range(self.num_agents):
+            obs_dict[agent_id] = torch.cat(
+                [
+                    states["val_signals"][:, agent_id, :].clone(),
+                    states["quoted_prices"][:, agent_id, :].clone(),
+                ],
+                dim=-1,
+            )
+        return obs_dict
 
     def adapt_ma_actions_for_env(
         self,
@@ -230,7 +253,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         """Get the current stage from the state."""
         if states.shape[0] == 0:  # empty batch
             return -1
-        stage = 0 if states[0, 1, 1] == -1 else 1
+        stage = 0 if states["quoted_prices"][0, 1, 0] == -1 else 1
         return stage
 
     def provide_env_verifier_info(
@@ -417,8 +440,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
     def _plot_first_round_strategy(
         self, ax, config, leader_stddevs, states, leader_actions, agent_color
     ):
-        leader_vals = states[:, 0, 0]
-        sorted_leader_vals, increasing_order = leader_vals.sort(axis=0)
+        leader_val_signals = states["val_signals"][:, 0, 0]
+        sorted_leader_vals, increasing_order = leader_val_signals.sort(axis=0)
         sorted_leader_vals = sorted_leader_vals.detach().cpu().view(-1).numpy()
         sorted_leader_actions = (
             leader_actions[increasing_order].detach().cpu().view(-1).numpy()
@@ -474,7 +497,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
 
     def _plot_second_round_strategy(self, ax, config, states, follower_actions, color):
         algo_name = pl_ut.get_algo_name(1, config)
-        follower_vals, leader_actions = states[:, 1, 0], states[:, 1, 1]
+        follower_vals = states["val_signals"][:, 1, 0]
+        leader_actions = states["quoted_prices"][:, 1, 0]
 
         sorted_follower_vals, increasing_order = follower_vals.sort(axis=0)
         sorted_follower_vals = sorted_follower_vals.detach().cpu().view(-1).numpy()
