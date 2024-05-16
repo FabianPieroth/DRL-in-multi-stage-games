@@ -28,8 +28,6 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         self.num_stages = 2
         self.valuation_size = 1
         self.observation_size = config["observation_size"]
-        self.prior_low = config.sampler.prior_low
-        self.prior_high = config.sampler.prior_high
         self.sampler = self._init_sampler(config, device)
         self.relu_layer = torch.nn.ReLU()
 
@@ -47,9 +45,13 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             for agent_id in range(self.num_agents)
         }
 
-    def _get_agent_equilibrium_strategy(self, agent_id: int):
+    def get_prior_bounds(self, agent_id: int) -> Tuple[float]:
         val_low = self.sampler.support_bounds[agent_id, 0, 0].cpu().detach().item()
         val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
+        return val_low, val_high
+
+    def _get_agent_equilibrium_strategy(self, agent_id: int):
+        val_low, val_high = self.get_prior_bounds(agent_id)
         equilibrium_config = {
             "num_agents": self.config.num_agents,
             "num_stages": self.num_stages,
@@ -57,7 +59,14 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             "prior_high": val_high,
             "device": self.device,
         }
-        return BertrandCompetitionEquilibrium(agent_id, equilibrium_config)
+        if (
+            self.config.cara_risk_aversion == 0.0
+            and self.config.sampler.name == "bertrand"
+        ):
+            return BertrandCompetitionEquilibrium(agent_id, equilibrium_config)
+        else:
+            print("No analytical equilibrium available.")
+            return None
 
     def _init_sampler(self, config, device):
         return dap_ut.get_sampler(
@@ -279,8 +288,9 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             ]
         )
         if stage == 1 and agent_id == 1:
-            low = tuple([self.prior_low, 0.4])
-            high = tuple([self.prior_high, 1.1])
+            val_low, val_high = self.get_prior_bounds(agent_id)
+            low = tuple([val_low, 0.4])
+            high = tuple([val_high, 1.1])
         return {"low": low, "high": high}
 
     def clip_bids_to_positive(
@@ -426,7 +436,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         self._plot_first_round_equilibrium_strategy(ax, drawing)
         ax.set_xlabel("Firm 1's Costs")
         ax.set_ylabel("Firm 1's Quote")
-        ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
+        val_low, val_high = self.get_prior_bounds(agent_id=0)
+        ax.set_xlim([val_low - 0.1, val_high + 0.1])
         ax.legend()
 
     def _plot_first_round_equilibrium_strategy(
@@ -444,9 +455,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         )
 
     def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
-        val_xs = torch.linspace(
-            self.prior_low, self.prior_high, steps=precision, device=self.device
-        )
+        val_low, val_high = self.get_prior_bounds(agent_id=0)
+        val_xs = torch.linspace(val_low, val_high, steps=precision, device=self.device)
         opp_info = -1.0 * torch.ones_like(val_xs)
         sa_obs = torch.stack((val_xs, opp_info), dim=-1)
         bid_ys, _ = sa_learner.predict(sa_obs, deterministic=True)
@@ -522,7 +532,8 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         return follower_val, leader_action, follower_action
 
     def _get_meshgrid_for_second_round_equ(self, precision):
-        follower_vals = torch.linspace(self.prior_low, self.prior_high, steps=precision)
+        val_low, val_high = self.get_prior_bounds(agent_id=1)
+        follower_vals = torch.linspace(val_low, val_high, steps=precision)
         leader_actions = np.linspace(0.5359, 0.9999, num=precision)
         follower_grid_vals, leader_grid_actions = torch.meshgrid(
             follower_vals,
