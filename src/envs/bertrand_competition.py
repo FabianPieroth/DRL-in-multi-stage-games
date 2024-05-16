@@ -28,6 +28,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         self.num_stages = 2
         self.valuation_size = 1
         self.observation_size = config["observation_size"]
+        self.cara_risk_aversion = config.cara_risk_aversion
         self.sampler = self._init_sampler(config, device)
         self.relu_layer = torch.nn.ReLU()
 
@@ -59,10 +60,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             "prior_high": val_high,
             "device": self.device,
         }
-        if (
-            self.config.cara_risk_aversion == 0.0
-            and self.config.sampler.name == "bertrand"
-        ):
+        if self.cara_risk_aversion == 0.0 and self.config.sampler.name == "bertrand":
             return BertrandCompetitionEquilibrium(agent_id, equilibrium_config)
         else:
             print("No analytical equilibrium available.")
@@ -174,12 +172,23 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         """Computes the rewards for the played competition."""
         firm1_wins = states[:, 1, 1] < states[:, 0, 1]
         quantity = 10 - states[:, :, 1].min(axis=1).values
-        return {
-            0: firm1_wins * quantity * (states[:, 1, 1] - states[:, 0, 0]),
-            1: torch.logical_not(firm1_wins)
+        leader_reward = firm1_wins * quantity * (states[:, 1, 1] - states[:, 0, 0])
+        follower_reward = (
+            torch.logical_not(firm1_wins)
             * quantity
-            * (states[:, 0, 1] - states[:, 1, 0]),
+            * (states[:, 0, 1] - states[:, 1, 0])
+        )
+        return {
+            0: self.apply_cara_risk_aversion(leader_reward),
+            1: self.apply_cara_risk_aversion(follower_reward),
         }
+
+    def apply_cara_risk_aversion(self, rewards: torch.Tensor) -> torch.Tensor:
+        if self.cara_risk_aversion != 0.0:
+            rewards = (
+                1.0 - torch.exp(-self.cara_risk_aversion * rewards)
+            ) / self.cara_risk_aversion
+        return rewards
 
     def get_observations(self, states: torch.Tensor) -> torch.Tensor:
         """Return the observations at the player at `player_position`.
@@ -443,16 +452,17 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
     def _plot_first_round_equilibrium_strategy(
         self, plot_axis, drawing, precision: int = 200
     ):
-        leader_vals, leader_actions = self._get_actions_and_grid_in_first_stage(
-            self.equilibrium_strategies[0], precision
-        )
-        plot_axis.plot(
-            leader_vals.squeeze().detach().cpu().numpy(),
-            leader_actions.squeeze().detach().cpu().numpy(),
-            linestyle="--",
-            color=drawing.get_color(),
-            label=f"Leader equ",
-        )
+        if self.equilibrium_strategies[0] is not None:
+            leader_vals, leader_actions = self._get_actions_and_grid_in_first_stage(
+                self.equilibrium_strategies[0], precision
+            )
+            plot_axis.plot(
+                leader_vals.squeeze().detach().cpu().numpy(),
+                leader_actions.squeeze().detach().cpu().numpy(),
+                linestyle="--",
+                color=drawing.get_color(),
+                label=f"Leader equ",
+            )
 
     def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
         val_low, val_high = self.get_prior_bounds(agent_id=0)
@@ -497,25 +507,26 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         ax.set_zlabel("F's Quote")
 
     def _plot_second_round_equ_strategy_surface(self, ax, plot_precision):
-        (
-            follower_val,
-            leader_action,
-            follower_action,
-        ) = self._get_actions_and_grid_in_second_stage(
-            self.equilibrium_strategies[1], plot_precision
-        )
-        surf = ax.plot_surface(
-            follower_val.cpu().numpy(),
-            leader_action.cpu().numpy(),
-            follower_action.cpu().numpy(),
-            alpha=0.2,
-            color="red",
-            edgecolor="black",
-        )
-        # ## due to bug in matplotlib ## #
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-        # ############################## #s
+        if self.equilibrium_strategies[1] is not None:
+            (
+                follower_val,
+                leader_action,
+                follower_action,
+            ) = self._get_actions_and_grid_in_second_stage(
+                self.equilibrium_strategies[1], plot_precision
+            )
+            surf = ax.plot_surface(
+                follower_val.cpu().numpy(),
+                leader_action.cpu().numpy(),
+                follower_action.cpu().numpy(),
+                alpha=0.2,
+                color="red",
+                edgecolor="black",
+            )
+            # ## due to bug in matplotlib ## #
+            surf._facecolors2d = surf._facecolor3d
+            surf._edgecolors2d = surf._edgecolor3d
+            # ############################## #s
 
     def _get_actions_and_grid_in_second_stage(self, sa_strategy, precision: int):
         follower_val, leader_action = self._get_meshgrid_for_second_round_equ(precision)
