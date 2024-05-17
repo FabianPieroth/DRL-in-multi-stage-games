@@ -455,6 +455,90 @@ def run_bertrand_competition_experiment():
     print("Done!")
 
 
+def run_bertrand_competition_risk_experiment():
+    environment = "bertrand_competition_risk"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 1
+    runs = 10
+    iteration_num = 10_000
+
+    algorithm_options = ["reinforce", "ppo"]
+    cara_risk_aversion_params = [0.5, 1.0, 2.0]
+    verifier_discretization = 128
+    options = product(algorithm_options, cara_risk_aversion_params)
+
+    for option in options:
+        algorithm, cara_risk_aversion = option
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={False}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"verifier.action_discretization={verifier_discretization}",
+                    f"verifier.obs_discretization={verifier_discretization}",
+                    f"rl_envs=bertrand_competition",
+                    f"rl_envs.cara_risk_aversion={cara_risk_aversion}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
+def run_bertrand_competition_interdependencies_experiment():
+    environment = "bertrand_competition_interdependencies"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 1
+    runs = 10
+    iteration_num = 10_000
+
+    algorithm_options = ["reinforce", "ppo"]
+    samplers = ["mineral_rights_common_value", "affiliated_uniform"]
+    verifier_discretization = 128
+    options = product(algorithm_options, samplers)
+
+    for option in options:
+        algorithm, sampler = option
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={False}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"verifier.action_discretization={verifier_discretization}",
+                    f"verifier.obs_discretization={verifier_discretization}",
+                    f"rl_envs=bertrand_competition",
+                    f"rl_envs/sampler={sampler}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
 if __name__ == "__main__":
     run_signaling_contest_risk_experiment()
     # run_signaling_contest_interdependencies_experiment()
@@ -465,4 +549,6 @@ if __name__ == "__main__":
     run_symmetric_budget_constraint_with_affiliation_experiments()
     run_sequential_sales_interdependent_plus_risk_experiment()
     run_signaling_contest_experiment()
-    run_bertrand_competition_experiment()"""
+    run_bertrand_competition_experiment()
+    run_bertrand_competition_risk_experiment()
+    run_bertrand_competition_interdependencies_experiment()"""
