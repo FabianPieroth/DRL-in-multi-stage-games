@@ -1,9 +1,12 @@
 name: "signaling_contest"
-all_information_cases: ["true_valuations", "winning_bids"]
-information_case: "true_valuations"
+all_information_cases: ["winners_signal", "winning_bids"]
+information_case: "winners_signal"
 sample_tullock_allocations: false
-prior_bounds: [1.0, 1.5]
+cara_risk_aversion: 0.0
 num_agents: 4
 valuation_size: 1
 impact_factor: 1.0
 use_valuation: true
+defaults:
+  - sampler: symmetric_uniform
+  - optional sampler/non_default: ${rl_envs/sampler}_for_${rl_envs}

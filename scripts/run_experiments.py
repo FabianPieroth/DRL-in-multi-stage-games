@@ -217,7 +217,7 @@ def run_signaling_contest_experiment():
     iteration_num = 10_000
     policy_sharing = True
 
-    information_cases = ["true_valuations", "winning_bids"]
+    information_cases = ["winners_signal", "winning_bids"]
     algorithms = ["reinforce", "ppo"]
     options = product(algorithms, information_cases)
     log_std_init = -3.0
@@ -243,6 +243,170 @@ def run_signaling_contest_experiment():
                     f"verify_br={True}",
                     f"rl_envs=signaling_contest",
                     f"rl_envs.information_case={information_case}",
+                    f"policy.log_std_init={log_std_init}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
+def run_signaling_contest_risk_experiment():
+    environment = "signaling_contest_risk"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 1
+    runs = 1
+    iteration_num = 10_000
+    policy_sharing = True
+
+    information_cases = ["winners_signal", "winning_bids"]
+    algorithms = ["ppo"]
+    cara_risk_aversion_params = [0.5, 1.0, 2.0]
+    learning_rate = 6e-8
+    log_std_init = -3.0
+    gae = 0.99
+    options = product(algorithms, information_cases, cara_risk_aversion_params)
+
+    for option in options:
+        algorithm, information_case, cara_risk_aversion = option
+        if algorithm == "reinforce":
+            log_std_init = -2.0
+        if algorithm == "ppo":
+            log_std_init = -2.0
+            learning_rate = 6e-6
+
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={policy_sharing}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"algorithm_configs.ppo.learning_rate={learning_rate}",
+                    f"algorithm_configs.ppo.gae_lambda={gae}",
+                    f"rl_envs=signaling_contest",
+                    f"rl_envs.information_case={information_case}",
+                    f"rl_envs.cara_risk_aversion={cara_risk_aversion}",
+                    f"policy.log_std_init={log_std_init}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
+def run_signaling_contest_interdependencies_experiment():
+    environment = "signaling_contest_interdependencies"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 2
+    runs = 10
+    iteration_num = 10_000
+    policy_sharing = True
+
+    information_cases = ["winners_signal"]
+    algorithms = ["ppo"]
+    samplers = ["affiliated_uniform"]
+    learning_rate = 6e-8
+    log_std_init = -3.0
+    gae = 0.99
+    options = product(algorithms, information_cases, samplers)
+
+    for option in options:
+        algorithm, information_case, sampler = option
+
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={policy_sharing}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"algorithm_configs.ppo.learning_rate={learning_rate}",
+                    f"algorithm_configs.ppo.gae_lambda={gae}",
+                    f"rl_envs=signaling_contest",
+                    f"rl_envs.information_case={information_case}",
+                    f"rl_envs/sampler={sampler}",
+                    f"policy.log_std_init={log_std_init}",
+                ]
+            )
+
+            # Set up env and learning
+            coord_ut.start_ma_learning(config)
+
+    print("Done!")
+
+
+def run_signaling_contest_asymmetries_experiment():
+    environment = "signaling_contest_asymmetries_higher_val"
+    log_path = f"{LOG_PATH}/{environment}_experiment/"
+
+    device = 3
+    runs = 2
+    iteration_num = 10_000
+    policy_sharing = False
+
+    information_cases = ["winners_signal"]
+    algorithms = ["reinforce", "ppo"]
+    samplers = ["asymmetric_uniform"]
+    options = product(algorithms, information_cases, samplers)
+    log_std_init = -3.0
+    gae = 0.95
+
+    for option in options:
+        algorithm, information_case, sampler = option
+        if algorithm == "reinforce" and information_case == "winning_bids":
+            log_std_init = -3.0
+            lr = 6e-8
+        elif algorithm == "reinforce" and information_case == "winners_signal":
+            log_std_init = -3.0
+            lr = 6e-8
+        elif algorithm == "ppo" and information_case == "winning_bids":
+            log_std_init = -2.0
+            lr = 8e-6
+        elif algorithm == "ppo" and information_case == "winners_signal":
+            log_std_init = -3.0
+            gae = 0.99
+            lr = 8e-6
+
+        for i in range(runs):
+            print("=============\nStart new run\n-------------")
+
+            # Configure and set hyperparameters
+            config = io_ut.get_config(
+                overrides=[
+                    f"device={device}",
+                    f"seed={i}",
+                    f"algorithms=[{algorithm}]",
+                    f"iteration_num={iteration_num}",
+                    f"eval_freq={iteration_num}",
+                    f"policy_sharing={policy_sharing}",
+                    f"log_path={log_path}",
+                    f"verify_br={True}",
+                    f"rl_envs=signaling_contest",
+                    f"algorithm_configs.{algorithm}.learning_rate={lr}",
+                    f"algorithm_configs.ppo.gae_lambda={gae}",
+                    f"rl_envs.information_case={information_case}",
+                    f"rl_envs/sampler={sampler}",
                     f"policy.log_std_init={log_std_init}",
                 ]
             )
@@ -376,11 +540,15 @@ def run_bertrand_competition_interdependencies_experiment():
 
 
 if __name__ == "__main__":
-    run_sequential_sales_experiment()
+    run_signaling_contest_risk_experiment()
+    # run_signaling_contest_interdependencies_experiment()
+    run_signaling_contest_asymmetries_experiment()
+
+    """run_sequential_sales_experiment()
     run_asymmetric_second_price_sequential_sales_experiment()
     run_symmetric_budget_constraint_with_affiliation_experiments()
     run_sequential_sales_interdependent_plus_risk_experiment()
     run_signaling_contest_experiment()
     run_bertrand_competition_experiment()
     run_bertrand_competition_risk_experiment()
-    run_bertrand_competition_interdependencies_experiment()
+    run_bertrand_competition_interdependencies_experiment()"""

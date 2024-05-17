@@ -6,6 +6,7 @@ from typing import Callable, Dict, List, Tuple, Union
 
 import torch
 from gym.spaces.discrete import Discrete
+from tensordict import TensorDict
 
 import src.utils.evaluation_utils as ev_ut
 import src.utils.io_utils as io_ut
@@ -389,7 +390,9 @@ class BFVerifier:
             )
         return opp_actions
 
-    def _get_sim_size_states(self, states: torch.Tensor) -> torch.Tensor:
+    def _get_sim_size_states(
+        self, states: Union[torch.Tensor, TensorDict]
+    ) -> torch.Tensor:
         """Repeat states for each possible action taken.
         Args:
             states (torch.Tensor): shape: (sim_size, )
@@ -397,9 +400,18 @@ class BFVerifier:
         Returns:
             torch.Tensor: shape: (sim_size, action_discretization)
         """
-        sim_size_states = th_ut.repeat_tensor_along_new_axis(
-            data=states, pos=[1], repeats=[self.action_discretization]
-        )
+        if isinstance(states, TensorDict):
+            sim_size_state_dict = {
+                key: self._get_sim_size_states(value) for key, value in states.items()
+            }
+            sim_size_states = TensorDict(
+                sim_size_state_dict,
+                batch_size=states.batch_size + (self.action_discretization,),
+            )
+        else:
+            sim_size_states = th_ut.repeat_tensor_along_new_axis(
+                data=states, pos=[1], repeats=[self.action_discretization]
+            )
 
         return sim_size_states
 

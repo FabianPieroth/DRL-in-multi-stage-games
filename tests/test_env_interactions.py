@@ -108,18 +108,34 @@ def test_learning_sequential_auctions(
 
 ids_sign_contest, testdata_sign_contest = zip(
     *[
-        ["no-signaling-small", ("true_valuations", 4)],
-        ["no-signaling-large", ("true_valuations", 8)],
-        ["signaling-small", ("winning_bids", 4)],
-        ["signaling-large", ("winning_bids", 8)],
+        ["no-signaling-small", ("winners_signal", "symmetric_uniform", 4)],
+        ["no-signaling-large", ("winners_signal", "symmetric_uniform", 8)],
+        ["signaling-small", ("winning_bids", "symmetric_uniform", 4)],
+        ["signaling-large", ("winning_bids", "symmetric_uniform", 8)],
+        [
+            "no-signaling-mineral_rights",
+            ("winners_signal", "mineral_rights_common_value", 4),
+        ],
+        [
+            "signaling-mineral_rights",
+            ("winning_bids", "mineral_rights_common_value", 4),
+        ],
+        [
+            "no-signaling-affiliated_uniform",
+            ("winners_signal", "affiliated_uniform", 4),
+        ],
+        [
+            "signaling-small-affiliated_uniform",
+            ("winning_bids", "affiliated_uniform", 4),
+        ],
     ]
 )
 
 
 @pytest.mark.parametrize(
-    "information_case, num_agents", testdata_sign_contest, ids=ids_sign_contest
+    "information_case, sampler, num_agents", testdata_sign_contest, ids=ids_sign_contest
 )
-def test_learning_signaling_contest(information_case, num_agents):
+def test_learning_signaling_contest(information_case, sampler, num_agents):
     """Runs multi agent learning in signaling contest for specified parameters."""
     io_ut.set_global_seed(0)
     hydra.core.global_hydra.GlobalHydra().clear()
@@ -135,6 +151,7 @@ def test_learning_signaling_contest(information_case, num_agents):
         f"rl_envs=signaling_contest",
         f"rl_envs.num_agents={num_agents}",
         f"rl_envs.information_case={information_case}",
+        f"rl_envs/sampler={sampler}",
     ]
     config = io_ut.get_config(overrides=overrides)
 
