@@ -6,7 +6,7 @@ available_mechanism_types: ["first", "second"]
 mechanism_type: "first"
 reduced_observation_space: true
 collapse_symmetric_opponents: false
-risk_aversion: 1.0
+cara_risk_aversion: 0.0
 prettify_plots: true
 budgets: null # Can be null, float value, list of floats
 defaults:

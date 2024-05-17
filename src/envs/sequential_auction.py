@@ -44,7 +44,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         self.state_signal_start_index = (
             self.valuations_start_index + self.valuation_size
         )
-        self.risk_aversion = config.risk_aversion
+        self.cara_risk_aversion = config.cara_risk_aversion
         self.budget_is_limited, self.budgets = self._get_bugdets(
             config["budgets"], config["num_agents"]
         )
@@ -83,25 +83,16 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
             "dummy_price_key": SequentialAuction.DUMMY_PRICE_KEY,
             "valuations_start_index": self.valuations_start_index,
             "valuation_size": self.valuation_size,
-            "risk_aversion": self.risk_aversion,
         }
         if (
             self.config.mechanism_type == "first"
-            and self.risk_aversion == 1.0
+            and self.cara_risk_aversion == 0.0
             and self.config.sampler.name == "symmetric_uniform"
         ):
             equilibrium_config["equ_type"] = "fpsb_symmetric_uniform"
         elif (
-            self.config.mechanism_type == "first"
-            and self.num_stages == 1
-            and self.config.sampler.name == "symmetric_uniform"
-        ):
-            equilibrium_config[
-                "equ_type"
-            ] = "fpsb_symmetric_uniform_single_stage_risk_averse"
-        elif (
             self.config.mechanism_type in ["second", "vcg", "vickery"]
-            and self.risk_aversion == 1.0
+            and self.cara_risk_aversion == 0.0
             and self.config.sampler.name == "symmetric_uniform"
         ):
             # TODO: @Nils: Is the equilibrium in second price also for risk? I would have thought it only to work for risk-neutral
@@ -109,6 +100,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         elif (
             self.config.mechanism_type in ["second", "vcg", "vickery"]
             and self.num_stages == 1
+            and self.cara_risk_aversion == 0.0
             and self.config.num_agents == 3
             and self.config.sampler.name == "mineral_rights_common_value"
         ):
@@ -116,6 +108,7 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         elif (
             self.config.mechanism_type == "first"
             and self.num_stages == 1
+            and self.cara_risk_aversion == 0.0
             and self.config.num_agents == 2
             and self.config.sampler.name == "affiliated_uniform"
         ):
@@ -441,12 +434,13 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
         ]
 
         # quasi-linear utility
-        payoff = valuations * allocations - payments
+        rewards = valuations * allocations - payments
 
         # Handle risk aversion and the case for negative utilities
-        rewards = (
-            payoff.relu() ** self.risk_aversion - (-payoff).relu() ** self.risk_aversion
-        )
+        if self.cara_risk_aversion != 0.0:
+            rewards = (
+                1.0 - torch.exp(-self.cara_risk_aversion * rewards)
+            ) / self.cara_risk_aversion
 
         return rewards.view(-1)
 
