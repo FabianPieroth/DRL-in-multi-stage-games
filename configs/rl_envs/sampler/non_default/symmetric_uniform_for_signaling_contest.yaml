@@ -1,0 +1,6 @@
+# @package _global_
+
+rl_envs:
+  sampler:
+    prior_low: 1.0
+    prior_high: 1.5

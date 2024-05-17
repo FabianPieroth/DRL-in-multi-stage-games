@@ -2,20 +2,20 @@
 Simple signaling contest with two stages and four player.
 """
 import time
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym import spaces
+from tensordict import TensorDict
 
+import src.utils.distributions_and_priors as dap_ut
 import src.utils.policy_utils as pl_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SignalingContestEquilibrium
 from src.envs.mechanisms import AllPayAuction, Mechanism, TullockContest
 from src.envs.torch_vec_env import BaseEnvForVec, VerifiableEnv
-from src.learners.utils import tensor_norm
 
 
 class SignalingContest(BaseEnvForVec, VerifiableEnv):
@@ -42,8 +42,6 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def __init__(self, config: Dict, device: str = "cpu"):
         self.valuation_size = config["valuation_size"]
-        self.prior_low, self.prior_high = config["prior_bounds"]
-        self.ACTION_LOWER_BOUND, self.ACTION_UPPER_BOUND = 0, 2 * self.prior_high
         self.num_stages = 2
         # obs indices
         self.group_split_index = int(config["num_agents"] / 2)
@@ -52,10 +50,25 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.payments_start_index = self.valuation_size + self.allocation_index + 1
         self.relu_layer = torch.nn.ReLU()
 
+        self.cara_risk_aversion = config.cara_risk_aversion
+        self.sampler = self._init_sampler(config, device)
+        self.prior_low = self.sampler.support_bounds[:, :, 0].squeeze()
+        self.prior_high = self.sampler.support_bounds[:, :, 1].squeeze()
+        self.ACTION_UPPER_BOUNDS = 2 * self.prior_high
         super().__init__(config, device)
 
         self.all_pay_mechanism = self._init_all_pay_mechanism()
         self.tullock_contest_mechanism = self._init_tullock_contest_mechanism()
+
+    def _init_sampler(self, config, device):
+        num_agents = config.num_agents
+        return dap_ut.get_sampler(
+            num_agents,
+            self.valuation_size,
+            self.valuation_size,
+            config.sampler,
+            default_device=device,
+        )
 
     def _init_all_pay_mechanism(self) -> Mechanism:
         return AllPayAuction(self.device)
@@ -67,8 +80,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
     def _get_equilibrium_strategies(self) -> Dict[int, Optional[Callable]]:
         equilibrium_config = {
             "device": self.device,
-            "prior_low": self.prior_low,
-            "prior_high": self.prior_high,
+            "prior_low": self.prior_low[0].item(),
+            "prior_high": self.prior_high[0].item(),
             "num_agents": self.num_agents,
             "information_case": self.config["information_case"],
             "stage_index": self.stage_index,
@@ -76,31 +89,17 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             "valuation_size": self.valuation_size,
             "payments_start_index": self.payments_start_index,
         }
-        return {
-            agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
-            for agent_id in range(self.num_agents)
-        }
-
-    def _is_equilibrium_ensured_to_exist(self):
-        if not (self.is_support_ratio_bounded() and self.does_min_density_bound_hold()):
-            warnings.warn(
-                "The sufficient conditions for a separating equilibrium do not hold! An equilibrium is not ensured to exist!"
-            )
-
-    def is_support_ratio_bounded(self) -> bool:
-        ratio_support = self.prior_high / self.prior_low
-        return 1.0 < ratio_support and ratio_support < 4.0 ** (1 / 3)
-
-    def does_min_density_bound_hold(self) -> bool:
-        min_density = 1.0 / (self.prior_high - self.prior_low)
-        ratio_support = self.prior_high / self.prior_low
-        density_factor = (self.num_agents / 2 - 1) * min_density * self.prior_low
-        ratio_factor = max(
-            (ratio_support - 1) * ratio_support**4 / 2,
-            (ratio_support**2 - ratio_support)
-            / (8.0 - 4.0 * ratio_support ** (3 / 2)),
-        )
-        return ratio_factor < density_factor
+        if (
+            self.sampler.sampler_config.name == "symmetric_uniform"
+            and self.cara_risk_aversion == 0.0
+        ):
+            return {
+                agent_id: SignalingContestEquilibrium(agent_id, equilibrium_config)
+                for agent_id in range(self.num_agents)
+            }
+        else:
+            print("No analytical equilibrium available.")
+            return {agent_id: None for agent_id in range(self.num_agents)}
 
     def _get_num_agents(self) -> int:
         assert (
@@ -117,49 +116,84 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 - stage
                 - bid/valuation of winning opponent
         """
-        low = [self.prior_low] + [0.0] + [0.0] + [self.ACTION_LOWER_BOUND]
-        high = [self.prior_high] + [1.0] + [1.0] + [self.ACTION_UPPER_BOUND]
-        return {
-            agent_id: spaces.Box(low=np.float32(low), high=np.float32(high))
-            for agent_id in range(self.num_agents)
-        }
+        obs_space_dict = {}
+        for agent_id in range(self.num_agents):
+            low = [self.prior_low[agent_id].item()] + [0.0] + [0.0] + [0.0]
+            high = (
+                [self.prior_high[agent_id].item()]
+                + [1.0]
+                + [1.0]
+                + [max(self.ACTION_UPPER_BOUNDS).item()]
+            )
+            obs_space_dict[agent_id] = spaces.Box(
+                low=np.float32(low), high=np.float32(high)
+            )
+        return obs_space_dict
 
     def _init_action_spaces(self):
         """Returns dict with agent - action space pairs.
         Returns:
             Dict[int, Space]: agent_id: action space
         """
-        sa_action_space = spaces.Box(
-            low=np.float32([self.ACTION_LOWER_BOUND]),
-            high=np.float32([self.ACTION_UPPER_BOUND]),
-        )
-        return {agent_id: sa_action_space for agent_id in range(self.num_agents)}
+        action_space_dict = {}
+        for agent_id in range(self.num_agents):
+            action_space_dict[agent_id] = spaces.Box(
+                low=np.float32([0.0]),
+                high=np.float32([self.ACTION_UPPER_BOUNDS[agent_id].item()]),
+            )
+        return action_space_dict
 
     def to(self, device) -> Any:
         """Set device"""
         self.device = device
         return self
 
-    def sample_new_states(self, n: int) -> Any:
+    def sample_new_states(self, n: int) -> TensorDict:
         """Samples number n initial states.
-        [n, valuation + allocation + stage + winning bids + winning valuations]
+        [n, num_agents, valuation + valuation_signal + allocation + stage + winning bids + winning valuations/signals/bids]
         """
-        states = torch.zeros(
-            (n, self.num_agents, self.valuation_size + 1 + 1 + 2), device=self.device
+        # draw valuations
+        valuations, val_signals = self.sampler.draw_profiles(n)
+        states = TensorDict(
+            {
+                "vals": valuations,
+                "val_signals": val_signals,
+                "allocation": torch.zeros((n, self.num_agents, 1), device=self.device),
+                "stage": torch.zeros((n, self.num_agents, 1), device=self.device),
+                "winning_bids": torch.ones((n, self.num_agents, 1), device=self.device)
+                * SignalingContest.DUMMY_PRICE_KEY,
+                "winners_info": torch.ones((n, self.num_agents, 1), device=self.device)
+                * SignalingContest.DUMMY_PRICE_KEY,
+            },
+            batch_size=n,
+            device=self.device,
         )
-
-        # ipv symmetric uniform priors
-        states[:, :, : self.valuation_size].uniform_(self.prior_low, self.prior_high)
-
-        # no allocations
-        states[:, :, self.valuation_size] = 0.0
-        # First stage starting
-        states[:, :, self.stage_index] = 0.0
-
-        # dummy prices and winning valuations
-        states[:, :, self.payments_start_index :] = SignalingContest.DUMMY_PRICE_KEY
-
         return states
+
+    def states_dict_to_old_tensor_format(
+        self, states: TensorDict, signals_instead_of_vals=False
+    ) -> torch.Tensor:
+        """We adapt the information of the env by allowing for the agents to
+        receive a signal about their valuation instead of their true valuation.
+        This increases the state size.
+        This method turns the state into the old format so that other methods
+        can stay identical.
+
+        Returns:
+            torch.Tensor: [n, num_agents,
+            valuation/signal + allocation + stage + winning bids + winning valuations]
+        """
+        signal_type = "vals"
+        if signals_instead_of_vals:
+            signal_type = "val_signals"
+        keys_to_cat = (
+            signal_type,
+            "allocation",
+            "stage",
+            "winning_bids",
+            "winners_info",
+        )
+        return torch.cat([states[key] for key in keys_to_cat], dim=-1)
 
     def adapt_ma_actions_for_env(
         self,
@@ -206,24 +240,35 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         actions = self.set_losers_bids_to_zero(cur_states, actions)
         action_profile = torch.stack(tuple(actions.values()), dim=1)
         new_states = cur_states.detach().clone()
+
+        cur_states_old_format = self.states_dict_to_old_tensor_format(
+            cur_states, signals_instead_of_vals=True
+        )
+
         cur_stage = self._state2stage(cur_states)
 
         if cur_stage == 1:
             winning_info, allocations, payments = self._get_first_round_info(
-                cur_states, action_profile
+                cur_states_old_format, action_profile
             )
             # store winning_info to new_states
-            new_states[:, :, self.allocation_index] = winning_info[:, :, 0]
-            new_states[:, :, self.stage_index] += 1.0
-            new_states[:, :, self.payments_start_index :] = winning_info[:, :, 1:]
-            dones = torch.zeros((cur_states.shape[0]), device=cur_states.device).bool()
+            new_states["allocation"][:, :, 0] = winning_info[:, :, 0]
+            new_states["stage"] += 1.0
+            new_states["winning_bids"][:, :, 0] = winning_info[:, :, 1]
+            new_states["winners_info"][:, :, 0] = winning_info[:, :, 2]
+            dones = torch.zeros(
+                (cur_states.batch_size), device=cur_states.device
+            ).bool()
         elif cur_stage == 2:
-            allocations_prev_round = cur_states[
-                :, :, self.allocation_index : self.allocation_index + 1
-            ]
+            new_states["stage"] += 1.0
+            allocations_prev_round = cur_states["allocation"]
             aggregated_allocations = torch.sum(allocations_prev_round.squeeze(), axis=1)
             allocations = torch.zeros(
-                (cur_states.shape[0], cur_states.shape[1], self.valuation_size),
+                (
+                    cur_states.batch_size[0],
+                    allocations_prev_round.shape[1],
+                    self.valuation_size,
+                ),
                 device=self.device,
             )
             payments = action_profile
@@ -252,7 +297,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             allocations[aggregated_allocations == 2] = allocations[
                 aggregated_allocations == 2
             ].scatter_(1, first_round_winner_indices, sec_round_allocations)
-            dones = torch.ones((cur_states.shape[0]), device=cur_states.device).bool()
+            dones = torch.ones(cur_states.batch_size, device=cur_states.device).bool()
         else:
             raise ValueError("The setting only considers two stages at the moment!")
 
@@ -352,10 +397,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             for obs_index in obs_indices
         ]
         if stage == 1:
-            if self.config["information_case"] == "true_valuations":
-                low[-1], high[-1] = self.prior_low, self.prior_high
+            if self.config["information_case"] == "winners_signal":
+                low[-1], high[-1] = (
+                    min(self.prior_low).item(),
+                    max(self.prior_high).item(),
+                )
             elif self.config["information_case"] == "winning_bids":
-                low[-1], high[-1] = 0.0, 0.5 * self.prior_high
+                low[-1], high[-1] = 0.0, 0.5 * max(self.prior_high).item()
             else:
                 raise ValueError("Unknown information case!")
         return {"low": tuple(low), "high": tuple(high)}
@@ -428,9 +476,15 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         if stage == 1:
             rewards = -sa_payments
         else:
-            sa_valuations = states[:, agent_id, : self.valuation_size].squeeze()
+            sa_valuations = states["vals"][:, agent_id, :].squeeze()
             sa_allocations = allocations[:, agent_id, :].squeeze()
             rewards = sa_valuations * sa_allocations - sa_payments
+
+        # We implement the CARA utility function for risk-averse bidders
+        if self.cara_risk_aversion != 0.0:
+            rewards = (
+                1.0 - torch.exp(-self.cara_risk_aversion * rewards)
+            ) / self.cara_risk_aversion
         return rewards
 
     def get_observations(
@@ -439,7 +493,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         player_positions: List = None,
         information_case: str = None,
     ) -> torch.Tensor:
-        """Return the observations at the player at `player_position`.
+        """Return the observations to the player at `player_position`.
 
         :param states: The current states of shape (num_env, num_agents,
             state_dim).
@@ -448,7 +502,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         :returns observations: Observations of shape (num_env, obs_private_dim
             + obs_public_dim)
         """
-        batch_size = states.shape[0]
+        states_old_format = self.states_dict_to_old_tensor_format(
+            states, signals_instead_of_vals=True
+        )
         player_positions = (
             list(range(self.num_agents))
             if player_positions is None
@@ -465,16 +521,16 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             slicing_indices = self._get_obs_slicing_indices(information_case)
             # shape = (batch_size, valuation_size + allocation_index + 1 + 1)
             observation_dict[agent_id] = (
-                states[:, agent_id, :]
+                states_old_format[:, agent_id, :]
                 .index_select(1, slicing_indices)
-                .to(device=states.device)
+                .to(device=states_old_format.device)
                 .detach()
             )
 
         return observation_dict
 
     def _get_obs_slicing_indices(self, information_case: str):
-        if information_case == "true_valuations":
+        if information_case == "winners_signal":
             slice_indices = [
                 0,
                 self.valuation_size,
@@ -498,19 +554,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def _state2stage(self, states):
         """Get the current stage from the state."""
-        if states.shape[0] == 0:  # empty batch
+        if states["stage"].shape[0] == 0:  # empty batch
             stage = -1
-        elif states[0, 0, self.stage_index].detach().item() == 0:
-            stage = 1
-        else:
-            stage = 2
-        return stage
-
-    def _obs2stage(self, obs):
-        """Get the current stage from the observation."""
-        if obs.shape[0] == 0:  # empty batch
-            stage = -1
-        elif obs[0, self.stage_index].detach().item() == 0:
+        elif states["stage"][0, 0, 0].detach().item() == 0:
             stage = 1
         else:
             stage = 2
@@ -524,8 +570,8 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         """
         lost_already_dict = {}
         for agent_id in range(self.num_agents):
-            allocation_true = state[:, agent_id, self.allocation_index] == 0
-            could_have_lost = state[:, agent_id, self.stage_index] > 0
+            allocation_true = state["allocation"][:, agent_id, 0] == 0
+            could_have_lost = state["stage"][:, agent_id, 0] > 0
             lost_already_dict[agent_id] = torch.logical_and(
                 allocation_true, could_have_lost
             )
@@ -714,10 +760,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             surf._facecolors2d = surf._facecolor3d
             surf._edgecolors2d = surf._edgecolor3d
             # ############################## #
-        if agent_id == 0:
+        if agent_id == 0 and self.equilibrium_strategies[agent_id]:
             self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
 
-        if self.config["information_case"] == "true_valuations":
+        if self.config["information_case"] == "winners_signal":
             y_label = "opponent $v$"
         elif self.config["information_case"] == "winning_bids":
             y_label = "opponent $b$"
@@ -768,9 +814,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         return sa_obs
 
     def _get_meshgrid_for_second_round_equ(self, precision):
-        val_xs = torch.linspace(self.prior_low, self.prior_high, steps=precision)
-        if self.config["information_case"] == "true_valuations":
-            info_ys = torch.linspace(self.prior_low, self.prior_high, steps=precision)
+        val_xs = torch.linspace(
+            min(self.prior_low).item(), max(self.prior_high).item(), steps=precision
+        )
+        if self.config["information_case"] == "winners_signal":
+            info_ys = torch.linspace(
+                min(self.prior_low).item(), max(self.prior_high).item(), steps=precision
+            )
             val_x, opp_info = torch.meshgrid(val_xs, info_ys, indexing="xy")
         elif self.config["information_case"] == "winning_bids":
             info_ys = np.linspace(0.000001, 0.297682, num=precision)
@@ -814,12 +864,15 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             alpha=0.2,
             color=drawing.get_color(),
         )
-        self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
-        lin = np.linspace(0, self.prior_high, 2)
+        if self.equilibrium_strategies[agent_id]:
+            self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
+        lin = np.linspace(0, max(self.prior_high).item(), 2)
         ax.plot(lin, lin, "--", color="grey")
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
-        ax.set_xlim([self.prior_low - 0.1, self.prior_high + 0.1])
+        ax.set_xlim(
+            [min(self.prior_low).item() - 0.1, max(self.prior_high).item() + 0.1]
+        )
 
     def _plot_first_round_equilibrium_strategy(
         self, ax, agent_id: int, drawing, precision: int = 200
@@ -837,7 +890,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
         val_xs = torch.linspace(
-            self.prior_low, self.prior_high, steps=precision, device=self.device
+            self.prior_low[sa_learner.agent_id].item(),
+            self.prior_high[sa_learner.agent_id].item(),
+            steps=precision,
+            device=self.device,
         )
         opp_info = -1.0 * torch.ones_like(val_xs)
         sa_obs = self.get_obs_from_val_and_opp_info(
@@ -850,20 +906,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self, br_strategies: Dict[int, Dict[int, Callable]]
     ) -> Optional[plt.Figure]:
         num_vals = 128
-        valuations = torch.linspace(
-            self.prior_low, self.prior_high, num_vals, device=self.device
-        )
-        agent_obs = torch.cat(
-            (valuations.unsqueeze(-1), torch.zeros((num_vals, 3), device=self.device)),
-            dim=1,
-        )
         plt.style.use("ggplot")
         fig = plt.figure(figsize=(4.5, 4.5), clear=True)
         ax = fig.add_subplot(111)
         ax.set_xlabel("valuation $v$")
         ax.set_ylabel("bid $b$")
-        ax.set_xlim([self.prior_low, self.prior_high])
-        ax.set_ylim([-0.05, self.prior_high * 1 / 3])
+        ax.set_xlim([min(self.prior_low).item(), max(self.prior_high).item()])
+        ax.set_ylim([-0.05, max(self.prior_high).item() * 1 / 3])
 
         colors = [
             (0 / 255.0, 150 / 255.0, 196 / 255.0),
@@ -874,6 +923,19 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         line_types = ["-", "--", "-.", ":"]
 
         for agent_id, agent_br in br_strategies.items():
+            valuations = torch.linspace(
+                self.prior_low[agent_id].item(),
+                self.prior_high[agent_id].item(),
+                num_vals,
+                device=self.device,
+            )
+            agent_obs = torch.cat(
+                (
+                    valuations.unsqueeze(-1),
+                    torch.zeros((num_vals, 3), device=self.device),
+                ),
+                dim=1,
+            )
             if agent_id > 3:
                 color = (0 / 255.0, 150 / 255.0, 196 / 255.0)
                 line_type = "-"
