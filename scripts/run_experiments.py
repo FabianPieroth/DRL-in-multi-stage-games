@@ -540,15 +540,16 @@ def run_bertrand_competition_interdependencies_experiment():
 
 
 if __name__ == "__main__":
-    run_signaling_contest_risk_experiment()
-    # run_signaling_contest_interdependencies_experiment()
-    run_signaling_contest_asymmetries_experiment()
-
-    """run_sequential_sales_experiment()
+    run_sequential_sales_experiment()
     run_asymmetric_second_price_sequential_sales_experiment()
     run_symmetric_budget_constraint_with_affiliation_experiments()
     run_sequential_sales_interdependent_plus_risk_experiment()
+
+    run_signaling_contest_risk_experiment()
+    run_signaling_contest_interdependencies_experiment()
+    run_signaling_contest_asymmetries_experiment()
     run_signaling_contest_experiment()
+
     run_bertrand_competition_experiment()
     run_bertrand_competition_risk_experiment()
-    run_bertrand_competition_interdependencies_experiment()"""
+    run_bertrand_competition_interdependencies_experiment()
