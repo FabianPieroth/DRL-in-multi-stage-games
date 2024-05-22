@@ -161,7 +161,7 @@ def run_sequential_sales_interdependent_plus_risk_experiment():
 
     num_stages_options = [2]
     algorithm_options = ["reinforce", "ppo"]
-    risk_aversion_options = [0.25, 0.5, 0.75]
+    cara_risk_aversion_options = [0.5, 1.0, 2.0]
 
     settings = [
         dict(
@@ -173,11 +173,11 @@ def run_sequential_sales_interdependent_plus_risk_experiment():
     ]
 
     options = product(
-        num_stages_options, algorithm_options, settings, risk_aversion_options
+        num_stages_options, algorithm_options, settings, cara_risk_aversion_options
     )
 
     for option in options:
-        num_stages, algorithm, setting, risk_aversion = option
+        num_stages, algorithm, setting, cara_risk_aversion = option
 
         for i in range(runs):
             print("=============\nStart new run\n-------------")
@@ -198,7 +198,7 @@ def run_sequential_sales_interdependent_plus_risk_experiment():
                     f"rl_envs.num_stages={num_stages}",
                     f"rl_envs.num_agents={setting['num_agents'] + (num_stages - 1)}",
                     f"rl_envs/sampler={setting['sampler_name']}",
-                    f"rl_envs.risk_aversion={risk_aversion}",
+                    f"rl_envs.cara_risk_aversion={cara_risk_aversion}",
                 ]
             )
 

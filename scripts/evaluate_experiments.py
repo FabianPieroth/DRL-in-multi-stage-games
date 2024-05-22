@@ -72,7 +72,7 @@ def evaluate_sequential_sales_interdependent_plus_risk_experiment():
     hyperparameters = [
         "rl_envs.mechanism_type",
         "rl_envs.sampler.name",
-        "rl_envs.risk_aversion",
+        "rl_envs.cara_risk_aversion",
     ]
     metrics = ["eval/estimated_utility_loss"]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics)
