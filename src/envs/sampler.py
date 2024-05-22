@@ -47,7 +47,10 @@ class ValuationObservationSampler(ABC):
         """Parses an integer batch_size_argument into a list. If none given,
         defaults to the list containing the default_batch_size of the instance.
         """
-        batch_sizes = batch_sizes_argument or self.default_batch_size
+        if batch_sizes_argument is not None:
+            batch_sizes = batch_sizes_argument
+        else:
+            batch_sizes = self.default_batch_size
         if isinstance(batch_sizes, int):
             batch_sizes = [batch_sizes]
         return batch_sizes
@@ -107,13 +110,148 @@ class PVSampler(ValuationObservationSampler, ABC):
         """Returns a batch of profiles (which are both valuations and observations)"""
 
     def draw_profiles(
-        self, batch_sizes: int or List[int] = None, device: Device = None
+        self, batch_sizes: Union[int, List[int]] = None, device: Device = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
         # In the PV setting, valuations and observations are identical.
         profile = self._sample(batch_sizes, device)
         return profile, profile
+
+
+class CompositeValuationObservationSampler(ValuationObservationSampler):
+    """A class representing composite prior distributions that are
+    made up of several groups of bidders, each of which can be represented by
+    an atomic ValuationObservationSampler, and which are independent between-group
+    (but not necessarily within-group).
+
+    Limitation: The current implementation requires that all players nevertheless
+    have the same valuation_size.
+    """
+
+    def __init__(
+        self,
+        num_agents: int,
+        valuation_size: int,
+        observation_size: int,
+        subgroup_samplers: List[ValuationObservationSampler],
+        default_batch_size=1,
+        default_device=None,
+    ):
+        self.n_groups = len(subgroup_samplers)
+        self.group_sizes = [sampler.num_agents for sampler in subgroup_samplers]
+        assert (
+            sum(self.group_sizes) == num_agents
+        ), "number of players in subgroup don't match total n_players."
+        for sampler in subgroup_samplers:
+            assert (
+                sampler.valuation_size == valuation_size
+            ), "incorrect valuation size in subgroup sampler."
+            assert (
+                sampler.observation_size == observation_size
+            ), "incorrect observation size in subgroup sampler"
+
+        self.group_samplers = subgroup_samplers
+        self.group_indices: List[torch.IntTensor] = [
+            torch.tensor(
+                range(sum(self.group_sizes[:i]), sum(self.group_sizes[: i + 1]))
+            )
+            for i in range(self.n_groups)
+        ]
+
+        # concatenate bounds in player dimension
+        support_bounds = torch.vstack([s.support_bounds for s in self.group_samplers])
+
+        super().__init__(
+            num_agents,
+            valuation_size,
+            observation_size,
+            support_bounds,
+            default_batch_size,
+            default_device,
+        )
+
+    def draw_profiles(
+        self, batch_sizes: Union[int, List[int]] = None, device=None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Draws and returns a batch of valuation and observation profiles.
+
+        Kwargs:
+            batch_sizes (optional): List[int], the batch_size to draw. If none provided,
+            `self.default_batch_size` will be used.
+            device (optional): torch.cuda.Device, the device to draw profiles on
+
+        Returns:
+            valuations: torch.Tensor (*batch_sizes x n_players x valuation_size): a valuation profile
+            observations: torch.Tensor (*batch_sizes x n_players x observation_size): an observation profile
+        """
+        device = device or self.default_device
+        batch_sizes: List[int] = self._parse_batch_sizes_arg(batch_sizes)
+
+        v = torch.empty(
+            [*batch_sizes, self.num_agents, self.valuation_size], device=device
+        )
+        o = torch.empty(
+            [*batch_sizes, self.num_agents, self.observation_size], device=device
+        )
+
+        # Draw independently for each group.
+
+        for g in range(self.n_groups):
+            # player indices in the group
+            players = self.group_indices[g]
+            v[..., players, :], o[..., players, :] = self.group_samplers[
+                g
+            ].draw_profiles(batch_sizes, device)
+
+        return v, o
+
+    def _init_support_bounds(self) -> torch.FloatTensor:
+        return torch.vstack([s.support_bounds for s in self.group_samplers])
+
+    def generate_valuation_grid(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs["player_position"] == pos:
+                    kwargs["player_position"] = pos - sum(
+                        self.group_sizes[:g]
+                    )  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_valuation_grid(**kwargs)
+
+    def generate_reduced_grid(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs["player_position"] == pos:
+                    kwargs["player_position"] = pos - sum(
+                        self.group_sizes[:g]
+                    )  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_reduced_grid(**kwargs)
+
+    def generate_action_grid(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs["player_position"] == pos:
+                    kwargs["player_position"] = pos - sum(
+                        self.group_sizes[:g]
+                    )  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_action_grid(**kwargs)
+
+    def generate_cell_partition(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs["player_position"] == pos:
+                    kwargs["player_position"] = pos - sum(
+                        self.group_sizes[:g]
+                    )  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_cell_partition(**kwargs)
 
 
 class SymmetricIPVSampler(PVSampler):

@@ -199,7 +199,7 @@ class SignalingContestEquilibrium(EquilibriumStrategy):
             )
 
     def _is_signaling_equilibrium(self) -> bool:
-        if self.information_case == "true_valuations":
+        if self.information_case == "winners_signal":
             is_signaling = False
         elif self.information_case == "winning_bids":
             is_signaling = True

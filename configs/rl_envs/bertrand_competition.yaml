@@ -1,5 +1,6 @@
 name: "bertrand_competition"
 num_agents: 2
 observation_size: 2
+cara_risk_aversion: 0.0
 defaults:
   - sampler: bertrand

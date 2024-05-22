@@ -1,11 +1,13 @@
 from typing import Tuple
 
 import torch.nn as nn
+from omegaconf import OmegaConf
 from stable_baselines3.common.distributions import DiagGaussianDistribution
 
 from src.envs.sampler import (
     AffiliatedValuationObservationSampler,
     BertrandSymmetricIPVSampler,
+    CompositeValuationObservationSampler,
     GaussianSymmetricIPVSampler,
     MineralRightsValuationObservationSampler,
     UniformSymmetricIPVSampler,
@@ -42,24 +44,85 @@ def get_sampler(
     default_device=None,
 ) -> ValuationObservationSampler:
     if sampler_config.name == "symmetric_uniform":
-        sampler = UniformSymmetricIPVSampler
+        sampler = UniformSymmetricIPVSampler(
+            num_agents,
+            valuation_size,
+            observation_size,
+            sampler_config,
+            default_batch_size,
+            default_device,
+        )
     elif sampler_config.name == "symmetric_gaussian":
-        sampler = GaussianSymmetricIPVSampler
+        sampler = GaussianSymmetricIPVSampler(
+            num_agents,
+            valuation_size,
+            observation_size,
+            sampler_config,
+            default_batch_size,
+            default_device,
+        )
     elif sampler_config.name == "mineral_rights_common_value":
-        sampler = MineralRightsValuationObservationSampler
+        sampler = MineralRightsValuationObservationSampler(
+            num_agents,
+            valuation_size,
+            observation_size,
+            sampler_config,
+            default_batch_size,
+            default_device,
+        )
     elif sampler_config.name == "affiliated_uniform":
-        sampler = AffiliatedValuationObservationSampler
+        sampler = AffiliatedValuationObservationSampler(
+            num_agents,
+            valuation_size,
+            observation_size,
+            sampler_config,
+            default_batch_size,
+            default_device,
+        )
     elif sampler_config.name == "bertrand":
-        sampler = BertrandSymmetricIPVSampler
+        sampler = BertrandSymmetricIPVSampler(
+            num_agents,
+            valuation_size,
+            observation_size,
+            sampler_config,
+            default_batch_size,
+            default_device,
+        )
+    elif sampler_config.name == "asymmetric_uniform":
+        assert len(sampler_config.u_low) == len(
+            sampler_config.u_high
+        ), "The number of lower- and upper-bounds have to match."
+        assert (
+            len(sampler_config.u_low) > 1
+        ), "For an asymmetric setting, at least two different bounds are neeed."
+        num_bounds = len(sampler_config.u_low)
+        bidder_samplers = [
+            UniformSymmetricIPVSampler(
+                1,
+                valuation_size,
+                observation_size,
+                OmegaConf.create(
+                    {
+                        "prior_low": sampler_config.u_low[i % num_bounds],
+                        "prior_high": sampler_config.u_high[i % num_bounds],
+                    }
+                ),
+                default_batch_size,
+                default_device,
+            )
+            for i in range(num_agents)
+        ]
+
+        sampler = CompositeValuationObservationSampler(
+            num_agents,
+            valuation_size,
+            observation_size,
+            bidder_samplers,
+            default_batch_size,
+            default_device,
+        )
     else:
         raise ValueError(
             "No valid prior specified! Please check: " + sampler_config.name
         )
-    return sampler(
-        num_agents,
-        valuation_size,
-        observation_size,
-        sampler_config,
-        default_batch_size,
-        default_device,
-    )
+    return sampler
