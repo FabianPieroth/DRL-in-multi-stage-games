@@ -156,8 +156,10 @@ class SimpleVecRolloutBuffer(VecBaseBuffer):
                     self.gamma
                     * self.returns[step + step_size_to_data][next_non_terminal]
                 )
-        self.returns -= self.returns.min()
-        self.returns /= self.returns.max()
+        returns_min, returns_max = self.returns.min(), self.returns.max()
+        if returns_max > returns_min + 1e-8:
+            self.returns -= returns_min
+            self.returns /= returns_max - returns_min
 
     def _get_samples(
         self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None
@@ -200,6 +202,28 @@ class VecRolloutBuffer(VecBaseBuffer):
 
     Uses the lambda-return and GAE(lambda) advantage.
     """
+
+    def __init__(
+        self,
+        buffer_size: int,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        device,
+        gae_lambda: float = 1,
+        gamma: float = 0.99,
+        n_envs: int = 1,
+        normalize_rewards: bool = False,
+    ):
+        self.normalize_rewards = normalize_rewards
+        super().__init__(
+            buffer_size,
+            observation_space,
+            action_space,
+            device,
+            gae_lambda,
+            gamma,
+            n_envs,
+        )
 
     def reset(self) -> None:
         self.observations = th.zeros(
@@ -303,6 +327,14 @@ class VecRolloutBuffer(VecBaseBuffer):
             for agent_idx, sa_last_values in last_values.items()
         }
         last_gae_lam = {agent_idx: 0 for agent_idx in last_values.keys()}
+
+        # NOTE: This is exclusively used to stabilize training for
+        # the Bertrand competition with highly risk-averse bidders
+        if self.normalize_rewards:
+            rewards_min, rewards_max = self.rewards.min(), self.rewards.max()
+            if rewards_max > rewards_min + 1e-8:
+                self.rewards -= rewards_min
+                self.rewards /= rewards_max - rewards_min
 
         for step in reversed(range(self.buffer_size)):
             if policy_sharing:

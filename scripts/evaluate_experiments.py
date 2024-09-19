@@ -66,7 +66,7 @@ def evaluate_asymmetric_second_price_sequential_sales_experiment():
 
 def evaluate_sequential_sales_interdependent_plus_risk_experiment():
     environment = "sequential_auction"
-    path = f"{LOG_PATH}/{environment}_interdependent_plus_risk_experiment/{environment}"
+    path = f"{LOG_PATH}/{environment}_interdependent_plus_cara_risk_experiment/{environment}"
     df = ex_ut.get_log_df(path)
 
     hyperparameters = [
@@ -82,7 +82,7 @@ def evaluate_sequential_sales_interdependent_plus_risk_experiment():
     pivot = ex_ut.get_pivot_table(df, hyperparameters)
 
     # Write to disk
-    ex_ut.save_df(pivot, environment + "_interdependence_plus_risk", path)
+    ex_ut.save_df(pivot, environment + "_interdependence_plus_cara_risk", path)
 
 
 def evaluate_sequential_sales_symmetric_budget_constraints_with_affiliation_experiment():
@@ -126,6 +126,25 @@ def evaluate_signaling_contest_experiment():
     ex_ut.save_df(pivot, environment, path)
 
 
+def evaluate_signaling_contest_asymmetries_experiment():
+    environment = "signaling_contest"
+    path = f"{LOG_PATH}/{environment}_asymmetries_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["agent_id"]
+    metrics = [
+        "eval/estimated_utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "_asymmetric_util_loss", path)
+
+
 def evaluate_signaling_contest_interdependencies_experiment():
     environment = "signaling_contest"
     path = f"{LOG_PATH}/{environment}_interdependencies_experiment/{environment}"
@@ -134,7 +153,6 @@ def evaluate_signaling_contest_interdependencies_experiment():
     hyperparameters = ["rl_envs.information_case", "rl_envs.sampler.name"]
     metrics = [
         "eval/estimated_utility_loss",
-        "eval/utility_loss",
     ]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
 
@@ -143,18 +161,17 @@ def evaluate_signaling_contest_interdependencies_experiment():
     pivot = ex_ut.get_pivot_table(df, hyperparameters)
 
     # Write to disk
-    ex_ut.save_df(pivot, environment, path)
+    ex_ut.save_df(pivot, environment + "_interdependencies", path)
 
 
 def evaluate_signaling_contest_risk_experiment():
     environment = "signaling_contest"
-    path = f"{LOG_PATH}/{environment}_risk_experiment/{environment}"
+    path = f"{LOG_PATH}/{environment}_cara_risk_experiment/{environment}"
     df = ex_ut.get_log_df(path)
 
     hyperparameters = ["rl_envs.information_case", "rl_envs.cara_risk_aversion"]
     metrics = [
         "eval/estimated_utility_loss",
-        "eval/utility_loss",
     ]
     df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
 
@@ -163,7 +180,7 @@ def evaluate_signaling_contest_risk_experiment():
     pivot = ex_ut.get_pivot_table(df, hyperparameters)
 
     # Write to disk
-    ex_ut.save_df(pivot, environment, path)
+    ex_ut.save_df(pivot, environment + "_cara_risk", path)
 
 
 def evaluate_bertrand_competition_experiment():
@@ -190,12 +207,53 @@ def evaluate_bertrand_competition_experiment():
     ex_ut.save_df(pivot, environment, path)
 
 
+def evaluate_bertrand_competition_interdependencies_experiment():
+    environment = "bertrand_competition"
+    path = f"{LOG_PATH}/{environment}_interdependencies_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.sampler.name", "agent_id"]
+    metrics = [
+        "eval/estimated_utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "_interdependencies_util_loss", path)
+
+
+def evaluate_bertrand_competition_risk_experiment():
+    environment = "bertrand_competition"
+    path = f"{LOG_PATH}/{environment}_risk_experiment/{environment}"
+    df = ex_ut.get_log_df(path)
+
+    hyperparameters = ["rl_envs.cara_risk_aversion", "agent_id"]
+    metrics = [
+        "eval/estimated_utility_loss",
+    ]
+    df = ex_ut.get_last_iter(df, hyperparameters, metrics, L2_average=False)
+
+    # Create pivot table
+    assert df.size > 0, "No experiments were run for these parameters."
+    pivot = ex_ut.get_pivot_table(df, hyperparameters)
+
+    # Write to disk
+    ex_ut.save_df(pivot, environment + "cara_risk_util_loss", path)
+
+
 if __name__ == "__main__":
-    # evaluate_sequential_sales_experiment()
-    # evaluate_sequential_sales_interdependent_plus_risk_experiment()
-    # evaluate_sequential_sales_symmetric_budget_constraints_with_affiliation_experiment()
-    # evaluate_asymmetric_second_price_sequential_sales_experiment()
-    # evaluate_signaling_contest_experiment()
-    # evaluate_signaling_contest_interdependencies_experiment()
+    evaluate_sequential_sales_experiment()
+    evaluate_sequential_sales_interdependent_plus_risk_experiment()
+    evaluate_sequential_sales_symmetric_budget_constraints_with_affiliation_experiment()
+    evaluate_asymmetric_second_price_sequential_sales_experiment()
+    evaluate_signaling_contest_experiment()
+    evaluate_signaling_contest_asymmetries_experiment()
+    evaluate_signaling_contest_interdependencies_experiment()
     evaluate_signaling_contest_risk_experiment()
-    # evaluate_bertrand_competition_experiment()
+    evaluate_bertrand_competition_experiment()
+    evaluate_bertrand_competition_interdependencies_experiment()
+    evaluate_bertrand_competition_risk_experiment()
