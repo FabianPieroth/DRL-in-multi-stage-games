@@ -5,6 +5,8 @@ n_rollout_steps: 8
 gamma: 1.0
 full_batch_updates: true
 gae_lambda: 0.95
+clip_range: 0.2
+normalize_rewards: False
 translate_action_spaces_for_agents: None
 translate_observation_spaces_for_agents: None
 action_space_translator: "identity"

@@ -18,6 +18,16 @@ class VecPPO(OnPolicyBaseAlgorithm):
     Extends Stable Baselines 3 PPO to vectorized learning.
     """
 
+    def __init__(
+        self,
+        action_dependent_std: bool = False,
+        log_std_init: float = -2,
+        normalize_rewards: bool = False,
+        **kwargs,
+    ):
+        self.normalize_rewards = normalize_rewards
+        super().__init__(action_dependent_std, log_std_init, **kwargs)
+
     def get_actions_with_data(
         self, sa_obs: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, Dict]:
@@ -66,6 +76,7 @@ class VecPPO(OnPolicyBaseAlgorithm):
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
+            normalize_rewards=self.normalize_rewards,
         )
         self.policy = self.policy_class(  # pytype:disable=not-instantiable
             self.observation_space,

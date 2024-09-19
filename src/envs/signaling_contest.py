@@ -11,6 +11,7 @@ from gym import spaces
 from tensordict import TensorDict
 
 import src.utils.distributions_and_priors as dap_ut
+import src.utils.evaluation_utils as ev_ut
 import src.utils.policy_utils as pl_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import SignalingContestEquilibrium
@@ -54,7 +55,10 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self.sampler = self._init_sampler(config, device)
         self.prior_low = self.sampler.support_bounds[:, :, 0].squeeze()
         self.prior_high = self.sampler.support_bounds[:, :, 1].squeeze()
-        self.ACTION_UPPER_BOUNDS = 2 * self.prior_high
+        if config.sampler.name in ["mineral_rights_common_value", "affiliated_uniform"]:
+            self.ACTION_UPPER_BOUNDS = self.prior_high
+        else:
+            self.ACTION_UPPER_BOUNDS = 2 * self.prior_high
         super().__init__(config, device)
 
         self.all_pay_mechanism = self._init_all_pay_mechanism()
@@ -607,11 +611,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         self, learners, writer, iteration: int, config, num_samples: int = 500
     ):
         """Evaluate and log current strategies."""
-        seed = 69
-        self.seed(seed)
+        cmap = plt.get_cmap("gnuplot")
+        agent_plot_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
 
-        plt.style.use("ggplot")
-        total_num_second_round_plots = 5
         ax_second_round_rotations = [
             (30, -60),
             (10, -100),
@@ -619,103 +621,164 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             (30, 120),
             (30, 45),
         ]
-        cmap = plt.get_cmap("gnuplot")
-        agent_plot_colors = [cmap(i) for i in np.linspace(0, 1, self.num_agents)]
-        plt.rcParams["figure.figsize"] = (8, 5.5)
-        fig = plt.figure(
-            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=600
+
+        states_list, observations_list, actions_list, _ = ev_ut.run_algorithms(
+            env=self,
+            algorithms=learners,
+            num_envs=num_samples,
+            num_steps=self.num_stages,
+            deterministic=True,
         )
-        ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
-        ax_second_round_list = [
-            fig.add_subplot(
-                1 + total_num_second_round_plots, 1, 2 + plot_id, projection="3d"
+
+        ma_stddevs_list = []
+        for stage in range(self.num_stages):
+            ma_stddevs = th_ut.get_ma_learner_stddevs(
+                learners, observations_list[stage]
             )
-            for plot_id in range(total_num_second_round_plots)
-        ]
-        fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
-        states = self.sample_new_states(num_samples)
-
-        for round in range(1, 3):
-            observations = self.get_observations(states)
-            ma_deterministic_actions = self.get_ma_actions_for_env(
-                learners, observations=observations, deterministic=True, states=states
+            ma_stddevs = self.adapt_ma_actions_for_env(
+                ma_stddevs, states=states_list[stage]
             )
+            ma_stddevs_list.append(ma_stddevs)
 
-            ma_stddevs = th_ut.get_ma_learner_stddevs(learners, observations)
-            ma_stddevs = self.adapt_ma_actions_for_env(ma_stddevs, states=states)
+        first_round_figure = self._plot_first_round_strategy(
+            writer,
+            iteration,
+            config,
+            ma_stddevs_list[0],
+            states_list[0],
+            observations_list[0],
+            actions_list[0],
+            agent_plot_colors,
+        )
 
-            num_agents_to_plot = len(set(self.learners.values()))
-            for agent_id in range(num_agents_to_plot):
-                agent_obs = observations[agent_id]
-                increasing_order = agent_obs[:, 0].sort(axis=0)[1]
+        second_round_figure_list = self._plot_second_round_strategy(
+            writer,
+            iteration,
+            config,
+            ma_stddevs_list[1],
+            states_list[1],
+            observations_list[1],
+            actions_list[1],
+            agent_plot_colors,
+            ax_second_round_rotations,
+        )
 
-                # sort
-                agent_obs = agent_obs[increasing_order]
-
-                has_lost_already = self._has_lost_already_from_obs(
-                    {agent_id: agent_obs}
-                )[agent_id]
-                deterministic_actions = ma_deterministic_actions[agent_id][
-                    increasing_order
-                ]
-                agent_stddevs = ma_stddevs[agent_id][increasing_order]
-
-                # convert to numpy
-                agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
-                opponent_info = agent_obs[:, 3].detach().cpu().view(-1).numpy()
-                actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
-                agent_stddevs = agent_stddevs.view(-1).detach().cpu().numpy()
-                has_lost_already = has_lost_already.cpu().numpy()
-
-                algo_name = pl_ut.get_algo_name(agent_id, config)
-
-                if round == 1:
-                    self._plot_first_round_strategy(
-                        ax_first_round,
-                        agent_id,
-                        has_lost_already,
-                        agent_stddevs,
-                        agent_vals,
-                        actions_array,
-                        algo_name,
-                        agent_plot_colors[agent_id],
-                    )
-                elif round == 2:
-                    for ax_second_round, rotation in zip(
-                        ax_second_round_list, ax_second_round_rotations
-                    ):
-                        ax_second_round.view_init(rotation[0], rotation[1])
-                        ax_second_round.dist = 13
-                        self._plot_second_round_strategy(
-                            ax_second_round,
-                            agent_id,
-                            has_lost_already,
-                            agent_vals,
-                            opponent_info,
-                            actions_array,
-                            algo_name,
-                            agent_plot_colors[agent_id],
-                        )
-
-            # apply actions to get to next stage
-            _, _, _, states = self.compute_step(states, ma_deterministic_actions)
-
-        handles, labels = ax_first_round.get_legend_handles_labels()
-        ax_first_round.legend(handles, labels, ncol=2, prop={"size": 6})
-        handles, labels = ax_second_round_list[0].get_legend_handles_labels()
-        ax_second_round_list[0].legend(handles, labels, ncol=2, prop={"size": 3})
-        plt.tight_layout()
-        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
-        writer.add_figure("images", fig, iteration)
+        # writer.add_figure("images", fig, iteration)
         plt.close()
 
-        # reset seed
-        self.seed(int(time.time()))
+    def sort_and_convert_to_numpy(
+        self, ma_stddevs, observations, ma_deterministic_actions, agent_id
+    ):
+        agent_obs = observations[agent_id]
+        increasing_order = agent_obs[:, 0].sort(axis=0)[1]
+
+        # sort
+        agent_obs = agent_obs[increasing_order]
+
+        has_lost_already = self._has_lost_already_from_obs({agent_id: agent_obs})[
+            agent_id
+        ]
+        deterministic_actions = ma_deterministic_actions[agent_id][increasing_order]
+        agent_stddevs = ma_stddevs[agent_id][increasing_order]
+
+        # convert to numpy
+        agent_vals = agent_obs[:, 0].detach().cpu().view(-1).numpy()
+        opponent_info = agent_obs[:, 3].detach().cpu().view(-1).numpy()
+        actions_array = deterministic_actions.view(-1, 1).detach().cpu().numpy()
+        agent_stddevs = agent_stddevs.view(-1).detach().cpu().numpy()
+        has_lost_already = has_lost_already.cpu().numpy()
+        return has_lost_already, agent_stddevs, agent_vals, opponent_info, actions_array
+
+    def store_indvidual_plots(self, fig, log_dir, iteration, axes_list):
+        for k, axis in enumerate(axes_list):
+            extent = axis.get_tightbbox(fig.canvas.get_renderer()).transformed(
+                fig.dpi_scale_trans.inverted()
+            )
+            fig.savefig(
+                f"{log_dir}/plot_{iteration}_axis_{k+1}.png", bbox_inches=extent
+            )
 
     def sufficient_points_to_plot3d(self, mask: np.ndarray) -> bool:
         return np.sum(mask) > 3
 
     def _plot_second_round_strategy(
+        self,
+        writer,
+        iteration,
+        config,
+        ma_stddevs,
+        states,
+        observations,
+        ma_actions,
+        agent_plot_colors,
+        ax_second_round_rotations,
+    ):
+        second_round_figure_list = []
+        plt.style.use("ggplot")
+        for k, rotation in enumerate(ax_second_round_rotations):
+            figure_plt = plt.figure(figsize=(4.5, 4.5), clear=True, dpi=600)
+            ax = figure_plt.add_subplot(111, projection="3d")
+            ax.view_init(rotation[0], rotation[1])
+            ax.dist = 13
+            num_agents_to_plot = len(set(self.learners.values()))
+            for agent_id in range(num_agents_to_plot):
+                (
+                    has_lost_already,
+                    agent_stddevs,
+                    agent_vals,
+                    opponent_info,
+                    actions_array,
+                ) = self.sort_and_convert_to_numpy(
+                    ma_stddevs, observations, ma_actions, agent_id
+                )
+
+                algo_name = pl_ut.get_algo_name(agent_id, config)
+                self._draw_second_round_agent_strategy_on_axis(
+                    ax,
+                    agent_id,
+                    has_lost_already,
+                    agent_vals,
+                    opponent_info,
+                    actions_array,
+                    algo_name,
+                    agent_plot_colors[agent_id],
+                )
+
+            ax.set_title("Round 2")
+            ax.set_zlim([0.0 - 0.05, 0.45 + 0.05])
+            if self.config["information_case"] == "winners_signal":
+                if self.config.sampler.name in [
+                    "mineral_rights_common_value",
+                    "affiliated_uniform",
+                ]:
+                    y_label = "opponent $x$"
+                else:
+                    y_label = "opponent $v$"
+            elif self.config["information_case"] == "winning_bids":
+                y_label = "opponent $b$"
+            else:
+                raise ValueError(
+                    f"No valid information case selected: {self.config['information_case']}!"
+                )
+            if self.config.sampler.name in [
+                "mineral_rights_common_value",
+                "affiliated_uniform",
+            ]:
+                ax.set_xlabel("observation $x$", fontsize=10)
+            else:
+                ax.set_xlabel("valuation $v$", fontsize=10)
+            ax.set_ylabel(y_label, fontsize=10)
+            ax.set_zlabel("bid $b$", fontsize=10)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(handles, labels, ncol=2, loc="best")
+
+            figure_plt.tight_layout()
+            figure_plt.savefig(f"{writer.log_dir}/{iteration}_second_round_{k}.png")
+
+            second_round_figure_list.append(figure_plt)
+        return second_round_figure_list
+
+    def _draw_second_round_agent_strategy_on_axis(
         self,
         ax,
         agent_id,
@@ -726,7 +789,9 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         algo_name,
         color,
     ):
-        ax.set_title("Second round")
+        label = algo_name + f" contestant {agent_id}"
+        if len(set(self.learners.values())) > 2:
+            label = algo_name + f" {agent_id}"
         # check whether there are at least three points to plot in the mask!
         mask = np.logical_and(~has_lost_already, opponent_info != 0)
         if self.sufficient_points_to_plot3d(mask):
@@ -734,44 +799,35 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
                 agent_vals[mask],
                 opponent_info[mask],
                 actions_array[mask].squeeze(),
-                linewidth=0.3,
+                linewidth=0.4,
                 antialiased=True,
-                alpha=0.5,
+                alpha=0.7,
                 color=color,
-                label=f"bidder {agent_id} " + algo_name,
+                label=label,
             )
             # ## due to bug in matplotlib ## #
             surf._facecolors2d = surf._facecolor3d
             surf._edgecolors2d = surf._edgecolor3d
             # ############################## #
-        mask = np.logical_and(has_lost_already, opponent_info != 0)
-        if self.sufficient_points_to_plot3d(mask):
-            surf = ax.plot_trisurf(
-                agent_vals[mask],
-                opponent_info[mask],
-                actions_array[mask].squeeze(),
-                linewidth=0.2,
-                alpha=0.1,
-                antialiased=True,
-                color=color,
-                label=f"bidder {agent_id} " + algo_name + " (lost)",
-            )
-            # ## due to bug in matplotlib ## #
-            surf._facecolors2d = surf._facecolor3d
-            surf._edgecolors2d = surf._edgecolor3d
-            # ############################## #
+        if not self.config["prettify_plots"]:
+            mask = np.logical_and(has_lost_already, opponent_info != 0)
+            if self.sufficient_points_to_plot3d(mask):
+                surf = ax.plot_trisurf(
+                    agent_vals[mask],
+                    opponent_info[mask],
+                    actions_array[mask].squeeze(),
+                    linewidth=0.2,
+                    alpha=0.1,
+                    antialiased=True,
+                    color=color,
+                    label=label + " (lost)",
+                )
+                # ## due to bug in matplotlib ## #
+                surf._facecolors2d = surf._facecolor3d
+                surf._edgecolors2d = surf._edgecolor3d
+                # ############################## #
         if agent_id == 0 and self.equilibrium_strategies[agent_id]:
             self._plot_second_round_equ_strategy_surface(ax, agent_id, 100)
-
-        if self.config["information_case"] == "winners_signal":
-            y_label = "opponent $v$"
-        elif self.config["information_case"] == "winning_bids":
-            y_label = "opponent $b$"
-        else:
-            raise ValueError
-        ax.set_xlabel("valuation $v$", fontsize=12)
-        ax.set_ylabel(y_label, fontsize=12)
-        ax.set_zlabel("bid $b$", fontsize=12)
 
     def _plot_second_round_equ_strategy_surface(self, ax, agent_id, plot_precision):
         val_x, opp_info, bid_z = self._get_actions_and_grid_in_second_stage(
@@ -834,48 +890,104 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
 
     def _plot_first_round_strategy(
         self,
+        writer,
+        iteration,
+        config,
+        ma_stddevs,
+        states,
+        observations,
+        ma_actions,
+        agent_plot_colors,
+    ):
+        plt.style.use("ggplot")
+        figure_plt = plt.figure(figsize=(4.5, 4.5), clear=True, dpi=600)
+        ax = figure_plt.add_subplot(111)
+        num_agents_to_plot = len(set(self.learners.values()))
+        for agent_id in range(num_agents_to_plot):
+            (
+                has_lost_already,
+                agent_stddevs,
+                agent_vals,
+                opponent_info,
+                actions_array,
+            ) = self.sort_and_convert_to_numpy(
+                ma_stddevs, observations, ma_actions, agent_id
+            )
+
+            algo_name = pl_ut.get_algo_name(agent_id, config)
+            self._draw_first_round_agent_strategy_on_axis(
+                ax,
+                agent_id,
+                has_lost_already,
+                agent_stddevs,
+                agent_vals,
+                actions_array,
+                algo_name,
+                agent_plot_colors[agent_id],
+            )
+
+        ax.set_title("Round 1")
+        if not self.config["prettify_plots"]:
+            lin = np.linspace(0, max(self.prior_high).item(), 2)
+            ax.plot(lin, lin, "--", color="grey")
+        else:
+            ax.set_ylim([0.0 - 0.05, 0.7 + 0.05])
+        if self.config.sampler.name in [
+            "mineral_rights_common_value",
+            "affiliated_uniform",
+        ]:
+            ax.set_xlabel("observation $x$", fontsize=12)
+        else:
+            ax.set_xlabel("valuation $v$", fontsize=12)
+        ax.set_ylabel("bid $b$")
+        ax.set_xlim(
+            [min(self.prior_low).item() - 0.1, max(self.prior_high).item() + 0.1]
+        )
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, ncol=2, loc="best")
+        figure_plt.tight_layout()
+        figure_plt.savefig(f"{writer.log_dir}/first_round_{iteration}.png")
+        return figure_plt
+
+    def _draw_first_round_agent_strategy_on_axis(
+        self,
         ax,
         agent_id,
         has_lost_already,
-        ma_stddevs,
+        agent_stddevs,
         agent_vals,
         actions_array,
         algo_name,
         agent_color,
     ):
-        ax.set_title("First round")
+        label = algo_name + f" contestant {agent_id}"
+        if len(set(self.learners.values())) > 2:
+            label = algo_name + f" {agent_id}"
         (drawing,) = ax.plot(
             agent_vals[~has_lost_already],
             actions_array[~has_lost_already],
             linestyle="-",
-            label=f"bidder {agent_id} " + algo_name,
+            label=label,
             color=agent_color,
         )
         ax.fill_between(
             agent_vals[~has_lost_already],
             (
                 actions_array[~has_lost_already].squeeze()
-                - ma_stddevs[~has_lost_already]
+                - agent_stddevs[~has_lost_already]
             ).clip(min=0),
             (
                 actions_array[~has_lost_already].squeeze()
-                + ma_stddevs[~has_lost_already]
+                + agent_stddevs[~has_lost_already]
             ).clip(min=0),
             alpha=0.2,
             color=drawing.get_color(),
         )
         if self.equilibrium_strategies[agent_id]:
-            self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing)
-        lin = np.linspace(0, max(self.prior_high).item(), 2)
-        ax.plot(lin, lin, "--", color="grey")
-        ax.set_xlabel("valuation $v$")
-        ax.set_ylabel("bid $b$")
-        ax.set_xlim(
-            [min(self.prior_low).item() - 0.1, max(self.prior_high).item() + 0.1]
-        )
+            self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing, label)
 
     def _plot_first_round_equilibrium_strategy(
-        self, ax, agent_id: int, drawing, precision: int = 200
+        self, ax, agent_id: int, drawing, label: str, precision: int = 200
     ):
         val_xs, bid_ys = self._get_actions_and_grid_in_first_stage(
             self.equilibrium_strategies[agent_id], precision
@@ -885,7 +997,7 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             bid_ys.squeeze().detach().cpu().numpy(),
             linestyle="--",
             color=drawing.get_color(),
-            label=f"bidder {agent_id+1} equ",
+            label=label + " equ",
         )
 
     def _get_actions_and_grid_in_first_stage(self, sa_learner, precision: int):
@@ -909,7 +1021,13 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
         plt.style.use("ggplot")
         fig = plt.figure(figsize=(4.5, 4.5), clear=True)
         ax = fig.add_subplot(111)
-        ax.set_xlabel("valuation $v$")
+        if self.config.sampler.name in [
+            "mineral_rights_common_value",
+            "affiliated_uniform",
+        ]:
+            ax.set_xlabel("observation $x$", fontsize=12)
+        else:
+            ax.set_xlabel("valuation $v$", fontsize=12)
         ax.set_ylabel("bid $b$")
         ax.set_xlim([min(self.prior_low).item(), max(self.prior_high).item()])
         ax.set_ylim([-0.05, max(self.prior_high).item() * 1 / 3])

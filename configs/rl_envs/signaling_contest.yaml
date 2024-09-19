@@ -7,6 +7,7 @@ num_agents: 4
 valuation_size: 1
 impact_factor: 1.0
 use_valuation: true
+prettify_plots: false
 defaults:
   - sampler: symmetric_uniform
   - optional sampler/non_default: ${rl_envs/sampler}_for_${rl_envs}

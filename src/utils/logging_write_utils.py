@@ -1,19 +1,12 @@
 """Utilities for logging"""
 import os
 import time
-import warnings
 from copy import copy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Dict, Union
 
 import imageio
 import matplotlib.pyplot as plt
 import torch
-from stable_baselines3.common.vec_env import (
-    DummyVecEnv,
-    VecEnv,
-    VecMonitor,
-    is_vecenv_wrapped,
-)
 from torch.nn.utils import parameters_to_vector
 from torch.utils.tensorboard import SummaryWriter
 

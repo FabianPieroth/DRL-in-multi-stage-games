@@ -9,6 +9,7 @@ from tensordict import TensorDict
 
 import src.utils.distributions_and_priors as dap_ut
 import src.utils.evaluation_utils as ev_ut
+import src.utils.logging_write_utils as wr_ut
 import src.utils.policy_utils as pl_ut
 import src.utils.torch_utils as th_ut
 from src.envs.equilibria import BertrandCompetitionEquilibrium
@@ -102,9 +103,17 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         for agent_id in range(self.num_agents):
             val_low = self.sampler.support_bounds[agent_id, 0, 0].cpu().detach().item()
             val_high = self.sampler.support_bounds[agent_id, 0, 1].cpu().detach().item()
-            action_spaces_dict[agent_id] = spaces.Box(
-                low=np.float32([val_low]), high=np.float32([1.3 * val_high])
-            )
+            if self.config.sampler.name in [
+                "mineral_rights_common_value",
+                "affiliated_uniform",
+            ]:
+                action_spaces_dict[agent_id] = spaces.Box(
+                    low=np.float32([val_low]), high=np.float32([2 * val_high])
+                )
+            else:
+                action_spaces_dict[agent_id] = spaces.Box(
+                    low=np.float32([val_low]), high=np.float32([1.3 * val_high])
+                )
         return action_spaces_dict
 
     def to(self, device) -> Any:
@@ -120,17 +129,12 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             dimension consists of the valuation and the opponent firm's quote (initialized
             at -1).
         """
-        # states = -torch.ones((n, self.num_agents, 2), device=self.device)
-        # keep 2nd entry to -1 as to detect which stage it is (firm 1 must
-        # quote a value above 0.)
-
         # draw valuations and signals
-        valuations, val_signals = self.sampler.draw_profiles(n)
-        # states[:, :, [0]] = valuations
+        costs, cost_signals = self.sampler.draw_profiles(n)
         states = TensorDict(
             {
-                "vals": valuations,
-                "val_signals": val_signals,
+                "costs": costs,
+                "cost_signals": cost_signals,
                 "quoted_prices": -torch.ones(
                     (n, self.num_agents, 1), device=self.device
                 )
@@ -188,16 +192,18 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         leader_reward = (
             firm1_wins
             * quantity
-            * (states["quoted_prices"][:, 1, 0] - states["vals"][:, 0, 0])
+            * (states["quoted_prices"][:, 1, 0] - states["costs"][:, 0, 0])
         )
         follower_reward = (
             torch.logical_not(firm1_wins)
             * quantity
-            * (states["quoted_prices"][:, 0, 0] - states["vals"][:, 1, 0])
+            * (states["quoted_prices"][:, 0, 0] - states["costs"][:, 1, 0])
         )
+        leader_reward = self.apply_cara_risk_aversion(leader_reward)
+        follower_reward = self.apply_cara_risk_aversion(follower_reward)
         return {
-            0: self.apply_cara_risk_aversion(leader_reward),
-            1: self.apply_cara_risk_aversion(follower_reward),
+            0: leader_reward,
+            1: follower_reward,
         }
 
     def apply_cara_risk_aversion(self, rewards: torch.Tensor) -> torch.Tensor:
@@ -219,7 +225,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         for agent_id in range(self.num_agents):
             obs_dict[agent_id] = torch.cat(
                 [
-                    states["val_signals"][:, agent_id, :].clone(),
+                    states["cost_signals"][:, agent_id, :].clone(),
                     states["quoted_prices"][:, agent_id, :].clone(),
                 ],
                 dim=-1,
@@ -319,10 +325,42 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
                 for obs_index in obs_indices
             ]
         )
-        if stage == 1 and agent_id == 1:
+        if (
+            stage == 1
+            and agent_id == 1
+            and self.config.sampler.name == "bertrand"
+            and self.cara_risk_aversion == 0.0
+        ):
             val_low, val_high = self.get_prior_bounds(agent_id)
             low = tuple([val_low, 0.4])
             high = tuple([val_high, 1.1])
+        elif (
+            stage == 1
+            and agent_id == 1
+            and self.config.sampler.name == "mineral_rights_common_value"
+            and self.cara_risk_aversion == 0.0
+        ):
+            val_low, val_high = self.get_prior_bounds(agent_id)
+            low = tuple([val_low, 0.8])
+            high = tuple([val_high, 1.2])
+        elif (
+            stage == 1
+            and agent_id == 1
+            and self.config.sampler.name == "affiliated_uniform"
+            and self.cara_risk_aversion == 0.0
+        ):
+            val_low, val_high = self.get_prior_bounds(agent_id)
+            low = tuple([val_low, 1.2])
+            high = tuple([val_high, 4.0])
+        elif (
+            stage == 1
+            and agent_id == 1
+            and self.config.sampler.name == "bertrand"
+            and self.cara_risk_aversion != 0.0
+        ):
+            val_low, val_high = self.get_prior_bounds(agent_id)
+            low = tuple([val_low, 0.0])
+            high = tuple([val_high, 1.2])
         return {"low": low, "high": high}
 
     def clip_bids_to_positive(
@@ -365,12 +403,10 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         return equ_actions_list, learner_actions_list
 
     def plot_strategies_vs_bne(
-        self, learners, writer, iteration: int, config, num_samples: int = 2**12
+        self, learners, writer, iteration: int, config, num_samples: int = 2**10
     ):
         """Evaluate and log current strategies."""
 
-        plt.style.use("ggplot")
-        total_num_second_round_plots = 5
         ax_second_round_rotations = [
             (30, -60),
             (10, -100),
@@ -379,18 +415,6 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             (30, 45),
         ]
         agent_plot_colors = ["red", "blue"]
-        plt.rcParams["figure.figsize"] = (8, 5.5)
-        fig = plt.figure(
-            figsize=plt.figaspect(1.0 + total_num_second_round_plots), dpi=300
-        )
-        ax_first_round = fig.add_subplot(1 + total_num_second_round_plots, 1, 1)
-        ax_second_round_list = [
-            fig.add_subplot(
-                1 + total_num_second_round_plots, 1, 2 + plot_id, projection="3d"
-            )
-            for plot_id in range(total_num_second_round_plots)
-        ]
-        fig.suptitle(f"Iteration {iteration}", fontsize="x-large")
 
         states_list, observations_list, actions_list, _ = ev_ut.run_algorithms(
             env=self,
@@ -411,8 +435,9 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             ma_stddevs = self.clip_bids_to_positive(ma_stddevs)
             agent_stddevs_list.append(ma_stddevs)
 
-        self._plot_first_round_strategy(
-            ax_first_round,
+        leader_figure = self._plot_first_round_strategy(
+            writer,
+            iteration,
             config,
             agent_stddevs_list[0][0],
             states_list[0],
@@ -420,57 +445,88 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             agent_plot_colors[0],
         )
 
-        for ax_second_round, rotation in zip(
-            ax_second_round_list, ax_second_round_rotations
-        ):
-            ax_second_round.view_init(rotation[0], rotation[1])
-            ax_second_round.dist = 13
-            self._plot_second_round_strategy(
-                ax_second_round,
-                config,
-                states_list[1],
-                actions_list[1][1],
-                agent_plot_colors[1],
-            )
-        plt.tight_layout()
-        plt.savefig(f"{writer.log_dir}/plot_{iteration}.png")
-        writer.add_figure("images", fig, iteration)
+        follower_figures = self._plot_second_round_strategy(
+            writer,
+            iteration,
+            ax_second_round_rotations,
+            config,
+            states_list[1],
+            actions_list[1][1],
+            agent_plot_colors[1],
+        )
         plt.close()
 
     def _plot_first_round_strategy(
+        self,
+        writer,
+        iteration,
+        config,
+        leader_stddevs,
+        states,
+        leader_actions,
+        agent_color,
+    ):
+        plt.style.use("ggplot")
+        figure_plt = plt.figure(figsize=(4.5, 4.5), clear=True, dpi=600)
+        ax = figure_plt.add_subplot(111)
+        self._draw_first_round_strategy_on_axis(
+            ax, config, leader_stddevs, states, leader_actions, agent_color
+        )
+
+        ax.set_title("Bertrand Leader")
+        if self.config.sampler.name in [
+            "mineral_rights_common_value",
+            "affiliated_uniform",
+        ]:
+            ax.set_xlabel("L's observation $x_1$", fontsize=12)
+        else:
+            ax.set_xlabel("L's cost $c_1$", fontsize=12)
+        ax.set_ylabel("L's price $p_1$")
+        val_low, val_high = self.get_prior_bounds(agent_id=0)
+        ax.set_xlim([val_low - 0.1, val_high + 0.1])
+        if (
+            self.config["prettify_plots"]
+            and self.config.sampler.name == "mineral_rights_common_value"
+        ):
+            ax.set_ylim(0.4 - 0.05, 1.1 + 0.05)
+        elif self.config["prettify_plots"] and self.cara_risk_aversion > 0.0:
+            ax.set_ylim(0.15 - 0.05, 1.1 + 0.05)
+        ax.legend(loc="best")
+
+        figure_plt.tight_layout()
+        figure_plt.savefig(f"{writer.log_dir}/{iteration}_leader.png")
+        return figure_plt
+
+    def _draw_first_round_strategy_on_axis(
         self, ax, config, leader_stddevs, states, leader_actions, agent_color
     ):
-        leader_val_signals = states["val_signals"][:, 0, 0]
-        sorted_leader_vals, increasing_order = leader_val_signals.sort(axis=0)
-        sorted_leader_vals = sorted_leader_vals.detach().cpu().view(-1).numpy()
+        leader_cost_signals = states["cost_signals"][:, 0, 0]
+        sorted_leader_cost_signals, increasing_order = leader_cost_signals.sort(axis=0)
+        sorted_leader_cost_signals = (
+            sorted_leader_cost_signals.detach().cpu().view(-1).numpy()
+        )
         sorted_leader_actions = (
             leader_actions[increasing_order].detach().cpu().view(-1).numpy()
         )
         sorted_leader_stddevs = (
             leader_stddevs[increasing_order].detach().cpu().view(-1).numpy()
         )
-        ax.set_title("First stage")
         algo_name = pl_ut.get_algo_name(0, config)
         (drawing,) = ax.plot(
-            sorted_leader_vals,
+            sorted_leader_cost_signals,
             sorted_leader_actions,
             linestyle="-",
-            label=f"Leader " + algo_name,
+            label=algo_name + " leader",
             color=agent_color,
         )
         ax.fill_between(
-            sorted_leader_vals,
+            sorted_leader_cost_signals,
             (sorted_leader_actions.squeeze() - sorted_leader_stddevs).clip(min=0),
             (sorted_leader_actions.squeeze() + sorted_leader_stddevs).clip(min=0),
             alpha=0.2,
             color=drawing.get_color(),
         )
         self._plot_first_round_equilibrium_strategy(ax, drawing)
-        ax.set_xlabel("Firm 1's Costs")
-        ax.set_ylabel("Firm 1's Quote")
-        val_low, val_high = self.get_prior_bounds(agent_id=0)
-        ax.set_xlim([val_low - 0.1, val_high + 0.1])
-        ax.legend()
 
     def _plot_first_round_equilibrium_strategy(
         self, plot_axis, drawing, precision: int = 200
@@ -495,9 +551,59 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         bid_ys, _ = sa_learner.predict(sa_obs, deterministic=True)
         return val_xs, bid_ys
 
-    def _plot_second_round_strategy(self, ax, config, states, follower_actions, color):
+    def _plot_second_round_strategy(
+        self,
+        writer,
+        iteration,
+        ax_second_round_rotations,
+        config,
+        states,
+        follower_actions,
+        color,
+    ):
+        second_round_figure_list = []
+        plt.style.use("ggplot")
+        for k, rotation in enumerate(ax_second_round_rotations):
+            figure_plt = plt.figure(figsize=(4.5, 4.5), clear=True, dpi=600)
+            ax = figure_plt.add_subplot(111, projection="3d")
+            ax.view_init(rotation[0], rotation[1])
+            ax.dist = 13
+            self._draw_second_round_strategy_on_axis(
+                ax, config, states, follower_actions, color
+            )
+            ax.set_title("Bertrand Follower")
+            if self.config.sampler.name in [
+                "mineral_rights_common_value",
+                "affiliated_uniform",
+            ]:
+                ax.set_xlabel("F's observation $x_2$", fontsize=10)
+            else:
+                ax.set_xlabel("F's cost $c_2$", fontsize=10)
+            ax.set_ylabel("L's price $p_1$", fontsize=10)
+            ax.set_zlabel("F's price $p_2$", fontsize=10)
+
+            # val_low, val_high = self.get_prior_bounds(agent_id=0)
+            # ax.set_xlim([val_low - 0.1, val_high + 0.1])
+            if (
+                self.config["prettify_plots"]
+                and self.config.sampler.name == "mineral_rights_common_value"
+            ):
+                ax.set_zlim(0.4 - 0.05, 1.1 + 0.05)
+            elif self.config["prettify_plots"] and self.cara_risk_aversion > 0.0:
+                ax.set_zlim(0.15 - 0.05, 1.1 + 0.05)
+            ax.legend(loc="best")
+
+            figure_plt.tight_layout()
+            figure_plt.savefig(f"{writer.log_dir}/{iteration}_follower_{k}.png")
+
+            second_round_figure_list.append(figure_plt)
+        return second_round_figure_list
+
+    def _draw_second_round_strategy_on_axis(
+        self, ax, config, states, follower_actions, color
+    ):
         algo_name = pl_ut.get_algo_name(1, config)
-        follower_vals = states["val_signals"][:, 1, 0]
+        follower_vals = states["cost_signals"][:, 1, 0]
         leader_actions = states["quoted_prices"][:, 1, 0]
 
         sorted_follower_vals, increasing_order = follower_vals.sort(axis=0)
@@ -508,7 +614,6 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
         sorted_leader_actions = (
             leader_actions[increasing_order].detach().cpu().view(-1).numpy()
         )
-        ax.set_title("Second stage")
         surf = ax.plot_trisurf(
             sorted_follower_vals,
             sorted_leader_actions,
@@ -518,17 +623,13 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             alpha=0.5,
             color=color,
             edgecolor=color,
-            label=f"Follower " + algo_name,
+            label=algo_name + " follower",
         )
         # ## due to bug in matplotlib ## #
         surf._facecolors2d = surf._facecolor3d
         surf._edgecolors2d = surf._edgecolor3d
         # ############################## #
         self._plot_second_round_equ_strategy_surface(ax, 50)
-
-        ax.set_xlabel("F's Costs")
-        ax.set_ylabel("L's Quote")
-        ax.set_zlabel("F's Quote")
 
     def _plot_second_round_equ_strategy_surface(self, ax, plot_precision):
         if self.equilibrium_strategies[1] is not None:
@@ -580,20 +681,29 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
     def plot_br_strategy(
         self, br_strategies: Dict[int, Callable]
     ) -> Optional[plt.Figure]:
-        # TODO: Adapt to fit Bertrand Competition
         num_vals = 128
-        valuations = torch.linspace(0.0, 1.0, num_vals, device=self.device)
+        val_low, val_high = self.get_prior_bounds(agent_id=0)
+        cost_signals = torch.linspace(val_low, val_high, num_vals, device=self.device)
         agent_obs = torch.cat(
-            (valuations.unsqueeze(-1), torch.zeros((num_vals, 3), device=self.device)),
+            (
+                cost_signals.unsqueeze(-1),
+                torch.zeros((num_vals, 3), device=self.device),
+            ),
             dim=1,
         )
         plt.style.use("ggplot")
         fig = plt.figure(figsize=(4.5, 4.5), clear=True)
         ax = fig.add_subplot(111)
-        ax.set_xlabel("valuation $v$")
-        ax.set_ylabel("bid $b$")
-        ax.set_xlim([0, 1])
-        ax.set_ylim([-0.05, 1.05])
+        if self.config.sampler.name in [
+            "mineral_rights_common_value",
+            "affiliated_uniform",
+        ]:
+            ax.set_xlabel("L's observation $x_1$", fontsize=12)
+        else:
+            ax.set_xlabel("L's cost $c_1$", fontsize=12)
+        ax.set_ylabel("L's price $p_1$")
+        ax.set_xlim([val_low, val_high])
+        ax.set_ylim([val_low - 0.05, val_high + 1.05])
 
         colors = [
             (0 / 255.0, 150 / 255.0, 196 / 255.0),
@@ -611,7 +721,7 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
                 color = colors[agent_id]
                 line_type = line_types[agent_id]
             agent_actions = agent_br[0](agent_obs)
-            xs = valuations.detach().cpu().numpy()
+            xs = cost_signals.detach().cpu().numpy()
             ys = agent_actions.squeeze().detach().cpu().numpy()
             ax.plot(
                 xs,
