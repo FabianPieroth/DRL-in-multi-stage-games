@@ -519,13 +519,14 @@ class BertrandCompetition(VerifiableEnv, BaseEnvForVec):
             label=algo_name + " leader",
             color=agent_color,
         )
-        ax.fill_between(
-            sorted_leader_cost_signals,
-            (sorted_leader_actions.squeeze() - sorted_leader_stddevs).clip(min=0),
-            (sorted_leader_actions.squeeze() + sorted_leader_stddevs).clip(min=0),
-            alpha=0.2,
-            color=drawing.get_color(),
-        )
+        if not self.config["prettify_plots"]:
+            ax.fill_between(
+                sorted_leader_cost_signals,
+                (sorted_leader_actions.squeeze() - sorted_leader_stddevs).clip(min=0),
+                (sorted_leader_actions.squeeze() + sorted_leader_stddevs).clip(min=0),
+                alpha=0.2,
+                color=drawing.get_color(),
+            )
         self._plot_first_round_equilibrium_strategy(ax, drawing)
 
     def _plot_first_round_equilibrium_strategy(

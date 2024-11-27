@@ -970,19 +970,20 @@ class SignalingContest(BaseEnvForVec, VerifiableEnv):
             label=label,
             color=agent_color,
         )
-        ax.fill_between(
-            agent_vals[~has_lost_already],
-            (
-                actions_array[~has_lost_already].squeeze()
-                - agent_stddevs[~has_lost_already]
-            ).clip(min=0),
-            (
-                actions_array[~has_lost_already].squeeze()
-                + agent_stddevs[~has_lost_already]
-            ).clip(min=0),
-            alpha=0.2,
-            color=drawing.get_color(),
-        )
+        if not self.config["prettify_plots"]:
+            ax.fill_between(
+                agent_vals[~has_lost_already],
+                (
+                    actions_array[~has_lost_already].squeeze()
+                    - agent_stddevs[~has_lost_already]
+                ).clip(min=0),
+                (
+                    actions_array[~has_lost_already].squeeze()
+                    + agent_stddevs[~has_lost_already]
+                ).clip(min=0),
+                alpha=0.2,
+                color=drawing.get_color(),
+            )
         if self.equilibrium_strategies[agent_id]:
             self._plot_first_round_equilibrium_strategy(ax, agent_id, drawing, label)
 

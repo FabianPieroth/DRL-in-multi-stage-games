@@ -682,19 +682,20 @@ class SequentialAuction(VerifiableEnv, BaseEnvForVec):
                         color=drawing.get_color(),
                         label=plotting_settings["label_BNE_strategy"],
                     )
-                ax.fill_between(
-                    agent_obs[~has_won_already],
-                    (
-                        actions_array[~has_won_already].squeeze()
-                        - stddevs[~has_won_already]
-                    ).clip(min=0),
-                    (
-                        actions_array[~has_won_already].squeeze()
-                        + stddevs[~has_won_already]
-                    ).clip(min=0),
-                    alpha=0.2,
-                    color=drawing.get_color(),
-                )
+                if not self.config["prettify_plots"]:
+                    ax.fill_between(
+                        agent_obs[~has_won_already],
+                        (
+                            actions_array[~has_won_already].squeeze()
+                            - stddevs[~has_won_already]
+                        ).clip(min=0),
+                        (
+                            actions_array[~has_won_already].squeeze()
+                            + stddevs[~has_won_already]
+                        ).clip(min=0),
+                        alpha=0.2,
+                        color=drawing.get_color(),
+                    )
                 if stage > 0 and not self.config["prettify_plots"]:
                     ax.plot(
                         agent_obs[has_won_already],
