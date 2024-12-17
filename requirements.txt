@@ -1,11 +1,11 @@
 gizeh==0.1.11
-torch==1.11.0
+torch==2.4.1
 tensordict==0.1.2
 matplotlib==3.5.1
 seaborn==0.11.2
 stable-baselines3==1.5.0
 tensorboard==2.8.0
-gym==0.21
+# gym==0.21
 
 hydra-core==1.1.1
 opencv-python==4.5.5.62
@@ -19,6 +19,7 @@ tqdm==4.64.0
 
 imageio==2.16.1
 moviepy==1.0.3
+numpy==1.26.4
 
 # 2022-05-30 
 # Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 

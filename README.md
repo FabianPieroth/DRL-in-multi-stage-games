@@ -34,9 +34,9 @@ Implemented are the following algorithms:
 
 ## Setup
 
-Note: These setup instructions assume a linux-based OS and uses python 3.8.10 (or higher).
+Note: These setup instructions assume a linux-based OS and uses python 3.9.21.
 
-Install `virtualenv` (or whatever you prefer for virtual envs)
+If necessary, install `virtualenv` (or whatever you prefer for virtual envs)
 ```bash
 sudo apt-get install virtualenv
 ```
@@ -46,11 +46,17 @@ Create a virtual environment with virtual env (you can also choose your own name
 virtualenv sequential-auctions-on-gpu
 ```
 
-You can specify the python version for the virtual environment via the -p flag. Note that this version already needs to be installed on the system (e.g., `virtualenv - p python3 sequential-auctions-on-gpu` uses the standard python3 version from the system).
+You can specify the python version for the virtual environment via the -p flag. Note that this version already needs to be installed on the system (e.g., "virtualenv sequential-auctions-on-gpu -p `which python3.XX`" uses the standard python3 version from the system).
 
 Activate the environment with
 ```bash
 source ./sequential-auctions-on-gpu/bin/activate
+```
+
+Due to older dependencies, setuptools and pip need to have a specific version as well. Therefore check or run:
+```bash
+pip install setuptools==65.5.0 pip==21  # gym 0.21 installation is broken with more recent versions
+pip install wheel==0.38.0
 ```
 
 Install all requirements
