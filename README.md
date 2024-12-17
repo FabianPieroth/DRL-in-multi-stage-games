@@ -53,7 +53,7 @@ Activate the environment with
 source ./sequential-auctions-on-gpu/bin/activate
 ```
 
-Due to older dependencies, setuptools and pip need to have a specific version as well. Therefore check or run:
+Due to older dependencies, setuptools and pip need to have a specific version as well. (See https://stackoverflow.com/questions/77124879/pip-extras-require-must-be-a-dictionary-whose-values-are-strings-or-lists-of for more information.) Therefore, check or run:
 ```bash
 pip install setuptools==65.5.0 pip==21  # gym 0.21 installation is broken with more recent versions
 pip install wheel==0.38.0
