@@ -9,7 +9,7 @@ class UtilityTracker(object):
             1, device=device, dtype=torch.float, requires_grad=requires_grad
         )
         self.cum_sim_count = torch.zeros(
-            1, device=device, dtype=torch.int, requires_grad=requires_grad
+            1, device=device, dtype=torch.long, requires_grad=requires_grad
         )
 
     def add_utility(self, utilities: torch.Tensor):
