@@ -41,9 +41,9 @@ If necessary, install `virtualenv` (or whatever you prefer for virtual envs)
 sudo apt-get install virtualenv
 ```
 
-Create a virtual environment with virtual env (you can also choose your own name)
+Create a virtual environment with virtual env using python 3.9.21 (you can also choose your own name)
 ```bash
-virtualenv sequential-auctions-on-gpu
+virtualenv --python=python3.9.21 sequential-auctions-on-gpu
 ```
 
 You can specify the python version for the virtual environment via the -p flag. Note that this version already needs to be installed on the system (e.g., "virtualenv sequential-auctions-on-gpu -p `which python3.XX`" uses the standard python3 version from the system).
